@@ -14,7 +14,6 @@ import { randomBytes } from 'crypto';
 @Injectable()
 export class AuthService {
     constructor(
-        @InjectModel(User.name) private userModel: Model<User>,
         private userService: UserService,
         private jwtService: JwtService,
         private mailerService: MailerService,
@@ -81,46 +80,6 @@ export class AuthService {
         const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d' })
 
         return { accessToken, tokenPayload };
-    }
-
-    // Lấy access_token mới khi hết hạn
-    async getNewAccessToken(refreshToken: string) {
-
-        if (!refreshToken) {
-            throw new BadRequestException('Refresh token die');
-        }
-
-        let decodedRefresh;
-
-        try {
-            decodedRefresh = this.jwtService.verify(refreshToken); // giải mã và check hợp lệ
-        } catch (err) {
-            throw new BadRequestException('Refresh token die');
-        }
-
-        // Lấy thông tin user từ payload của refresh token
-        const existingUser = await this.userService.findByEmail(decodedRefresh.email);
-        if (!existingUser) {
-            throw new BadRequestException('Không tìm thấy người dùng');
-        }
-
-        // Kiểm tra trạng thái user
-
-        if (existingUser.status === 'ban') {
-            throw new BadRequestException('Tài khoản này đã bị cấm');
-        }
-
-        const tokenPayload = {
-            user_id: existingUser._id,
-            email: existingUser.email,
-            username: existingUser.username,
-            role: existingUser.role,
-        }
-
-        // Tạo access token mới
-        const newAccessToken = this.jwtService.sign(tokenPayload);
-
-        return { accessToken: newAccessToken };
     }
 
     // Cho client kiểmtra coi có login = refreshToken ko

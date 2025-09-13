@@ -8,7 +8,7 @@ import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 @Injectable()
 export class UserService {
     constructor(@InjectModel(User.name) private userModel: Model<User>) { }
-
+    // ---------------- Của auth -------------------- //
     async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
         try {
             const newUser = new this.userModel(createUserGoogleDto);
@@ -97,5 +97,5 @@ export class UserService {
 
         return { success: true };
     }
-
+    // ---------------- Của auth -------------------- //
 }
