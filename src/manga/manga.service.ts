@@ -38,7 +38,7 @@ export class MangaService {
         }
 
         // Trả về dữ liệu manga đã được cập nhật
-        const updatedManga = await this.mangaModel.findById(id);
+        const updatedManga = await this.mangaModel.findById(id).populate('genres', 'name');
         return updatedManga;
     }
 
@@ -59,7 +59,9 @@ export class MangaService {
 
 
     async getAllMangasByAuthor(authorId: string) {
-        const mangas = await this.mangaModel.find({ authorId }).sort({ createdAt: -1 });
+        const mangas = await this.mangaModel.find({ authorId })
+            .populate('genres', 'name')
+            .sort({ createdAt: -1 });
         const published = mangas.filter(manga => !manga.isDraft);
         const drafts = mangas.filter(manga => manga.isDraft);
         return { published, drafts };
