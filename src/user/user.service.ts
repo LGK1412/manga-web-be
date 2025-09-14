@@ -4,10 +4,13 @@ import { Model, Types } from "mongoose";
 import { User } from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class UserService {
-    constructor(@InjectModel(User.name) private userModel: Model<User>) { }
+    constructor(@InjectModel(User.name) private userModel: Model<User>,
+    private jwtService: JwtService
+   ) { }
     // ---------------- Của auth -------------------- //
     async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
         try {
@@ -98,4 +101,33 @@ export class UserService {
         return { success: true };
     }
     // ---------------- Của auth -------------------- //
+ // user.service.ts
+async updateRole(role: string, token: string) {
+    if (!token) {
+        throw new BadRequestException('Thiếu token xác minh');
+    }
+
+    let payload: any;
+    try {
+        payload = this.jwtService.verify(token);
+    } catch {
+        throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const existingUser = await this.userModel.findOne({ email: payload.email });
+    if (!existingUser) {
+        throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    const result = await this.userModel.updateOne(
+        { email: payload.email },
+        { $set: { role: role } }
+    );
+
+    if (result.modifiedCount === 0) {
+        throw new BadRequestException('Không thể cập nhật role cho user');
+    }
+
+    return { success: true, message: 'Cập nhật role thành công' };
+}
 }
