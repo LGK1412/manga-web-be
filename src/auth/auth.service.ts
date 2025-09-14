@@ -83,8 +83,7 @@ export class AuthService {
     }
 
     // Cho client kiểmtra coi có login = refreshToken ko
-    async checkLogin(accessToken: string) {
-        
+    async checkLogin(accessToken: string) {        
         if (!accessToken) {
             return { isLogin: false }
         }
