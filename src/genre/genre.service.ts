@@ -25,3 +25,4 @@ export class GenreService {
         return await this.genreModel.findByIdAndDelete(id);
     }
 }
+

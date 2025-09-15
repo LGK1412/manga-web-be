@@ -14,7 +14,7 @@ export class Manga {
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Genres' }], default: [] })
   genres: Types.ObjectId[];
 
-  @Prop({ enum: ['ongoing', 'completed'], default: 'ongoing' })
+  @Prop({ enum: ['ongoing', 'completed', 'hiatus'], default: 'ongoing' })
   status: string;
 
   @Prop({ default: true })
@@ -26,12 +26,11 @@ export class Manga {
   @Prop({ default: 0 })
   viewCount: number;
 
-  @Prop({ default: true })
-  isDraft: boolean;
-
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   authorId: Types.ObjectId;
 
+  @Prop({default: false})
+  isDeleted: boolean;
 }
 
 export const MangaSchema = SchemaFactory.createForClass(Manga);

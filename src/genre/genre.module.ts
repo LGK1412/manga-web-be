@@ -13,3 +13,4 @@ import { Genres, GenresSchema } from '../schemas/Genres.schema';
     exports: [GenreService]
 })
 export class GenreModule {}
+

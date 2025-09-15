@@ -25,3 +25,4 @@ export class GenreController {
         return await this.genreService.deleteGenre(id);
     }
 }
+

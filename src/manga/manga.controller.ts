@@ -56,19 +56,23 @@ export class MangaController {
     @Req() req: any,
   ) {
     const authorId = await this.verifyToken(req);
-    return await this.mangaService.updateManga(id, updateMangaDto, authorId);
+    return await this.mangaService.updateManga(id, updateMangaDto, new Types.ObjectId(authorId));
   }
 
   @Delete(':id')
   async deleteManga(@Param('id') id: string, @Req() req: any) {
     const authorId = await this.verifyToken(req);
-    return await this.mangaService.deleteManga(id, authorId);
+    return await this.mangaService.deleteManga(id, new Types.ObjectId(authorId));
   }
 
-  @Get(':id')
-  async getAllMangasByAuthor(@Req() req: any, @Param('id') id: string) {
-    await this.verifyToken(req);
-    const authorId = new Types.ObjectId(id);
-    return await this.mangaService.getAllMangasByAuthor(authorId);
+  @Get(':authorId')
+  async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
+    return await this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
+  }
+
+  @Post(':id/toggle-delete')
+  async toggleDelete(@Param('id') id: string, @Req() req: any) {
+    const authorId = await this.verifyToken(req);
+    return await this.mangaService.toggleDelete(id, new Types.ObjectId(authorId));
   }
 }

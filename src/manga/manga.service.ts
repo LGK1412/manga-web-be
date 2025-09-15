@@ -23,7 +23,7 @@ export class MangaService {
     }
 
 
-    async updateManga(id: string, updateMangaDto: UpdateMangaDto, authorId: string) {
+    async updateManga(id: string, updateMangaDto: UpdateMangaDto, authorId: Types.ObjectId) {
         if (!Types.ObjectId.isValid(id)) {
             throw new BadRequestException('ID manga không hợp lệ');
         }
@@ -43,7 +43,7 @@ export class MangaService {
     }
 
 
-    async deleteManga(id: string, authorId: string) {
+    async deleteManga(id: string, authorId: Types.ObjectId) {
         if (!Types.ObjectId.isValid(id)) {
             throw new BadRequestException('ID manga không hợp lệ');
         }
@@ -58,10 +58,28 @@ export class MangaService {
     }
 
 
+
     async getAllMangasByAuthor(authorId: Types.ObjectId) {
-        const mangas = await this.mangaModel.find({ authorId }).sort({ createdAt: -1 });
-        const published = mangas.filter(manga => !manga.isDraft);
-        const drafts = mangas.filter(manga => manga.isDraft);
-        return { published, drafts };
+        return await this.mangaModel
+            .find({ authorId })
+            .populate('genres', 'name')
+            .sort({ createdAt: -1 });
+    }
+
+    async toggleDelete(id: string, authorId: Types.ObjectId) {
+        if (!Types.ObjectId.isValid(id)) {
+            throw new BadRequestException('ID manga không hợp lệ');
+        }
+
+        const manga = await this.mangaModel.findOne({ _id: id, authorId });
+        if (!manga) {
+            throw new BadRequestException('Manga không tồn tại hoặc không thuộc quyền sở hữu');
+        }
+
+        const nextDeleted = !Boolean((manga as any).isDeleted);
+        await this.mangaModel.updateOne({ _id: id, authorId }, { $set: { isDeleted: nextDeleted } });
+
+        const updated = await this.mangaModel.findById(id).populate('genres', 'name');
+        return updated;
     }
 }
