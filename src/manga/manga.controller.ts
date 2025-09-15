@@ -15,13 +15,14 @@ import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { JwtService } from '@nestjs/jwt';
+import { Types } from 'mongoose';
 
 @Controller('api/manga')
 export class MangaController {
   constructor(
     private mangaService: MangaService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   private verifyToken(req: any): Promise<string> {
     const token = req.cookies?.access_token;
@@ -39,11 +40,12 @@ export class MangaController {
     }
   }
 
-  @Post()
+  @Post(':id')
   @UsePipes(new ValidationPipe())
-  async createManga(@Body() createMangaDto: CreateMangaDto, @Req() req: any) {
-    const authorId = await this.verifyToken(req);
-    return await this.mangaService.createManga(createMangaDto, authorId);
+  async createManga(@Body() createMangaDto: CreateMangaDto, @Req() req: any, @Param('id') id: string) {
+    await this.verifyToken(req)
+    const authorId = new Types.ObjectId(id);
+    return await this.mangaService.createManga(createMangaDto, authorId)
   }
 
   @Patch(':id')
@@ -63,9 +65,10 @@ export class MangaController {
     return await this.mangaService.deleteManga(id, authorId);
   }
 
-  @Get()
-  async getAllMangas(@Req() req: any) {
-    const authorId = await this.verifyToken(req);
+  @Get(':id')
+  async getAllMangasByAuthor(@Req() req: any, @Param('id') id: string) {
+    await this.verifyToken(req);
+    const authorId = new Types.ObjectId(id);
     return await this.mangaService.getAllMangasByAuthor(authorId);
   }
 }

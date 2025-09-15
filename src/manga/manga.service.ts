@@ -10,7 +10,7 @@ export class MangaService {
     constructor(@InjectModel(Manga.name) private mangaModel: Model<MangaDocument>) { }
 
 
-    async createManga(createMangaDto: CreateMangaDto, authorId: string) {
+    async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
         try {
             const newManga = new this.mangaModel({
                 ...createMangaDto,
@@ -58,7 +58,7 @@ export class MangaService {
     }
 
 
-    async getAllMangasByAuthor(authorId: string) {
+    async getAllMangasByAuthor(authorId: Types.ObjectId) {
         const mangas = await this.mangaModel.find({ authorId }).sort({ createdAt: -1 });
         const published = mangas.filter(manga => !manga.isDraft);
         const drafts = mangas.filter(manga => manga.isDraft);
