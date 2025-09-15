@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Types } from 'mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export type MangaDocument = Manga & Document;
 
@@ -12,8 +11,8 @@ export class Manga {
   @Prop({ required: false })
   description: string;
 
-  @Prop({ type: [String], default: [] })
-  genres: string[];
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Genres' }], default: [] })
+  genres: Types.ObjectId[];
 
   @Prop({ enum: ['ongoing', 'completed'], default: 'ongoing' })
   status: string;

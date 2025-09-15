@@ -38,7 +38,7 @@ export class MangaService {
         }
 
         // Trả về dữ liệu manga đã được cập nhật
-        const updatedManga = await this.mangaModel.findById(id);
+        const updatedManga = await this.mangaModel.findById(id).populate('genres', 'name');
         return updatedManga;
     }
 

@@ -1,4 +1,5 @@
-import { IsString, IsArray, IsOptional, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsArray, IsOptional, IsBoolean, IsEnum, IsMongoId } from 'class-validator';
+import { Types } from 'mongoose';
 
 export class CreateMangaDto {
   @IsString()
@@ -8,8 +9,8 @@ export class CreateMangaDto {
   description: string;
 
   @IsArray()
-  @IsString({ each: true })
-  genres: string[];
+  @IsMongoId({ each: true })
+  genres: Types.ObjectId[];
 
   @IsEnum(['ongoing', 'completed', 'hiatus'])
   @IsOptional()

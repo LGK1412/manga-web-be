@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
+import { GenreModule } from './genre/genre.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 
@@ -48,6 +49,7 @@ import { join } from 'path';
     UserModule,
     AuthModule,
     MangaModule,
+    GenreModule,
   ],
 })
 export class AppModule { }
