@@ -5,21 +5,22 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
 import { GenreModule } from './genre/genre.module';
+import { ChapterModule } from './textChapter/text-chapter.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true
+      isGlobal: true,
     }),
 
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        uri: configService.get<string>('DATABASE_URL')
-      })
+        uri: configService.get<string>('DATABASE_URL'),
+      }),
     }),
 
     MailerModule.forRootAsync({
@@ -40,7 +41,8 @@ import { join } from 'path';
         },
         template: {
           dir: join(__dirname, 'templates-mail-send'),
-          adapter: new (require('@nestjs-modules/mailer/dist/adapters/handlebars.adapter').HandlebarsAdapter)(),
+          adapter:
+            new (require('@nestjs-modules/mailer/dist/adapters/handlebars.adapter').HandlebarsAdapter)(),
           options: { strict: true },
         },
       }),
@@ -50,6 +52,7 @@ import { join } from 'path';
     AuthModule,
     MangaModule,
     GenreModule,
+    ChapterModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}
