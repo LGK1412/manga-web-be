@@ -22,7 +22,7 @@ export class MangaController {
   constructor(
     private mangaService: MangaService,
     private jwtService: JwtService,
-  ) { }
+  ) {}
 
   private verifyToken(req: any): Promise<string> {
     const token = req.cookies?.access_token;
@@ -42,10 +42,14 @@ export class MangaController {
 
   @Post(':id')
   @UsePipes(new ValidationPipe())
-  async createManga(@Body() createMangaDto: CreateMangaDto, @Req() req: any, @Param('id') id: string) {
-    await this.verifyToken(req)
+  async createManga(
+    @Body() createMangaDto: CreateMangaDto,
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    await this.verifyToken(req);
     const authorId = new Types.ObjectId(id);
-    return await this.mangaService.createManga(createMangaDto, authorId)
+    return await this.mangaService.createManga(createMangaDto, authorId);
   }
 
   @Patch(':id')
@@ -56,23 +60,39 @@ export class MangaController {
     @Req() req: any,
   ) {
     const authorId = await this.verifyToken(req);
-    return await this.mangaService.updateManga(id, updateMangaDto, new Types.ObjectId(authorId));
+    return await this.mangaService.updateManga(
+      id,
+      updateMangaDto,
+      new Types.ObjectId(authorId),
+    );
   }
 
   @Delete(':id')
   async deleteManga(@Param('id') id: string, @Req() req: any) {
     const authorId = await this.verifyToken(req);
-    return await this.mangaService.deleteManga(id, new Types.ObjectId(authorId));
+    return await this.mangaService.deleteManga(
+      id,
+      new Types.ObjectId(authorId),
+    );
   }
 
   @Get(':authorId')
   async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
-    return await this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
+    return await this.mangaService.getAllMangasByAuthor(
+      new Types.ObjectId(authorId),
+    );
+  }
+  @Get()
+  async getAllManga() {
+    return await this.mangaService.getAllManga();
   }
 
   @Post(':id/toggle-delete')
   async toggleDelete(@Param('id') id: string, @Req() req: any) {
     const authorId = await this.verifyToken(req);
-    return await this.mangaService.toggleDelete(id, new Types.ObjectId(authorId));
+    return await this.mangaService.toggleDelete(
+      id,
+      new Types.ObjectId(authorId),
+    );
   }
 }
