@@ -74,7 +74,8 @@ export class AuthService {
             email: existingUser.email,
             username: existingUser.username,
             role: existingUser.role,
-            avatar: existingUser.avatar
+            avatar: existingUser.avatar,
+            bio: existingUser.bio
         }
 
         const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d' })
@@ -215,7 +216,8 @@ export class AuthService {
                 email: user.email,
                 username: user.username,
                 role: user.role,
-                avatar: user.avatar
+                avatar: user.avatar,
+                bio: user.bio
             }
 
             const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d', })

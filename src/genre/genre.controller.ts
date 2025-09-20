@@ -10,6 +10,11 @@ export class GenreController {
         return await this.genreService.getAllGenres();
     }
 
+    @Get('active')
+    async findActive() {
+        return await this.genreService.findActive();
+    }
+
     @Post()
     async createGenre(@Body() body: { name: string }) {
         return await this.genreService.createGenre(body.name);
@@ -25,4 +30,3 @@ export class GenreController {
         return await this.genreService.deleteGenre(id);
     }
 }
-

@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
+import { Types } from 'mongoose'
 
 export enum UserRole {
     ADMIN = 'admin',
@@ -54,6 +55,12 @@ export class User {
 
     @Prop({ required: false, default: 'avatar-default.webp' })
     avatar: string
+
+    @Prop({ type: String, required: false, default: "" })
+    bio: string
+
+    @Prop({ type: [{ type: Types.ObjectId, ref: "Manga" }], default: [] })
+    favourites: Types.ObjectId[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

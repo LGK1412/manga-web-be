@@ -5,12 +5,13 @@ import { GenreController } from './genre.controller';
 import { Genres, GenresSchema } from '../schemas/Genres.schema';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([{ name: Genres.name, schema: GenresSchema }])
-    ],
-    controllers: [GenreController],
-    providers: [GenreService],
-    exports: [GenreService]
+  imports: [
+    MongooseModule.forFeature([
+      { name: Genres.name, schema: GenresSchema }
+    ])
+  ],
+  controllers: [GenreController],
+  providers: [GenreService],
+  exports: [GenreService],
 })
 export class GenreModule {}
-
