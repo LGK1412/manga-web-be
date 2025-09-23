@@ -16,7 +16,7 @@ export class ChapterService {
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(TextChapter.name)
     private textChapterModel: Model<TextChapterDocument>,
-  ) {}
+  ) { }
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
     return this.chapterModel.aggregate([
       { $match: { manga_id: new Types.ObjectId(manga_id) } },
@@ -101,6 +101,7 @@ export class ChapterService {
 
     return { chapter, text };
   }
+
   async updateChapter(
     id: Types.ObjectId,
     dto: UpdateChapterWithTextDto,

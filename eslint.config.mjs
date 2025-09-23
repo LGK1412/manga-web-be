@@ -1,35 +1,18 @@
-// @ts-check
-import eslint from '@eslint/js';
-import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
+import eslintPluginPrettier from 'eslint-plugin-prettier';
+import prettierConfig from './.prettierrc' assert { type: 'json' };
 
-export default tseslint.config(
+export default [
   {
-    ignores: ['eslint.config.mjs'],
-  },
-  eslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
-  eslintPluginPrettierRecommended,
-  {
+    files: ['**/*.ts'],
+    plugins: {
+      prettier: eslintPluginPrettier,
+    },
     languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.jest,
-      },
-      sourceType: 'commonjs',
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
+      ecmaVersion: 2020,
+      sourceType: 'module',
     },
-  },
-  {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      "prettier/prettier": "off"
+      'prettier/prettier': ['error', prettierConfig],
     },
   },
-);
+];

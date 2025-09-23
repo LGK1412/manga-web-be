@@ -7,6 +7,7 @@ import { MangaModule } from './manga/manga.module';
 import { GenreModule } from './genre/genre.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
+import { ImageChapterModule } from './imageChapter/image-chapter.module';
 import { ChapterModule } from './textChapter/text-chapter.module';
 import { StylesModule } from './styles/styles.module';
 
@@ -55,6 +56,7 @@ import { StylesModule } from './styles/styles.module';
     GenreModule,
     StylesModule,
     ChapterModule,
+    ImageChapterModule,
   ],
 })
 export class AppModule { }
