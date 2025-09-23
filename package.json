@@ -35,9 +35,12 @@
     "cookie-parser": "^1.4.7",
     "google-auth-library": "^10.3.0",
     "mongoose": "^8.18.0",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sharp": "^0.34.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -48,6 +51,7 @@
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.1",
     "@types/supertest": "^6.0.2",

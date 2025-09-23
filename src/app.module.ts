@@ -8,6 +8,7 @@ import { GenreModule } from './genre/genre.module';
 import { ChapterModule } from './textChapter/text-chapter.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
+import { ImageChapterModule } from './imageChapter/image-chapter.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { join } from 'path';
     MangaModule,
     GenreModule,
     ChapterModule,
+    ImageChapterModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
