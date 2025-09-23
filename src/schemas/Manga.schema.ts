@@ -8,8 +8,23 @@ export class Manga {
   @Prop({ required: true })
   title: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  authorId: Types.ObjectId;
+
   @Prop({ required: false })
-  description: string;
+  summary: string;
+
+  @Prop({ required: false })
+  coverImage: string; 
+  
+  @Prop({ default: true })
+  isPublish: boolean;
+
+  @Prop({default: false})
+  isDeleted: boolean;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Styles' }], default: [] })
+  styles: Types.ObjectId[];
 
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Genres' }], default: [] })
   genres: Types.ObjectId[];
@@ -17,20 +32,8 @@ export class Manga {
   @Prop({ enum: ['ongoing', 'completed', 'hiatus'], default: 'ongoing' })
   status: string;
 
-  @Prop({ default: true })
-  isPublic: boolean;
-
-  @Prop({ enum: ['text', 'image'], required: true })
-  type: 'text' | 'image';
-
   @Prop({ default: 0 })
-  viewCount: number;
-
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  authorId: Types.ObjectId;
-
-  @Prop({default: false})
-  isDeleted: boolean;
+  views: number;
 }
 
 export const MangaSchema = SchemaFactory.createForClass(Manga);

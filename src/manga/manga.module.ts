@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MangaService } from './manga.service';
@@ -6,6 +7,8 @@ import { Manga, MangaSchema } from '../schemas/Manga.schema';
 import { Genres, GenresSchema } from '../schemas/Genres.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { StylesModule } from '../styles/styles.module';
+import { GenreModule } from '../genre/genre.module';
 
 @Module({
   imports: [
@@ -21,6 +24,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         signOptions: { expiresIn: '360d' },
       }),
     }),
+    StylesModule,
+    GenreModule,
   ],
   controllers: [MangaController],
   providers: [MangaService],

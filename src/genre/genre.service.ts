@@ -1,3 +1,4 @@
+
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -23,6 +24,14 @@ export class GenreService {
 
     async deleteGenre(id: string) {
         return await this.genreModel.findByIdAndDelete(id);
+    }
+
+    async findActive() {
+        return await this.genreModel.find({ status: 'normal' }).sort({ name: 1 });
+    }
+
+    async findById(id: string) {
+        return await this.genreModel.findById(id);
     }
 }
 

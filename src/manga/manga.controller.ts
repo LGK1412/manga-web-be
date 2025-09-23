@@ -10,12 +10,36 @@ import {
   UsePipes,
   ValidationPipe,
   BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+
+// FileInterceptor config cho cover image
+const coverImageInterceptor = FileInterceptor('coverImage', {
+  storage: diskStorage({
+    destination: 'public/assets/coverImages',
+    filename: (req, file, cb) => {
+      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const ext = extname(file.originalname);
+      cb(null, `${unique}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new BadRequestException('File không phải ảnh'), false);
+    }
+    cb(null, true);
+  },
+});
 
 @Controller('api/manga')
 export class MangaController {
@@ -40,34 +64,84 @@ export class MangaController {
     }
   }
 
+  @Get(':authorId')
+  async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
+    return await this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
+  }
+
   @Post(':id')
-  @UsePipes(new ValidationPipe())
-  async createManga(@Body() createMangaDto: CreateMangaDto, @Req() req: any, @Param('id') id: string) {
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  @UseInterceptors(
+    FileInterceptor('coverImage', {
+      storage: diskStorage({
+        destination: 'public/assets/coverImages',
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `${unique}${ext}`);
+        },
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('File không phải ảnh'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async createManga(
+    @Body() createMangaDto: CreateMangaDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
     await this.verifyToken(req)
     const authorId = new Types.ObjectId(id);
+    
+    // Nếu có file upload, lưu trực tiếp
+    if (file) {
+      createMangaDto.coverImage = file.filename;
+    }
+    
     return await this.mangaService.createManga(createMangaDto, authorId)
   }
 
   @Patch(':id')
-  @UsePipes(new ValidationPipe())
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  @UseInterceptors(
+    FileInterceptor('coverImage', {
+      storage: diskStorage({
+        destination: 'public/assets/coverImages',
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `${unique}${ext}`);
+        },
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('File không phải ảnh'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   async updateManga(
     @Param('id') id: string,
     @Body() updateMangaDto: UpdateMangaDto,
+    @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
   ) {
     const authorId = await this.verifyToken(req);
+    
+    // Nếu có file upload, lưu trực tiếp
+    if (file) {
+      updateMangaDto.coverImage = file.filename;
+    }
+    
     return await this.mangaService.updateManga(id, updateMangaDto, new Types.ObjectId(authorId));
-  }
-
-  @Delete(':id')
-  async deleteManga(@Param('id') id: string, @Req() req: any) {
-    const authorId = await this.verifyToken(req);
-    return await this.mangaService.deleteManga(id, new Types.ObjectId(authorId));
-  }
-
-  @Get(':authorId')
-  async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
-    return await this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
   }
 
   @Post(':id/toggle-delete')
@@ -76,3 +150,4 @@ export class MangaController {
     return await this.mangaService.toggleDelete(id, new Types.ObjectId(authorId));
   }
 }
+

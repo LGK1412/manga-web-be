@@ -5,10 +5,11 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
 import { GenreModule } from './genre/genre.module';
-import { ChapterModule } from './textChapter/text-chapter.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 import { ImageChapterModule } from './imageChapter/image-chapter.module';
+import { ChapterModule } from './textChapter/text-chapter.module';
+import { StylesModule } from './styles/styles.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ImageChapterModule } from './imageChapter/image-chapter.module';
     AuthModule,
     MangaModule,
     GenreModule,
+    StylesModule,
     ChapterModule,
     ImageChapterModule,
   ],
