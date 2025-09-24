@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Manga, MangaDocument } from '../schemas/Manga.schema';
@@ -135,5 +135,144 @@ export class MangaService {
 
         const updated = await this.mangaModel.findById(id).populate('genres', 'name').populate('styles', 'name');
         return updated;
+    }
+    async getAllManga(page = 1, limit = 24) {
+        const skip = (page - 1) * limit;
+
+        const matchStage = {
+            isDeleted: false,
+            // isPublish: true, // nếu chỉ muốn show truyện public
+        };
+
+        const pipeline: any[] = [
+            { $match: matchStage },
+
+            // Chapters public gần nhất (đổi field cho đúng schema của bạn)
+            {
+                $lookup: {
+                    from: 'chapters',
+                    let: { mangaId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$mangaId', '$$mangaId'] }, // đổi thành '$manga_id' nếu schema snake_case
+                                        { $ne: ['$isDeleted', true] },
+                                        { $eq: ['$isPublished', true] }, // đổi thành '$is_published'
+                                    ],
+                                },
+                            },
+                        },
+                        { $sort: { createdAt: -1 } },
+                        { $project: { _id: 1, title: 1, order: 1, createdAt: 1 } },
+                    ],
+                    as: '_chapters',
+                },
+            },
+
+            // Styles (manga.styles là mảng ObjectId)
+            {
+                $lookup: {
+                    from: 'styles',
+                    localField: 'styles',
+                    foreignField: '_id',
+                    as: 'styles',
+                },
+            },
+
+            // Genres (manga.genres là mảng ObjectId)
+            {
+                $lookup: {
+                    from: 'genres',
+                    localField: 'genres',
+                    foreignField: '_id',
+                    as: 'genres',
+                },
+            },
+
+            // Ratings (nếu có)
+            {
+                $lookup: {
+                    from: 'ratings',
+                    localField: '_id',
+                    foreignField: 'storyId', // đổi thành 'story_id' nếu schema snake_case
+                    as: 'ratings',
+                },
+            },
+
+            // Tổng hợp field chuẩn
+            {
+                $addFields: {
+                    chapters_count: { $size: '$_chapters' },
+                    latest_chapter: { $arrayElemAt: ['$_chapters', 0] },
+                    rating_avg: { $avg: '$ratings.rating' },
+                    styles: {
+                        $map: {
+                            input: '$styles',
+                            as: 's',
+                            in: { _id: '$$s._id', name: '$$s.name' },
+                        },
+                    },
+                    genres: {
+                        $map: {
+                            input: '$genres',
+                            as: 'g',
+                            in: { _id: '$$g._id', name: '$$g.name' },
+                        },
+                    },
+                },
+            },
+
+            // Chọn field trả về
+            {
+                $project: {
+                    _id: 1,
+                    title: 1,
+                    slug: 1,
+                    authorId: 1,
+                    summary: 1,
+                    coverImage: 1, // <- frontend sẽ map coverImage thành coverUrl
+                    isPublish: 1,
+                    status: 1,
+                    views: 1,
+                    follows: 1,
+                    createdAt: 1,
+                    updatedAt: 1,
+
+                    styles: 1,
+                    genres: 1,
+
+                    rating_avg: { $ifNull: ['$rating_avg', 0] },
+                    chapters_count: 1,
+                    'latest_chapter.title': 1,
+                    'latest_chapter.order': 1,
+                    'latest_chapter.createdAt': 1,
+                },
+            },
+
+            // Sắp xếp mới cập nhật (client vẫn có thể sort lại view/follow local)
+            { $sort: { updatedAt: -1 } },
+
+            // Phân trang + total trong 1 lần query
+            {
+                $facet: {
+                    data: [{ $skip: skip }, { $limit: limit }],
+                    total: [{ $count: 'count' }],
+                },
+            },
+            {
+                $project: {
+                    data: 1,
+                    total: { $ifNull: [{ $arrayElemAt: ['$total.count', 0] }, 0] },
+                },
+            },
+        ];
+
+        const [res] = await this.mangaModel
+            .aggregate(pipeline)
+            .allowDiskUse(true)
+            .exec();
+        return { data: res?.data ?? [], total: res?.total ?? 0 };
     }
 }

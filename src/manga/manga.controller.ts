@@ -12,6 +12,7 @@ import {
   BadRequestException,
   UseInterceptors,
   UploadedFile,
+  Query,
 } from '@nestjs/common';
 import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
@@ -98,12 +99,12 @@ export class MangaController {
   ) {
     await this.verifyToken(req)
     const authorId = new Types.ObjectId(id);
-    
+
     // Nếu có file upload, lưu trực tiếp
     if (file) {
       createMangaDto.coverImage = file.filename;
     }
-    
+
     return await this.mangaService.createManga(createMangaDto, authorId)
   }
 
@@ -135,12 +136,12 @@ export class MangaController {
     @Req() req: any,
   ) {
     const authorId = await this.verifyToken(req);
-    
+
     // Nếu có file upload, lưu trực tiếp
     if (file) {
       updateMangaDto.coverImage = file.filename;
     }
-    
+
     return await this.mangaService.updateManga(id, updateMangaDto, new Types.ObjectId(authorId));
   }
 
@@ -149,5 +150,16 @@ export class MangaController {
     const authorId = await this.verifyToken(req);
     return await this.mangaService.toggleDelete(id, new Types.ObjectId(authorId));
   }
+  @Get('get/all')
+  async getAll(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '24',
+  ) {
+    const p = Math.max(1, parseInt(page, 10) || 1);
+    const l = Math.min(100, Math.max(1, parseInt(limit, 10) || 24)); // cap 100
+    const { data, total } = await this.mangaService.getAllManga(p, l);
+    return { data, total, page: p, limit: l }; // chuẩn REST
+  }
 }
+
 
