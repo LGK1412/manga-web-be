@@ -5,6 +5,7 @@ import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
 import { GenreModule } from './genre/genre.module';
+import { StyleModule } from './style/style.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 import { ImageChapterModule } from './imageChapter/image-chapter.module';
@@ -63,4 +64,4 @@ import { TopupModule } from './vnpay/topup/topup.module';
     TopupModule
   ],
 })
-export class AppModule { }
+export class AppModule {}

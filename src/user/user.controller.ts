@@ -14,6 +14,19 @@ export class UserController {
         private jwtService: JwtService
     ) { }
 
+    @Get('/all')
+    async getAllUsers(@Req() req: Request) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers['authorization']?.replace('Bearer ', '');
+
+        if (!token) {
+            throw new BadRequestException('Thiếu token xác minh');
+        }
+
+        return await this.userService.getAllUsers(token);
+    }
+
     private verifyToken(req: any): Promise<string> {
         const token = req.cookies?.access_token;
         if (!token) {
@@ -115,4 +128,21 @@ export class UserController {
         };
     }
 
+    // API cập nhật status chung
+    @Post("/update-status")
+    async updateStatus(
+        @Body("userId") userId: string,
+        @Body("status") status: string,
+        @Req() req: Request
+    ) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers["authorization"]?.replace("Bearer ", "");
+
+        if (!token) {
+            throw new BadRequestException("Thiếu token xác minh");
+        }
+
+        return await this.userService.updateStatus(userId, status, token);
+    }
 }

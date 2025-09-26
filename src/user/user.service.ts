@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
-import { User } from "src/schemas/User.schema";
+import { User, UserStatus } from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
@@ -9,127 +9,195 @@ import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class UserService {
-    constructor(@InjectModel(User.name) private userModel: Model<User>,
-        private jwtService: JwtService
-    ) { }
-    // ---------------- Của auth -------------------- //
-    async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
-        try {
-            const newUser = new this.userModel(createUserGoogleDto);
-            return await newUser.save();
-        } catch (error) {
-            if (error.code === 11000 && error.keyPattern?.email) {
-                throw new Error("Email đã tồn tại");
-            }
-            throw error;
-        }
+  constructor(@InjectModel(User.name) private userModel: Model<User>,
+    private jwtService: JwtService
+  ) { }
+  // ---------------- Của auth -------------------- //
+  async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
+    try {
+      const newUser = new this.userModel(createUserGoogleDto);
+      return await newUser.save();
+    } catch (error) {
+      if (error.code === 11000 && error.keyPattern?.email) {
+        throw new Error("Email đã tồn tại");
+      }
+      throw error;
+    }
+  }
+
+  async createUser(registerDto: RegisterDto) {
+    try {
+      const newUser = new this.userModel(registerDto);
+      return await newUser.save();
+    } catch (error) {
+      if (error.code === 11000 && error.keyPattern?.email) {
+        throw new Error("Email đã tồn tại");
+      }
+      throw error;
+    }
+  }
+
+  async findByEmail(email: string) {
+    return await this.userModel
+      .findOne({ email })
+      .select("+password +google_id");
+  }
+
+  async findByEmailAndUsername(email: string, username: string) {
+    return await this.userModel
+      .findOne({
+        $or: [{ email }, { username }],
+      })
+      .select("+password +google_id");
+  }
+
+  async updateVerify(id: Types.ObjectId) {
+    const result = await this.userModel.updateOne(
+      { _id: id },
+      { $set: { verified: true } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException("Không thể cập nhật verified cho user");
     }
 
-    async createUser(registerDto: RegisterDto) {
-        try {
-            const newUser = new this.userModel(registerDto);
-            return await newUser.save();
-        } catch (error) {
-            if (error.code === 11000 && error.keyPattern?.email) {
-                throw new Error("Email đã tồn tại");
-            }
-            throw error;
-        }
+    return { success: true };
+  }
+
+  async updateVerifyEmailCode(code: string, email: string) {
+    const result = await this.userModel.updateOne(
+      { email },
+      { $set: { verify_email_code: code } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException(
+        "Không thể cập nhật verify_email_code cho user"
+      );
     }
 
-    async findByEmail(email: string) {
-        return await this.userModel.findOne({ email }).select('+password +google_id');
+    return { success: true };
+  }
+
+  async updateVerifyForgotPasswordCode(code: string, email: string) {
+    const result = await this.userModel.updateOne(
+      { email },
+      { $set: { verify_forgot_password_code: code } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException(
+        "Không thể cập nhật verify_forgot_password_code cho user"
+      );
     }
 
-    async findByEmailAndUsername(email: string, username: string) {
-        return await this.userModel.findOne({
-            $or: [
-                { email },
-                { username }
-            ]
-        }).select('+password +google_id');
+    return { success: true };
+  }
+
+  async changePasswordForgot(newPassword: string, email: string) {
+    const result = await this.userModel.updateOne(
+      { email },
+      { $set: { verify_forgot_password_code: "", password: newPassword } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException("Không thể cập nhật mật khẩu mới cho user");
     }
 
-    async updateVerify(id: Types.ObjectId) {
-        const result = await this.userModel.updateOne(
-            { _id: id },
-            { $set: { verified: true } }
-        );
-
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException("Không thể cập nhật verified cho user");
-        }
-
-        return { success: true };
+    return { success: true };
+  }
+  // ---------------- Của auth -------------------- //
+  // user.service.ts
+  async updateRole(role: string, token: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
     }
 
-    async updateVerifyEmailCode(code: string, email: string) {
-        const result = await this.userModel.updateOne(
-            { email },
-            { $set: { verify_email_code: code } }
-        );
-
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException("Không thể cập nhật verify_email_code cho user");
-        }
-
-        return { success: true };
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
     }
 
-    async updateVerifyForgotPasswordCode(code: string, email: string) {
-        const result = await this.userModel.updateOne(
-            { email },
-            { $set: { verify_forgot_password_code: code } }
-        );
-
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException("Không thể cập nhật verify_forgot_password_code cho user");
-        }
-
-        return { success: true };
+    const existingUser = await this.userModel.findOne({ email: payload.email });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
     }
 
-    async changePasswordForgot(newPassword: string, email: string) {
-        const result = await this.userModel.updateOne(
-            { email },
-            { $set: { verify_forgot_password_code: "", password: newPassword } }
-        );
+    const result = await this.userModel.updateOne(
+      { email: payload.email },
+      { $set: { role: role } }
+    );
 
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException("Không thể cập nhật mật khẩu mới cho user");
-        }
-
-        return { success: true };
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException('Không thể cập nhật role cho user');
     }
-    // ---------------- Của auth -------------------- //
-    // user.service.ts
-    async updateRole(role: string, token: string) {
-        if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
-        }
 
-        let payload: any;
-        try {
-            payload = this.jwtService.verify(token);
-        } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
-        }
+    return { success: true, message: 'Cập nhật role thành công' };
+  }
+  // Lấy tất cả user (chỉ admin)
+  async getAllUsers(token: string) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
+    }
 
-        const existingUser = await this.userModel.findOne({ email: payload.email });
-        if (!existingUser) {
-            throw new BadRequestException('Người dùng không tồn tại');
-        }
+    if (payload.role !== "admin") {
+      throw new BadRequestException(
+        "Chỉ admin mới được phép lấy danh sách user"
+      );
+    }
 
-        const result = await this.userModel.updateOne(
-            { email: payload.email },
-            { $set: { role: role } }
-        );
+    // Trả về tất cả user, bỏ password và google_id
+    return await this.userModel.find().select("-password -google_id");
+  }
 
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException('Không thể cập nhật role cho user');
-        }
+  // Cập nhật status user
+  async updateStatus(userId: string, status: string, token: string) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
+    }
 
-        return { success: true, message: 'Cập nhật role thành công' };
+    if (payload.role !== "admin") {
+      throw new BadRequestException(
+        "Chỉ admin mới được phép cập nhật status user"
+      );
+    }
+
+    // Validate status
+    if (!Object.values(UserStatus).includes(status as UserStatus)) {
+      throw new BadRequestException("Status không hợp lệ");
+    }
+
+    const existingUser = await this.userModel.findById(userId);
+    if (!existingUser) {
+      throw new BadRequestException("Người dùng không tồn tại");
+    }
+
+    const result = await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { status } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException("Không thể cập nhật status cho user");
+    }
+
+    return { success: true, message: "Cập nhật status thành công" };
+  }
+
+  async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
+    // 1. Lấy thông tin user từ database
+    const user = await this.userModel.findById(userId).select('email username avatar bio');
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
     }
 
     async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
@@ -160,123 +228,110 @@ export class UserService {
         if (result.modifiedCount === 0) {
             throw new BadRequestException('Không thể cập nhật role cho user');
         }
+      
+    return { success: true, message: 'Cập nhật role thành công' };
+  }
 
-        return { success: true, message: 'Cập nhật role thành công' };
+  async updateProfile(token: string, payload: any) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
     }
 
-    async updateProfile(token: string, payload: any) {
-        if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
-        }
-
-        let decoded: any
-        try {
-            decoded = this.jwtService.verify(token)
-        } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
-        }
-
-        const updates: any = {}
-        if (payload.username !== undefined) updates.username = payload.username
-        if (payload.avatar !== undefined) updates.avatar = payload.avatar
-        if (payload.bio !== undefined) updates.bio = payload.bio
-
-        if (Object.keys(updates).length === 0) {
-            return { success: true, message: 'Không có thay đổi' }
-        }
-
-        const user = await this.userModel.findByIdAndUpdate(
-            decoded.user_id,
-            { $set: updates },
-            { new: true, runValidators: true, select: "-password -google_id" }
-        );
-
-        if (!user) {
-            throw new BadRequestException('Không thể cập nhật hồ sơ người dùng');
-        }
-
-        return { success: true, user };
+    let decoded: any
+    try {
+      decoded = this.jwtService.verify(token)
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
     }
 
-    async getFavourites(token: string) {
-        if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
-        }
+    const updates: any = {}
+    if (payload.username !== undefined) updates.username = payload.username
+    if (payload.avatar !== undefined) updates.avatar = payload.avatar
+    if (payload.bio !== undefined) updates.bio = payload.bio
 
-        let decoded: any;
-        try {
-            decoded = this.jwtService.verify(token);
-        } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
-        }
-        const user = await this.userModel
-            .findById(decoded.user_id)
-            .select('favourites')
-            .populate({
-                path: 'favourites',
-                populate: {
-                    path: 'styles',
-                    select: 'name'
-                }
-            });
-
-        if (!user) {
-            throw new BadRequestException('Người dùng không tồn tại');
-        }
-
-        return { favourites: user.favourites || [] };
+    if (Object.keys(updates).length === 0) {
+      return { success: true, message: 'Không có thay đổi' }
     }
 
-    async toggleFavourite(token: string, mangaId: string) {
-        if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
-        }
+    const user = await this.userModel.findByIdAndUpdate(
+      decoded.user_id,
+      { $set: updates },
+      { new: true, runValidators: true, select: "-password -google_id" }
+    );
 
-        let decoded: any;
-        try {
-            decoded = this.jwtService.verify(token);
-        } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
-        }
-
-        const mangaObjectId = new Types.ObjectId(mangaId);
-
-        const user = await this.userModel
-            .findById(decoded.user_id)
-            .select('favourites')
-            .populate('favourites');
-
-        if (!user) {
-            throw new BadRequestException('Người dùng không tồn tại');
-        }
-
-        let updatedFavourites: Types.ObjectId[];
-        const exists = user.favourites.some((m: any) => m._id.equals(mangaObjectId));
-
-        if (exists) {
-            // Remove manga khỏi favourites
-            updatedFavourites = user.favourites.filter((m: any) => !m._id.equals(mangaObjectId));
-        } else {
-            // Add manga vào favourites
-            updatedFavourites = [...user.favourites, mangaObjectId];
-        }
-
-        user.favourites = updatedFavourites;
-        await user.save();
-
-        return { favourites: user.favourites, isFavourite: !exists };
+    if (!user) {
+      throw new BadRequestException('Không thể cập nhật hồ sơ người dùng');
     }
 
-    async findById(userId: string): Promise<User> {
-        if (!Types.ObjectId.isValid(userId)) {
-            throw new NotFoundException('User not found');
-        }
+    return { success: true, user };
+  }
 
-        const user = await this.userModel.findById(userId).exec();
-        if (!user) throw new NotFoundException('User not found');
-
-        return user;
+  async getFavourites(token: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
     }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+    const user = await this.userModel
+      .findById(decoded.user_id)
+      .select('favourites')
+      .populate({
+        path: 'favourites',
+        populate: {
+          path: 'styles',
+          select: 'name'
+        }
+      });
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    return { favourites: user.favourites || [] };
+  }
+
+  async toggleFavourite(token: string, mangaId: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
+    }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const mangaObjectId = new Types.ObjectId(mangaId);
+
+    const user = await this.userModel
+      .findById(decoded.user_id)
+      .select('favourites')
+      .populate('favourites');
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    let updatedFavourites: Types.ObjectId[];
+    const exists = user.favourites.some((m: any) => m._id.equals(mangaObjectId));
+
+    if (exists) {
+      // Remove manga khỏi favourites
+      updatedFavourites = user.favourites.filter((m: any) => !m._id.equals(mangaObjectId));
+    } else {
+      // Add manga vào favourites
+      updatedFavourites = [...user.favourites, mangaObjectId];
+    }
+    
+    user.favourites = updatedFavourites;
+    await user.save();
+
+    return { favourites: user.favourites, isFavourite: !exists };
+  }
 }
-
-

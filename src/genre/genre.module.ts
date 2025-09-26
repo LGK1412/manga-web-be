@@ -3,12 +3,14 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { GenreService } from './genre.service';
 import { GenreController } from './genre.controller';
 import { Genres, GenresSchema } from '../schemas/Genres.schema';
+import { Manga, MangaSchema } from '../schemas/Manga.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Genres.name, schema: GenresSchema }
-    ])
+      { name: Genres.name, schema: GenresSchema },
+      { name: Manga.name, schema: MangaSchema }, // 👈 thêm dòng này để có MangaModel
+    ]),
   ],
   controllers: [GenreController],
   providers: [GenreService],
