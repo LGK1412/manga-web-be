@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { User } from "src/schemas/User.schema";
@@ -135,22 +135,22 @@ export class UserService {
     async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
         // 1. Lấy thông tin user từ database
         const user = await this.userModel.findById(userId).select('email username avatar bio');
-        
+
         if (!user) {
             throw new BadRequestException('Người dùng không tồn tại');
         }
-        
+
         // 2. So sánh thông tin từ cookie với database
         const isEmailMatch = user.email === userInfo.email;
         const isUsernameMatch = user.username === userInfo.username;
         const isAvatarMatch = user.avatar === userInfo.avatar;
         const isBioMatch = user.bio === userInfo.bio;
-        
+
         // 3. Nếu không khớp thì từ chối
         if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
             throw new BadRequestException('Thông tin người dùng không khớp với dữ liệu trong hệ thống. Vui lòng đăng nhập lại.');
         }
-        
+
         // 4. Nếu khớp thì cho phép update role
         const result = await this.userModel.updateOne(
             { _id: userId },
@@ -218,7 +218,7 @@ export class UserService {
                     path: 'styles',
                     select: 'name'
                 }
-            }); 
+            });
 
         if (!user) {
             throw new BadRequestException('Người dùng không tồn tại');
@@ -265,6 +265,17 @@ export class UserService {
         await user.save();
 
         return { favourites: user.favourites, isFavourite: !exists };
+    }
+
+    async findById(userId: string): Promise<User> {
+        if (!Types.ObjectId.isValid(userId)) {
+            throw new NotFoundException('User not found');
+        }
+
+        const user = await this.userModel.findById(userId).exec();
+        if (!user) throw new NotFoundException('User not found');
+
+        return user;
     }
 }
 

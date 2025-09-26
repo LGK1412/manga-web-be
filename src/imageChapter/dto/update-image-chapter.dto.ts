@@ -1,38 +1,36 @@
-import { IsOptional, IsArray, ValidateNested, IsString, IsNumber, IsBoolean } from 'class-validator';
-import { Type } from 'class-transformer';
-
-class ExistingImageDto {
-    @IsString()
-    url: string;
-
-    @IsNumber()
-    order: number;
-}
+import { IsString, IsOptional, IsNumber, IsBoolean, IsArray } from "class-validator"
+import { Transform } from "class-transformer"
 
 export class UpdateImageChapterDto {
     @IsOptional()
     @IsString()
-    title?: string;
+    title?: string
 
     @IsOptional()
     @IsNumber()
-    price?: number;
+    @Transform(({ value }) => Number(value))
+    price?: number
 
     @IsOptional()
     @IsNumber()
-    order?: number;
+    @Transform(({ value }) => Number(value))
+    order?: number
 
     @IsOptional()
     @IsBoolean()
-    is_published?: boolean;
+    @Transform(({ value }) => value === "true" || value === true)
+    is_published?: boolean
 
     @IsOptional()
     @IsBoolean()
-    is_completed?: boolean;
+    @Transform(({ value }) => value === "true" || value === true)
+    is_completed?: boolean
+
+    @IsOptional()
+    @IsString()
+    content?: string
 
     @IsOptional()
     @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => ExistingImageDto)
-    existing_images?: ExistingImageDto[];
+    existing_images?: Array<{ url: string; order: number }>
 }

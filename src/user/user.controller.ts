@@ -7,7 +7,6 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname } from "path";
 
-
 @Controller('api/user')
 export class UserController {
     constructor(
@@ -35,13 +34,13 @@ export class UserController {
     async updateRole(@Body('role') role: string, @Req() req: Request) {
         // 1. Verify access_token trước
         const userId = await this.verifyToken(req);
-        
+
         // 2. Lấy user_normal_info từ cookie
         const userNormalInfo = req.cookies?.user_normal_info;
         if (!userNormalInfo) {
             throw new BadRequestException('Thiếu thông tin user_normal_info');
         }
-        
+
         // 3. Parse user_normal_info
         let userInfo;
         try {
@@ -49,7 +48,7 @@ export class UserController {
         } catch {
             throw new BadRequestException('user_normal_info không hợp lệ');
         }
-        
+
         // 4. Gọi service để validate và update role
         return await this.userService.updateRoleWithValidation(role, userId, userInfo);
     }
@@ -92,16 +91,28 @@ export class UserController {
         @Req() req: Request,
     ) {
         const userId = await this.verifyToken(req);
-        
+
         const updateData: any = {};
         if (body.username) updateData.username = body.username;
         if (body.bio) updateData.bio = body.bio;
-        
+
         // Nếu có file upload, lưu trực tiếp
         if (file) {
             updateData.avatar = file.filename;
         }
-        
+
         return await this.userService.updateProfile(req.cookies?.access_token, updateData);
     }
+
+    @Get('point')
+    async getPoint(@Req() req: any) {
+        const userId = this.verifyToken(req);
+        const user = await this.userService.findById(await userId);
+        return {
+            point: user.point,
+            author_point: user.author_point,
+            role: user.role,
+        };
+    }
+
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotImplementedException, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotImplementedException, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/Register.dto';
 import { LoginDto } from './dto/Login.dto';
@@ -6,6 +6,8 @@ import type { Request, Response } from 'express';
 
 @Controller('api/auth')
 export class AuthController {
+    jwtService: any;
+    userService: any;
     constructor(private authService: AuthService) { }
 
     @Post('/register')

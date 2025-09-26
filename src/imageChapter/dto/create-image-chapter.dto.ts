@@ -1,39 +1,34 @@
-import {
-    IsString,
-    IsBoolean,
-    IsNumber,
-    IsNotEmpty,
-    IsOptional,
-    IsMongoId,
-} from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsMongoId } from "class-validator"
+import { Transform } from "class-transformer"
 
 export class CreateImageChapterDto {
-    @IsNotEmpty()
     @IsString()
-    title: string;
+    title: string
 
-    @IsNotEmpty()
     @IsMongoId()
-    manga_id: string;
+    manga_id: string
 
     @IsOptional()
-    @Type(() => Number)
     @IsNumber()
-    price?: number = 0;
+    @Transform(({ value }) => Number(value))
+    price?: number
 
     @IsOptional()
-    @Type(() => Number)
     @IsNumber()
-    order?: number = 1;
+    @Transform(({ value }) => Number(value))
+    order?: number
 
     @IsOptional()
     @IsBoolean()
-    @Transform(({ value }) => value === 'true' || value === true)
-    is_published?: boolean = false;
+    @Transform(({ value }) => value === "true" || value === true)
+    is_published?: boolean
 
     @IsOptional()
     @IsBoolean()
-    @Transform(({ value }) => value === 'true' || value === true)
-    is_completed?: boolean = false;
+    @Transform(({ value }) => value === "true" || value === true)
+    is_completed?: boolean
+
+    @IsOptional()
+    @IsString()
+    content?: string
 }

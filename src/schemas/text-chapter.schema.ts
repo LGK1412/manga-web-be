@@ -3,7 +3,7 @@ import { HydratedDocument, Types } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class TextChapter {
-  @Prop({ type: Types.ObjectId, ref: 'Chapter', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'Chapter', required: true })
   chapter_id: Types.ObjectId;
 
   @Prop({ type: String, default: '' })

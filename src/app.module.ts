@@ -10,6 +10,8 @@ import { join } from 'path';
 import { ImageChapterModule } from './imageChapter/image-chapter.module';
 import { ChapterModule } from './textChapter/text-chapter.module';
 import { StylesModule } from './styles/styles.module';
+import { VnpayModule } from './vnpay/vnpay.module';
+import { TopupModule } from './vnpay/topup/topup.module';
 
 @Module({
   imports: [
@@ -57,6 +59,8 @@ import { StylesModule } from './styles/styles.module';
     StylesModule,
     ChapterModule,
     ImageChapterModule,
+    VnpayModule,
+    TopupModule
   ],
 })
 export class AppModule { }
