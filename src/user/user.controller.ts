@@ -15,6 +15,19 @@ export class UserController {
         private jwtService: JwtService
     ) { }
 
+    @Get('/all')
+    async getAllUsers(@Req() req: Request) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers['authorization']?.replace('Bearer ', '');
+
+        if (!token) {
+            throw new BadRequestException('Thiếu token xác minh');
+        }
+
+        return await this.userService.getAllUsers(token);
+    }
+
     private verifyToken(req: any): Promise<string> {
         const token = req.cookies?.access_token;
         if (!token) {
@@ -35,13 +48,13 @@ export class UserController {
     async updateRole(@Body('role') role: string, @Req() req: Request) {
         // 1. Verify access_token trước
         const userId = await this.verifyToken(req);
-        
+
         // 2. Lấy user_normal_info từ cookie
         const userNormalInfo = req.cookies?.user_normal_info;
         if (!userNormalInfo) {
             throw new BadRequestException('Thiếu thông tin user_normal_info');
         }
-        
+
         // 3. Parse user_normal_info
         let userInfo;
         try {
@@ -49,7 +62,7 @@ export class UserController {
         } catch {
             throw new BadRequestException('user_normal_info không hợp lệ');
         }
-        
+
         // 4. Gọi service để validate và update role
         return await this.userService.updateRoleWithValidation(role, userId, userInfo);
     }
@@ -92,16 +105,34 @@ export class UserController {
         @Req() req: Request,
     ) {
         const userId = await this.verifyToken(req);
-        
+
         const updateData: any = {};
         if (body.username) updateData.username = body.username;
         if (body.bio) updateData.bio = body.bio;
-        
+
         // Nếu có file upload, lưu trực tiếp
         if (file) {
             updateData.avatar = file.filename;
         }
-        
+
         return await this.userService.updateProfile(req.cookies?.access_token, updateData);
+    }
+
+    // API cập nhật status chung
+    @Post("/update-status")
+    async updateStatus(
+        @Body("userId") userId: string,
+        @Body("status") status: string,
+        @Req() req: Request
+    ) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers["authorization"]?.replace("Bearer ", "");
+
+        if (!token) {
+            throw new BadRequestException("Thiếu token xác minh");
+        }
+
+        return await this.userService.updateStatus(userId, status, token);
     }
 }

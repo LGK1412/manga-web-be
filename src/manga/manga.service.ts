@@ -34,7 +34,7 @@ export class MangaService {
             // Kiểm tra genres có bị hide không
             if (createMangaDto.genres && createMangaDto.genres.length > 0) {
                 for (const genreId of createMangaDto.genres) {
-                    const genre = await this.genreService.findById(genreId.toString());
+                    const genre = await this.genreService.getGenreById(genreId.toString());
                     if (!genre) {
                         throw new BadRequestException(`Genre với ID ${genreId} không tồn tại`);
                     }
