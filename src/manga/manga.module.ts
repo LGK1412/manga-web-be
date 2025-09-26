@@ -9,12 +9,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StylesModule } from '../styles/styles.module';
 import { GenreModule } from '../genre/genre.module';
+import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Manga.name, schema: MangaSchema },
-      { name: Genres.name, schema: GenresSchema }
+      { name: Genres.name, schema: GenresSchema },
+      { name: Chapter.name, schema: ChapterSchema }
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -31,4 +33,4 @@ import { GenreModule } from '../genre/genre.module';
   providers: [MangaService],
   exports: [MangaService],
 })
-export class MangaModule {}
+export class MangaModule { }

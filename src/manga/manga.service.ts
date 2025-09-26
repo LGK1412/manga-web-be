@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Manga, MangaDocument } from '../schemas/Manga.schema';
@@ -6,13 +6,15 @@ import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
 import { GenreService } from '../genre/genre.service';
+import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
 
 @Injectable()
 export class MangaService {
     constructor(
         @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
         private stylesService: StylesService,
-        private genreService: GenreService
+        private genreService: GenreService,
+        @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>
     ) { }
 
 
@@ -274,5 +276,44 @@ export class MangaService {
             .allowDiskUse(true)
             .exec();
         return { data: res?.data ?? [], total: res?.total ?? 0 };
+    }
+
+    async findMangaDetail(mangaId: string) {
+        // Kiểm tra id hợp lệ
+        if (!Types.ObjectId.isValid(mangaId)) {
+            throw new NotFoundException('Manga not found');
+        }
+
+        // Tìm manga + populate author
+        const manga = await this.mangaModel
+            .findById(mangaId)
+            .populate('authorId', 'username avatar') // lấy thông tin tác giả
+            .lean();
+
+        if (!manga) {
+            throw new NotFoundException('Manga not found');
+        }
+
+        // Lấy danh sách chapter đã publish, sắp xếp theo order tăng dần
+        const chapters = await this.chapterModel
+            .find({
+                manga_id: new Types.ObjectId(mangaId),
+                is_published: true,
+            })
+            .sort({ order: 1 })
+            .select('_id title order') // chỉ lấy các trường cần cho FE
+            .lean();
+
+        // Trả về dữ liệu gộp
+        return {
+            _id: manga._id,
+            title: manga.title,
+            summary: manga.summary,
+            coverImage: manga.coverImage,
+            author: manga.authorId,
+            views: manga.views,
+            status: manga.status,
+            chapters,
+        };
     }
 }

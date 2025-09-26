@@ -7,7 +7,6 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname } from "path";
 
-
 @Controller('api/user')
 export class UserController {
     constructor(
@@ -116,6 +115,17 @@ export class UserController {
         }
 
         return await this.userService.updateProfile(req.cookies?.access_token, updateData);
+    }
+
+    @Get('point')
+    async getPoint(@Req() req: any) {
+        const userId = this.verifyToken(req);
+        const user = await this.userService.findById(await userId);
+        return {
+            point: user.point,
+            author_point: user.author_point,
+            role: user.role,
+        };
     }
 
     // API cập nhật status chung

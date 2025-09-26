@@ -75,7 +75,10 @@ export class AuthService {
             username: existingUser.username,
             role: existingUser.role,
             avatar: existingUser.avatar,
-            bio: existingUser.bio
+            bio: existingUser.bio,
+            point: existingUser.point,
+            author_point: existingUser.author_point,
+            lastBonus: existingUser.lastBonus
         }
 
         const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d' })
@@ -84,7 +87,7 @@ export class AuthService {
     }
 
     // Cho client kiểmtra coi có login = refreshToken ko
-    async checkLogin(accessToken: string) {        
+    async checkLogin(accessToken: string) {
         if (!accessToken) {
             return { isLogin: false }
         }

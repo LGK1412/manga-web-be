@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
 import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
@@ -159,6 +160,14 @@ export class MangaController {
     const l = Math.min(100, Math.max(1, parseInt(limit, 10) || 24)); // cap 100
     const { data, total } = await this.mangaService.getAllManga(p, l);
     return { data, total, page: p, limit: l }; // chuẩn REST
+  }
+
+  @Get('/detail/:id')
+  async getMangaDetail(@Param('id') id: string) {
+    console.log("alo3")
+    const data = await this.mangaService.findMangaDetail(id);
+    console.log('Data: ', data)
+    return data;
   }
 }
 

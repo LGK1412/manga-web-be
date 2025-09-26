@@ -13,6 +13,8 @@ export enum UserStatus {
     MUTE = 'mute',
 }
 
+export type UserDocument = User & Document;
+
 @Schema({ timestamps: true })
 export class User {
     @Prop({ required: true })
@@ -61,6 +63,23 @@ export class User {
 
     @Prop({ type: [{ type: Types.ObjectId, ref: "Manga" }], default: [] })
     favourites: Types.ObjectId[];
+
+    @Prop({ required: false, default: 0 })
+    point: number;
+
+    @Prop({ required: false, default: 0 })
+    author_point: number;
+
+    @Prop({
+        required: false,
+        default: () => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - 1); // lùi 1 tháng
+            return d;
+        }
+    })
+    lastBonus: Date;
+
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

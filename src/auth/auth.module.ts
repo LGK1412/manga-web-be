@@ -34,6 +34,7 @@ import { OAuth2Client } from 'google-auth-library';
       },
     },
   ],
-  controllers: [AuthController]
+  controllers: [AuthController],
+  exports: [JwtModule]
 })
 export class AuthModule { }
