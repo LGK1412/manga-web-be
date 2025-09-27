@@ -120,7 +120,7 @@ export class UserController {
     @Get('point')
     async getPoint(@Req() req: any) {
         const userId = this.verifyToken(req);
-        const user = await this.userService.findById(await userId);
+        const user = await this.userService.findUserById(await userId);
         return {
             point: user.point,
             author_point: user.author_point,

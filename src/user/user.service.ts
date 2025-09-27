@@ -200,35 +200,27 @@ export class UserService {
       throw new BadRequestException('Người dùng không tồn tại');
     }
 
-    async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
-        // 1. Lấy thông tin user từ database
-        const user = await this.userModel.findById(userId).select('email username avatar bio');
+    // 2. So sánh thông tin từ cookie với database
+    const isEmailMatch = user.email === userInfo.email;
+    const isUsernameMatch = user.username === userInfo.username;
+    const isAvatarMatch = user.avatar === userInfo.avatar;
+    const isBioMatch = user.bio === userInfo.bio;
 
-        if (!user) {
-            throw new BadRequestException('Người dùng không tồn tại');
-        }
+    // 3. Nếu không khớp thì từ chối
+    if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
+      throw new BadRequestException('Thông tin người dùng không khớp với dữ liệu trong hệ thống. Vui lòng đăng nhập lại.');
+    }
 
-        // 2. So sánh thông tin từ cookie với database
-        const isEmailMatch = user.email === userInfo.email;
-        const isUsernameMatch = user.username === userInfo.username;
-        const isAvatarMatch = user.avatar === userInfo.avatar;
-        const isBioMatch = user.bio === userInfo.bio;
+    // 4. Nếu khớp thì cho phép update role
+    const result = await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { role: role } }
+    );
 
-        // 3. Nếu không khớp thì từ chối
-        if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
-            throw new BadRequestException('Thông tin người dùng không khớp với dữ liệu trong hệ thống. Vui lòng đăng nhập lại.');
-        }
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException('Không thể cập nhật role cho user');
+    }
 
-        // 4. Nếu khớp thì cho phép update role
-        const result = await this.userModel.updateOne(
-            { _id: userId },
-            { $set: { role: role } }
-        );
-
-        if (result.modifiedCount === 0) {
-            throw new BadRequestException('Không thể cập nhật role cho user');
-        }
-      
     return { success: true, message: 'Cập nhật role thành công' };
   }
 
@@ -328,10 +320,21 @@ export class UserService {
       // Add manga vào favourites
       updatedFavourites = [...user.favourites, mangaObjectId];
     }
-    
+
     user.favourites = updatedFavourites;
     await user.save();
 
     return { favourites: user.favourites, isFavourite: !exists };
+  }
+
+  async findUserById(userId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User not found');
+    }
+
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) throw new NotFoundException('User not found');
+
+    return user;
   }
 }
