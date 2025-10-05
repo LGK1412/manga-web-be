@@ -19,7 +19,7 @@ export class MangaService {
     private stylesService: StylesService,
     private genreService: GenreService,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
-  ) {}
+  ) { }
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
     try {
@@ -347,5 +347,10 @@ export class MangaService {
       status: manga.status,
       chapters,
     };
+  }
+
+  // lấy thông tin manga + author cho comment chapter
+  async getAuthorByMangaIdForCommentChapter(id) {
+    return this.mangaModel.findById(id).populate("authorId").exec()
   }
 }

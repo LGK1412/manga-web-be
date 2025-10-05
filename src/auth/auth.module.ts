@@ -7,9 +7,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserService } from 'src/user/user.service';
 import { OAuth2Client } from 'google-auth-library';
+import { NotificationModule } from 'src/notification-gateway/notification.module';
 
 @Module({
   imports: [
+    NotificationModule,
     MongooseModule.forFeature([
       {
         name: User.name,

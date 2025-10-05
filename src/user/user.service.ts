@@ -5,11 +5,14 @@ import { User, UserStatus } from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
+import { NotificationClient } from "src/notification-gateway/notification.client";
 
 
 @Injectable()
 export class UserService {
-  constructor(@InjectModel(User.name) private userModel: Model<User>,
+  constructor(
+    private readonly notificationClient: NotificationClient,
+    @InjectModel(User.name) private userModel: Model<User>,
     private jwtService: JwtService
   ) { }
   // ---------------- Của auth -------------------- //
@@ -336,5 +339,123 @@ export class UserService {
     if (!user) throw new NotFoundException('User not found');
 
     return user;
+  }
+
+  // Add device_id cho user
+  async addDeviceId(userId: string, deviceId: string) {
+    // kiểm tra đầu vào
+    if (!deviceId) return { success: false };
+
+    const result = await this.userModel.findByIdAndUpdate(
+      userId,
+      { $addToSet: { device_id: deviceId } }, // $addToSet để tránh thêm trùng
+      { new: true } // trả về user sau khi update
+    );
+
+    if (!result) {
+      return { success: false, message: 'User not found' };
+    }
+
+    return { success: true, data: result.device_id };
+  }
+
+  async removeDeviceId(userId: string, pushResult: any) {
+    try {
+      // nếu không có failedTokens hoặc mảng rỗng → bỏ qua
+      if (!pushResult?.failedTokens?.length) {
+        return { success: true, message: "No failed tokens to remove." };
+      }
+
+      // Lấy danh sách token fail
+      const failedTokens = pushResult.failedTokens.map((t: any) => t.token);
+      // Xoá toàn bộ token fail trong 1 lần query
+      const result = await this.userModel.findByIdAndUpdate(
+        userId,
+        { $pull: { device_id: { $in: pushResult.failedTokens } } },
+        { new: true }
+      );
+
+      if (!result) {
+        return { success: false, message: "User not found" };
+      }
+
+      return {
+        success: true,
+        removedTokens: failedTokens,
+        remainingTokens: result.device_id,
+      };
+    } catch (error) {
+      console.error("❌ Lỗi khi xoá token fail:", error);
+      return { success: false, error };
+    }
+  }
+
+  async getUserById(id) {
+    return await this.userModel.findById(id)
+  }
+
+  async getAllNotiForUser(id: string) {
+    return await this.notificationClient.sendGetNotiForUser(id)
+  }
+
+  async markNotiAsRead(id: string, payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendMarkAsRead(id, existingUser._id.toString());
+  }
+
+  async markAllNotiAsRead(payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendAllMarkAsRead(existingUser._id.toString());
+  }
+
+  async deleteNoti(id: string, payload: any) {
+
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.deleteNoti(id, existingUser._id.toString());
+  }
+
+  async saveNoti(id: string, payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendSaveNoti(id, existingUser._id.toString());
   }
 }

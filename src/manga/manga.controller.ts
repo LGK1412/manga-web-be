@@ -164,9 +164,8 @@ export class MangaController {
 
   @Get('/detail/:id')
   async getMangaDetail(@Param('id') id: string) {
-    console.log("alo3")
     const data = await this.mangaService.findMangaDetail(id);
-    console.log('Data: ', data)
+    // console.log('Data: ', data)
     return data;
   }
 }

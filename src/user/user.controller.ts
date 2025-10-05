@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, Patch, UsePipes, ValidationPipe, Req, BadRequestException, UseInterceptors, UploadedFile } from "@nestjs/common";
+import { Body, Controller, Post, Get, Patch, UsePipes, ValidationPipe, Req, BadRequestException, UseInterceptors, UploadedFile, Param, Delete } from "@nestjs/common";
 import type { Request } from "express";
 import { UserService } from "./user.service";
 import { RegisterDto } from "../auth/dto/Register.dto";
@@ -144,5 +144,43 @@ export class UserController {
         }
 
         return await this.userService.updateStatus(userId, status, token);
+    }
+
+    // 👉 thêm 1 deviceId mới cho user
+    @Patch('/add-device-id')
+    async addDeviceId(@Body('device_id') deviceId: string, @Req() req: Request) {
+        const token = req.cookies?.access_token
+        if (!token) return true
+        const payload = await this.jwtService.verify(token)
+        return this.userService.addDeviceId(payload.user_id, deviceId);
+    }
+
+    @Get('/get-all-noti-for-user/:id')
+    async getAllNotiForUser(@Param('id') id: string) {
+        return await this.userService.getAllNotiForUser(id)
+    }
+
+    @Patch('/mark-noti-as-read/:id')
+    async markNotiAsRead(@Param('id') id: string, @Req() req: Request) {
+        const payload = this.verifyToken(req)
+        return await this.userService.markNotiAsRead(id, payload)
+    }
+
+    @Patch('/mark-all-noti-as-read')
+    async markAllNotiAsRead(@Req() req: Request) {
+        const payload = this.verifyToken(req)
+        return await this.userService.markAllNotiAsRead(payload)
+    }
+
+    @Delete('/delete-noti/:id')
+    async deleteNoti(@Param('id') id: string, @Req() req: Request) {
+        const payload = this.verifyToken(req)
+        return await this.userService.deleteNoti(id, payload)
+    }
+
+    @Patch('/save-noti/:id')
+    async saveNoti(@Param('id') id: string, @Req() req: Request) {
+        const payload = this.verifyToken(req)
+        return await this.userService.saveNoti(id, payload)
     }
 }

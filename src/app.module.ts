@@ -13,13 +13,15 @@ import { ChapterModule } from './textChapter/text-chapter.module';
 import { StylesModule } from './styles/styles.module';
 import { VnpayModule } from './vnpay/vnpay.module';
 import { TopupModule } from './vnpay/topup/topup.module';
+import { CommentModule } from './comment/comment.module';
+import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.module';
+import { NotificationModule } from './notification-gateway/notification.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -61,7 +63,11 @@ import { TopupModule } from './vnpay/topup/topup.module';
     ChapterModule,
     ImageChapterModule,
     VnpayModule,
-    TopupModule
+    TopupModule,
+    CommentModule,
+    ChapterServiceOnlyNormalChapterInforModule,
+    NotificationModule,
   ],
+  providers: [],
 })
-export class AppModule {}
+export class AppModule { }

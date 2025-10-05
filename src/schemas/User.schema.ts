@@ -80,6 +80,8 @@ export class User {
     })
     lastBonus: Date;
 
+    @Prop({ type: [String], required: false })
+    device_id: string[]
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

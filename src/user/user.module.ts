@@ -5,9 +5,11 @@ import { UserService } from "./user.service";
 import { UserController } from "./user.controller";
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { NotificationModule } from "src/notification-gateway/notification.module";
 
 @Module({
     imports: [
+         NotificationModule,
         MongooseModule.forFeature([
             {
                 name: User.name,
