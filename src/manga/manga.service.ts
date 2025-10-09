@@ -11,6 +11,7 @@ import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
 import { GenreService } from '../genre/genre.service';
 import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
+import { Rating, RatingDocument } from '../schemas/Rating.schema';
 
 @Injectable()
 export class MangaService {
@@ -19,6 +20,7 @@ export class MangaService {
     private stylesService: StylesService,
     private genreService: GenreService,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    @InjectModel(Rating.name) private ratingModel: Model<RatingDocument>,
   ) { }
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
@@ -230,7 +232,7 @@ export class MangaService {
         $lookup: {
           from: 'ratings',
           localField: '_id',
-          foreignField: 'storyId', // đổi thành 'story_id' nếu schema snake_case
+          foreignField: 'mangaId', // Sửa từ 'storyId' thành 'mangaId'
           as: 'ratings',
         },
       },
@@ -336,6 +338,13 @@ export class MangaService {
       .select('_id title order') // chỉ lấy các trường cần cho FE
       .lean();
 
+    // Tính summary rating ở đây
+    const summaryAgg = await this.ratingModel.aggregate([
+      { $match: { mangaId: new Types.ObjectId(mangaId) } },
+      { $group: { _id: '$mangaId', count: { $sum: 1 }, avgRating: { $avg: '$rating' } } },
+    ])
+    const ratingSummary = summaryAgg[0] ? { count: summaryAgg[0].count, avgRating: summaryAgg[0].avgRating } : { count: 0, avgRating: 0 }
+
     // Trả về dữ liệu gộp
     return {
       _id: manga._id,
@@ -346,6 +355,7 @@ export class MangaService {
       views: manga.views,
       status: manga.status,
       chapters,
+      ratingSummary,
     };
   }
 

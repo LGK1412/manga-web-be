@@ -160,6 +160,16 @@ export class UserController {
         return await this.userService.getAllNotiForUser(id)
     }
 
+  @Get('/public/:id')
+  async getPublicUser(@Param('id') id: string) {
+    return await this.userService.getPublicUserById(id)
+  }
+
+  @Get('/public-follow-stats/:id')
+  async getPublicFollowStats(@Param('id') id: string) {
+    return await this.userService.getPublicFollowStats(id)
+  }
+
     @Patch('/mark-noti-as-read/:id')
     async markNotiAsRead(@Param('id') id: string, @Req() req: Request) {
         const payload = this.verifyToken(req)
@@ -183,4 +193,22 @@ export class UserController {
         const payload = this.verifyToken(req)
         return await this.userService.saveNoti(id, payload)
     }
+
+    @Get("/following")
+    async getFollowingAuthors(@Req() req: Request) {
+        await this.verifyToken(req);
+        return await this.userService.getFollowingAuthors(req.cookies?.access_token);
+    }
+
+    @Post("/toggle-follow")
+    async toggleFollowAuthor(@Body('authorId') authorId: string, @Req() req: Request) {
+        await this.verifyToken(req);
+        return await this.userService.toggleFollowAuthor(req.cookies?.access_token, authorId);
+    }
+
+  @Get('/follow-stats')
+  async getFollowStats(@Req() req: Request) {
+    await this.verifyToken(req);
+    return await this.userService.getFollowStats(req.cookies?.access_token);
+  }
 }

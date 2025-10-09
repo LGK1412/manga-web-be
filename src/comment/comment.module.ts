@@ -17,10 +17,12 @@ import { Styles, StylesSchema } from 'src/schemas/Styles.schema';
 import { GenreService } from 'src/genre/genre.service';
 import { Genres, GenresSchema } from 'src/schemas/Genres.schema';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { MangaModule } from '../manga/manga.module';
 
 @Module({
     imports: [
         NotificationModule,
+        MangaModule,
         MongooseModule.forFeature([
             {
                 name: Comment.name,
@@ -57,6 +59,6 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
         }),
     ],
     controllers: [CommentController],
-    providers: [CommentService, UserService, ChapterServiceOnlyNormalChapterInfor, MangaService, StylesService, GenreService]
+    providers: [CommentService, UserService, ChapterServiceOnlyNormalChapterInfor]
 })
 export class CommentModule { }

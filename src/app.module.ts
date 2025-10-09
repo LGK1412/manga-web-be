@@ -16,6 +16,8 @@ import { TopupModule } from './vnpay/topup/topup.module';
 import { CommentModule } from './comment/comment.module';
 import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.module';
 import { NotificationModule } from './notification-gateway/notification.module';
+import { RatingModule } from './rating/rating.module';
+import { RatingLikeModule } from './ratingLike/rating-like.module';
 
 @Module({
   imports: [
@@ -67,6 +69,8 @@ import { NotificationModule } from './notification-gateway/notification.module';
     CommentModule,
     ChapterServiceOnlyNormalChapterInforModule,
     NotificationModule,
+    RatingModule,
+    RatingLikeModule,
   ],
   providers: [],
 })

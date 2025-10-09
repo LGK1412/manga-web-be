@@ -341,6 +341,39 @@ export class UserService {
     return user;
   }
 
+  async getPublicUserById(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User not found');
+    }
+    const user = await this.userModel
+      .findById(userId)
+      .select('username avatar bio role')
+      .lean();
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async getPublicFollowStats(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User not found');
+    }
+    const user = await this.userModel
+      .findById(userId)
+      .select('following_authors')
+      .lean();
+    if (!user) throw new NotFoundException('User not found');
+
+    const followingCount = Array.isArray((user as any).following_authors)
+      ? (user as any).following_authors.length
+      : 0;
+
+    const followersCount = await this.userModel.countDocuments({
+      following_authors: new Types.ObjectId(userId),
+    });
+
+    return { followingCount, followersCount };
+  }
+
   // Add device_id cho user
   async addDeviceId(userId: string, deviceId: string) {
     // kiểm tra đầu vào
@@ -458,4 +491,98 @@ export class UserService {
     // Truyền user_id đúng cú pháp
     return await this.notificationClient.sendSaveNoti(id, existingUser._id.toString());
   }
+
+  async getFollowingAuthors(token: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
+    }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+    const user = await this.userModel
+      .findById(decoded.user_id)
+      .select('following_authors')
+      .populate('following_authors');
+
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    return { following: user.following_authors || [] };
+  }
+
+  async toggleFollowAuthor(token: string, authorId: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
+    }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const authorObjectId = new Types.ObjectId(authorId);
+
+    const user = await this.userModel
+      .findById(decoded.user_id)
+      .select('following_authors')
+      .populate('following_authors');
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    let updatedFollowing: Types.ObjectId[];
+    const exists = user.following_authors.some((m: any) => m._id.equals(authorObjectId));
+
+    if (exists) {
+      updatedFollowing = user.following_authors.filter((m: any) => !m._id.equals(authorObjectId));
+    } else {
+      updatedFollowing = [...user.following_authors, authorObjectId];
+    }
+
+    user.following_authors = updatedFollowing;
+    await user.save();
+    return { following: user.following_authors, isFollowing: !exists };
+
+  }
+
+  async getFollowStats(token: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
+    }
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const user = await this.userModel
+      .findById(decoded.user_id)
+      .select('following_authors');
+
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    const followingCount = Array.isArray((user as any).following_authors)
+      ? (user as any).following_authors.length
+      : 0;
+
+    const followersCount = await this.userModel.countDocuments({
+      following_authors: new Types.ObjectId(decoded.user_id),
+    });
+
+    return { followingCount, followersCount };
+  }
 }
+

@@ -64,6 +64,9 @@ export class User {
     @Prop({ type: [{ type: Types.ObjectId, ref: "Manga" }], default: [] })
     favourites: Types.ObjectId[];
 
+    @Prop({ type: [{ type: Types.ObjectId, ref: "User"}], default: []})
+    following_authors: Types.ObjectId[];
+
     @Prop({ required: false, default: 0 })
     point: number;
 
