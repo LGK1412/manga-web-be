@@ -1,51 +1,32 @@
 import { Module } from '@nestjs/common';
 import { CommentController } from './comment.controller';
-import { ClientsModule, Transport } from '@nestjs/microservices';
 import { CommentService } from './comment.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Comment, CommentSchema } from 'src/schemas/comment.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserService } from 'src/user/user.service';
-import { User } from 'src/schemas/User.schema';
-import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
-import { ChapterServiceOnlyNormalChapterInfor } from 'src/chapter/chapter.service';
-import { Manga, MangaSchema } from 'src/schemas/Manga.schema';
-import { MangaService } from 'src/manga/manga.service';
+import { User, UserSchema } from 'src/schemas/User.schema';
 import { StylesService } from 'src/styles/styles.service';
 import { Styles, StylesSchema } from 'src/schemas/Styles.schema';
 import { GenreService } from 'src/genre/genre.service';
 import { Genres, GenresSchema } from 'src/schemas/Genres.schema';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { MangaModule } from 'src/manga/manga.module';
+import { ChapterModule } from 'src/textChapter/text-chapter.module';
+import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.module';
 
 @Module({
     imports: [
+        ChapterServiceOnlyNormalChapterInforModule,
         NotificationModule,
+        MangaModule,
+        ChapterModule,
         MongooseModule.forFeature([
-            {
-                name: Comment.name,
-                schema: CommentSchema
-            },
-            {
-                name: User.name,
-                schema: CommentSchema
-            },
-            {
-                name: Chapter.name,
-                schema: ChapterSchema
-            },
-            {
-                name: Manga.name,
-                schema: MangaSchema
-            },
-            {
-                name: Styles.name,
-                schema: StylesSchema
-            },
-            {
-                name: Genres.name,
-                schema: GenresSchema
-            }
+            { name: Comment.name, schema: CommentSchema },
+            { name: User.name, schema: UserSchema },
+            { name: Styles.name, schema: StylesSchema },
+            { name: Genres.name, schema: GenresSchema },
         ]),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -57,6 +38,11 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
         }),
     ],
     controllers: [CommentController],
-    providers: [CommentService, UserService, ChapterServiceOnlyNormalChapterInfor, MangaService, StylesService, GenreService]
+    providers: [
+        CommentService,
+        UserService,
+        StylesService,
+        GenreService,
+    ],
 })
 export class CommentModule { }

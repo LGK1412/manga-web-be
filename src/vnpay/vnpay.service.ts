@@ -89,35 +89,44 @@ export class VnpayService {
     verifyReturn(query: Record<string, string>) {
         const { hashSecret } = this.getConfig();
 
-        console.log('[VNPAY VERIFY] raw query:', query);
-
         const secureHash = query['vnp_SecureHash'];
         const vnpParams = { ...query };
         delete vnpParams['vnp_SecureHash'];
         delete vnpParams['vnp_SecureHashType'];
 
-        const sortedParams = Object.entries(vnpParams).sort(([a], [b]) => a.localeCompare(b));
+        const sortedParams = Object.entries(vnpParams).sort(([a], [b]) =>
+            a.localeCompare(b)
+        );
         const signData = sortedParams
             .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%20/g, '+')}`)
             .join('&');
-
-        console.log('[VNPAY VERIFY] signData:', signData);
 
         const checkHash = crypto
             .createHmac('sha512', hashSecret)
             .update(signData, 'utf-8')
             .digest('hex');
 
-        console.log('[VNPAY VERIFY] checkHash:', checkHash);
-        console.log('[VNPAY VERIFY] secureHash:', secureHash);
+        const isValid = secureHash === checkHash;
+
+        // 🔍 Lấy trạng thái giao dịch
+        const responseCode = vnpParams['vnp_ResponseCode'];
+        const transactionStatus = vnpParams['vnp_TransactionStatus'];
+
+        const isSuccess = isValid && responseCode === '00' && transactionStatus === '00';
 
         let userId: string | undefined;
         let txnRef: string | undefined;
         if (vnpParams['vnp_TxnRef']) {
             txnRef = vnpParams['vnp_TxnRef'];
-            userId = txnRef.split('-')[0];
         }
 
-        return { isValid: secureHash === checkHash, userId, txnRef };
+        return {
+            isValid,
+            isSuccess,
+            responseCode,
+            transactionStatus,
+            txnRef,
+        };
     }
+
 }

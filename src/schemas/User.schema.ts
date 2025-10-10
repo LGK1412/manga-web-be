@@ -70,6 +70,9 @@ export class User {
     @Prop({ required: false, default: 0 })
     author_point: number;
 
+    @Prop({ required: false, default: 0 })
+    game_point: number;
+
     @Prop({
         required: false,
         default: () => {

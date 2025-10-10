@@ -11,6 +11,7 @@ import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
 import { GenreService } from '../genre/genre.service';
 import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
+import { ChapterPurchase, ChapterPurchaseDocument } from 'src/schemas/chapter-purchase.schema';
 
 @Injectable()
 export class MangaService {
@@ -19,6 +20,7 @@ export class MangaService {
     private stylesService: StylesService,
     private genreService: GenreService,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    @InjectModel(ChapterPurchase.name) private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
   ) { }
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
@@ -310,44 +312,53 @@ export class MangaService {
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
-  async findMangaDetail(mangaId: string) {
-    // Kiểm tra id hợp lệ
-    if (!Types.ObjectId.isValid(mangaId)) {
-      throw new NotFoundException('Manga not found');
-    }
+  async findMangaDetail(mangaId: string, userId: string): Promise<any> {
+    if (!Types.ObjectId.isValid(mangaId)) throw new NotFoundException('Manga not found');
 
-    // Tìm manga + populate author
     const manga = await this.mangaModel
       .findById(mangaId)
-      .populate('authorId', 'username avatar') // lấy thông tin tác giả
+      .populate('authorId', 'username avatar')
       .lean();
 
-    if (!manga) {
-      throw new NotFoundException('Manga not found');
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    // Lấy danh sách chapter đã publish
+    const chapters = await this.chapterModel
+      .find({ manga_id: new Types.ObjectId(mangaId), is_published: true })
+      .sort({ order: 1 })
+      .select('_id title order price')
+      .lean();
+
+    let purchasedChapterIds: string[] = [];
+    if (userId) {
+      const purchases = await this.chapterPurchaseModel
+        .find({ userId: new Types.ObjectId(userId) })
+        .select('chapterId');
+      purchasedChapterIds = purchases.map(p => p.chapterId.toString());
     }
 
-    // Lấy danh sách chapter đã publish, sắp xếp theo order tăng dần
-    const chapters = await this.chapterModel
-      .find({
-        manga_id: new Types.ObjectId(mangaId),
-        is_published: true,
-      })
-      .sort({ order: 1 })
-      .select('_id title order') // chỉ lấy các trường cần cho FE
-      .lean();
+    const chaptersWithPurchase = chapters.map(c => {
+      const purchased = purchasedChapterIds.includes(c._id.toString());
+      const isFree = c.price === 0;
+      return {
+        ...c,
+        purchased,
+        locked: !isFree && !purchased,
+      };
+    });
 
-    // Trả về dữ liệu gộp
     return {
-      _id: manga._id,
+      _id: manga._id.toString(),
       title: manga.title,
       summary: manga.summary,
       coverImage: manga.coverImage,
       author: manga.authorId,
       views: manga.views,
       status: manga.status,
-      chapters,
+      chapters: chaptersWithPurchase,
     };
   }
+
 
   // lấy thông tin manga + author cho comment chapter
   async getAuthorByMangaIdForCommentChapter(id) {
