@@ -11,11 +11,11 @@ import {
     ValidationPipe,
     Res
 } from '@nestjs/common';
-import { Response } from 'express';
 import { VnpayService, CreatePaymentBody } from './vnpay.service';
-import { TopupService } from './topup/topup.service';
+import { TopupService } from '../topup/topup.service';
 import { JwtService } from '@nestjs/jwt';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { Types } from 'mongoose';
 
 @Controller('api/vnpay')
 export class VnpayController {
@@ -91,21 +91,34 @@ export class VnpayController {
     }
 
     @Get('return')
-    async vnpayReturn(@Query() query: Record<string, string>, @Res() res) {
+    async handleVnpayReturn(@Query() query: Record<string, string>, @Res() res) {
         const result = this.vnpayService.verifyReturn(query);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-        if (!result.isValid || !result.txnRef) {
-            return res.redirect(`${frontendUrl}/?payment=failed`);
+        if (!result.txnRef) {
+            return res.redirect(`${process.env.CLIENT_URL}/?payment=failed`);
         }
 
-        try {
-            await this.topupService.handlePaymentSuccess(result.txnRef);
-            return res.redirect(`${frontendUrl}/?payment=success&txn=${result.txnRef}`);
-        } catch (err) {
-            console.error('[VNPAY RETURN ERROR]', err);
-            return res.redirect(`${frontendUrl}/?payment=failed`);
+        // Tìm transaction theo txnRef
+        const transaction = await this.topupService.findByTxnRef(result.txnRef);
+
+        if (!transaction) {
+            return res.redirect(`${process.env.CLIENT_URL}/?payment=failed`);
         }
+
+        const transactionId = (transaction._id as Types.ObjectId).toString();
+
+        // Nếu giao dịch thất bại
+        if (!result.isValid || !result.isSuccess) {
+            await this.topupService.updateStatus(transactionId, 'failed');
+            return res.redirect(`${process.env.CLIENT_URL}/?payment=failed`);
+        }
+
+        // Giao dịch thành công: dùng handlePaymentSuccess để cập nhật status + cộng điểm
+        await this.topupService.handlePaymentSuccess(result.txnRef);
+
+        return res.redirect(
+            `${process.env.CLIENT_URL}/?payment=success&txn=${result.txnRef}`,
+        );
     }
 
 }

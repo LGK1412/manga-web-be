@@ -129,4 +129,31 @@ export class TopupService {
 
         return { packages, bonus: bonusInfo };
     }
+
+    async findByTxnRef(txnRef: string): Promise<UserTransactionDocument | null> {
+        return this.transactionModel.findOne({ txnRef }).exec();
+    }
+
+    async updateStatus(
+        id: string,
+        status: 'success' | 'failed',
+    ): Promise<UserTransactionDocument | null> {
+        return this.transactionModel
+            .findByIdAndUpdate(
+                new Types.ObjectId(id),
+                { status, updatedAt: new Date() },
+                { new: true },
+            )
+            .exec();
+    }
+
+    async getUserTransactions(userId: string) {
+        if (!Types.ObjectId.isValid(userId)) return [];
+
+        return this.transactionModel
+            .find({ userId: new Types.ObjectId(userId) })
+            .sort({ createdAt: -1 })
+            .select('packageId price pointReceived status txnRef createdAt')
+            .lean();
+    }
 }

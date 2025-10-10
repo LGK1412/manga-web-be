@@ -9,11 +9,11 @@ import { Manga, MangaSchema } from '../schemas/Manga.schema';
   imports: [
     MongooseModule.forFeature([
       { name: Genres.name, schema: GenresSchema },
-      { name: Manga.name, schema: MangaSchema }, // 👈 thêm dòng này để có MangaModel
+      { name: Manga.name, schema: MangaSchema },
     ]),
   ],
   controllers: [GenreController],
   providers: [GenreService],
   exports: [GenreService],
 })
-export class GenreModule {}
+export class GenreModule { }

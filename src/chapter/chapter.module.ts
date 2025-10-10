@@ -23,6 +23,7 @@ import { ChapterServiceOnlyNormalChapterInfor } from './chapter.service';
         }),
     ],
     controllers: [],
-    providers: [ChapterServiceOnlyNormalChapterInfor]
+    providers: [ChapterServiceOnlyNormalChapterInfor],
+    exports: [ChapterServiceOnlyNormalChapterInfor]
 })
 export class ChapterServiceOnlyNormalChapterInforModule { }

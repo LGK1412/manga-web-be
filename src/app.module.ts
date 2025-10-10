@@ -12,10 +12,13 @@ import { ImageChapterModule } from './imageChapter/image-chapter.module';
 import { ChapterModule } from './textChapter/text-chapter.module';
 import { StylesModule } from './styles/styles.module';
 import { VnpayModule } from './vnpay/vnpay.module';
-import { TopupModule } from './vnpay/topup/topup.module';
+import { TopupModule } from './topup/topup.module';
 import { CommentModule } from './comment/comment.module';
 import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.module';
 import { NotificationModule } from './notification-gateway/notification.module';
+import { WithdrawModule } from './withdraw/withdraw.module';
+import { CatchGameModule } from './catch-game/catch-game.module';
+import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
 import { RatingModule } from './rating/rating.module';
 import { RatingLikeModule } from './ratingLike/rating-like.module';
 
@@ -69,6 +72,9 @@ import { RatingLikeModule } from './ratingLike/rating-like.module';
     CommentModule,
     ChapterServiceOnlyNormalChapterInforModule,
     NotificationModule,
+    WithdrawModule,
+    CatchGameModule,
+    ChapterPurchaseModule,
     RatingModule,
     RatingLikeModule,
   ],

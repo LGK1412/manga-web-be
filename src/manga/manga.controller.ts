@@ -163,11 +163,10 @@ export class MangaController {
   }
 
   @Get('/detail/:id')
-  async getMangaDetail(@Param('id') id: string) {
-    const data = await this.mangaService.findMangaDetail(id);
-    // console.log('Data: ', data)
+  async getMangaDetail(@Req() req, @Param('id') id: string) {
+    const userId = await this.verifyToken(req);
+    const data = await this.mangaService.findMangaDetail(id, userId);
     return data;
   }
 }
-
 

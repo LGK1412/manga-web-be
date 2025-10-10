@@ -124,6 +124,7 @@ export class UserController {
         return {
             point: user.point,
             author_point: user.author_point,
+            game_point: user.game_point,
             role: user.role,
         };
     }
