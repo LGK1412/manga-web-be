@@ -30,6 +30,10 @@ export class CommentService {
             throw new BadRequestException("Người dùng bị cấm comment")
         }
 
+        if (existingUser.role !== "user" && existingUser.role !== "author"){
+            throw new BadRequestException("Bạn Không có quyền comment")
+        }
+
         // console.log(payload);
         // Chuyển string id sang ObjectId
         const newComment = new this.commentModel({

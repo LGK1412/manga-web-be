@@ -36,3 +36,4 @@ import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purc
   exports: [MangaService, MongooseModule],
 })
 export class MangaModule { }
+

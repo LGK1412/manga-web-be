@@ -12,6 +12,7 @@ import { StylesService } from '../styles/styles.service';
 import { GenreService } from '../genre/genre.service';
 import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseDocument } from 'src/schemas/chapter-purchase.schema';
+import { Rating, RatingDocument } from '../schemas/Rating.schema';
 
 @Injectable()
 export class MangaService {
@@ -21,6 +22,7 @@ export class MangaService {
     private genreService: GenreService,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(ChapterPurchase.name) private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
+    @InjectModel(Rating.name) private ratingModel: Model<RatingDocument>,
   ) { }
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
@@ -232,7 +234,7 @@ export class MangaService {
         $lookup: {
           from: 'ratings',
           localField: '_id',
-          foreignField: 'storyId', // đổi thành 'story_id' nếu schema snake_case
+          foreignField: 'mangaId', // Sửa từ 'storyId' thành 'mangaId'
           as: 'ratings',
         },
       },
@@ -328,7 +330,7 @@ export class MangaService {
       .sort({ order: 1 })
       .select('_id title order price')
       .lean();
-
+    
     let purchasedChapterIds: string[] = [];
     if (userId) {
       const purchases = await this.chapterPurchaseModel
@@ -346,7 +348,14 @@ export class MangaService {
         locked: !isFree && !purchased,
       };
     });
+    // Tính summary rating ở đây
+    const summaryAgg = await this.ratingModel.aggregate([
+      { $match: { mangaId: new Types.ObjectId(mangaId) } },
+      { $group: { _id: '$mangaId', count: { $sum: 1 }, avgRating: { $avg: '$rating' } } },
+    ])
+    const ratingSummary = summaryAgg[0] ? { count: summaryAgg[0].count, avgRating: summaryAgg[0].avgRating } : { count: 0, avgRating: 0 }
 
+    // Trả về dữ liệu gộp
     return {
       _id: manga._id.toString(),
       title: manga.title,
@@ -356,9 +365,9 @@ export class MangaService {
       views: manga.views,
       status: manga.status,
       chapters: chaptersWithPurchase,
+      ratingSummary,
     };
   }
-
 
   // lấy thông tin manga + author cho comment chapter
   async getAuthorByMangaIdForCommentChapter(id) {

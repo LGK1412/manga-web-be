@@ -29,6 +29,9 @@ export class Manga {
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Genres' }], default: [] })
   genres: Types.ObjectId[];
 
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Rating' }], default: [] })
+  rating: Types.ObjectId[];
+
   @Prop({ enum: ['ongoing', 'completed', 'hiatus'], default: 'ongoing' })
   status: string;
 

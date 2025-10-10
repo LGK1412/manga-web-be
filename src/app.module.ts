@@ -19,6 +19,9 @@ import { NotificationModule } from './notification-gateway/notification.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
 import { CatchGameModule } from './catch-game/catch-game.module';
 import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
+import { RatingModule } from './rating/rating.module';
+import { RatingLikeModule } from './ratingLike/rating-like.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -72,6 +75,8 @@ import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.modul
     WithdrawModule,
     CatchGameModule,
     ChapterPurchaseModule,
+    RatingModule,
+    RatingLikeModule,
   ],
   providers: [],
 })
