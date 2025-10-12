@@ -27,7 +27,7 @@ export class NotificationClient {
         return await firstValueFrom(this.notiClient.send({ cmd: 'delete-noti' }, { id, user_id }))
     }
 
-     async sendSaveNoti(id: string, user_id: string) {
+    async sendSaveNoti(id: string, user_id: string) {
         return await firstValueFrom(this.notiClient.send({ cmd: 'save-noti' }, { id, user_id }));
     }
 }
