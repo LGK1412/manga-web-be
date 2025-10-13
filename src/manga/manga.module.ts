@@ -11,6 +11,7 @@ import { StylesModule } from '../styles/styles.module';
 import { GenreModule } from '../genre/genre.module';
 import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purchase.schema';
+import { Rating, RatingSchema } from 'src/schemas/Rating.schema';
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purc
       { name: Manga.name, schema: MangaSchema },
       { name: Genres.name, schema: GenresSchema },
       { name: Chapter.name, schema: ChapterSchema },
-      { name: ChapterPurchase.name, schema: ChapterPurchaseSchema }
+      { name: ChapterPurchase.name, schema: ChapterPurchaseSchema },
+      { name: Rating.name, schema: RatingSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
