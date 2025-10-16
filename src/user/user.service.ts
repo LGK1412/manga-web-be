@@ -584,5 +584,88 @@ export class UserService {
 
     return { followingCount, followersCount };
   }
+
+
+  // ===== Dashboard: User Summary (total + MoM) =====
+async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
+  const now = new Date();
+  const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const [total, thisMonth, lastMonth] = await Promise.all([
+    this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
+    this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
+    this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
+  ]);
+
+  const deltaPctMoM =
+    lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
+
+  return { total, deltaPctMoM };
 }
+
+// ===== Dashboard: Weekly new users =====
+// user.service.ts
+async getUsersWeeklyNew(weeks = 4) {
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - weeks * 7);
+
+  return this.userModel.aggregate([
+    { $match: { createdAt: { $gte: from, $lte: now } } },
+    {
+      $group: {
+        _id: {
+          y: { $isoWeekYear: "$createdAt" },
+          w: { $isoWeek: "$createdAt" },
+        },
+        cnt: { $sum: 1 },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        week: {
+          $concat: [
+            { $toString: "$_id.y" },
+            "-W",
+            {
+              // pad 2 digits cho tuần
+              $cond: [
+                { $lt: ["$_id.w", 10] },
+                { $concat: ["0", { $toString: "$_id.w" }] },
+                { $toString: "$_id.w" },
+              ],
+            },
+          ],
+        },
+        new: "$cnt",
+      },
+    },
+    { $sort: { week: 1 } },
+  ]);
+}
+
+
+// ===== Dashboard: Recent users =====
+async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
+  const docs = await this.userModel
+    .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
+    .sort({ createdAt: -1 })
+    .limit(Math.min(Math.max(limit, 1), 50))
+    .lean();
+
+  return docs.map((u: any) => ({
+    id: u._id.toString(),
+    name: u.username,
+    email: u.email,
+    role: u.role,
+    joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
+  }));
+}
+
+}
+
+
 

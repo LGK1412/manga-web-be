@@ -13,6 +13,7 @@ import { GenreService } from '../genre/genre.service';
 import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseDocument } from 'src/schemas/chapter-purchase.schema';
 import { Rating, RatingDocument } from '../schemas/Rating.schema';
+import { startOfMonth, subMonths } from 'date-fns';
 
 @Injectable()
 export class MangaService {
@@ -373,4 +374,128 @@ export class MangaService {
   async getAuthorByMangaIdForCommentChapter(id) {
     return this.mangaModel.findById(id).populate("authorId").exec()
   }
+
+  // ===== SUMMARY CHO CARD =====
+  async adminSummary() {
+    const [totals, byMonth] = await Promise.all([
+      this.mangaModel.countDocuments({ isDeleted: false }), // tổng tất cả (publish lẫn unpublish nếu muốn)
+      this.mangaModel.aggregate([
+        {
+          $match: {
+            createdAt: {
+              $gte: startOfMonth(subMonths(new Date(), 1)), // 1 tháng trước đến nay để lấy MoM
+            },
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              y: { $year: '$createdAt' },
+              m: { $month: '$createdAt' },
+            },
+            cnt: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.y': 1, '_id.m': 1 } },
+      ]),
+    ]);
+
+    // tách current month vs previous month
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth() + 1;
+
+    let cur = 0, prev = 0;
+    for (const row of byMonth) {
+      const { y, m } = row._id;
+      if (y === curY && m === curM) cur = row.cnt;
+      // previous month:
+      const prevDate = subMonths(new Date(curY, curM - 1, 1), 1);
+      if (y === prevDate.getFullYear() && m === prevDate.getMonth() + 1) prev = row.cnt;
+    }
+
+    const deltaPctMoM = prev === 0 ? (cur > 0 ? 100 : 0) : ((cur - prev) / prev) * 100;
+
+    // breakdown publish & status (nếu muốn hiển thị thêm)
+    const [published, statusAgg] = await Promise.all([
+      this.mangaModel.countDocuments({ isDeleted: false, isPublish: true }),
+      this.mangaModel.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
+        { $group: { _id: '$status', cnt: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const byStatus = statusAgg.reduce((acc: any, r) => {
+      acc[r._id || 'unknown'] = r.cnt;
+      return acc;
+    }, {});
+
+    return {
+      total: totals,
+      deltaPctMoM,
+      published,
+      byStatus, // { ongoing: n, completed: n, hiatus: n }
+    };
+  }
+
+  // ===== CHART TĂNG TRƯỞNG THEO THÁNG =====
+  async monthlyGrowth(months = 6) {
+    const from = startOfMonth(subMonths(new Date(), months - 1));
+    const rows = await this.mangaModel.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: from },
+          isDeleted: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' } },
+          stories: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.y': 1, '_id.m': 1 } },
+    ]);
+
+    // map thành mảng đủ số tháng (kể cả tháng không có dữ liệu)
+    const out: { month: string; stories: number }[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = subMonths(new Date(), i);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const key = rows.find((r) => r._id.y === y && r._id.m === m);
+      out.push({
+        month: `${y}-${String(m).padStart(2, '0')}`, // ví dụ "2025-10"
+        stories: key?.stories || 0,
+      });
+    }
+
+    return out;
+  }
+
+  // ===== TOP STORIES =====
+  async topStories(limit = 5, by: 'views' | 'recent' = 'views') {
+  // const sort = by === 'recent' ? { createdAt: -1 } : { views: -1 }; // ❌ gây lỗi TS
+
+  // ✅ Cách 1: tạo field trước rồi map vào object
+  const sortField = by === 'recent' ? 'createdAt' : 'views';
+  const sortObj: Record<string, 1 | -1> = { [sortField]: -1 };
+
+  const items = await this.mangaModel
+    .find({ isDeleted: false, isPublish: true })
+    .sort(sortObj) // ✅
+    .limit(limit)
+    .select('title authorId views status')
+    .populate('authorId', 'username')
+    .lean();
+
+  return items.map((m) => ({
+    id: m._id,
+    title: m.title,
+    views: m.views || 0,
+    author: (m as any).authorId?.username || 'Unknown',
+    status: m.status || 'ongoing',
+  }));
+}
 }

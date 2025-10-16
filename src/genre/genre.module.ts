@@ -9,7 +9,7 @@ import { Manga, MangaSchema } from '../schemas/Manga.schema';
   imports: [
     MongooseModule.forFeature([
       { name: Genres.name, schema: GenresSchema },
-      { name: Manga.name, schema: MangaSchema },
+      { name: Manga.name, schema: MangaSchema }, 
     ]),
   ],
   controllers: [GenreController],

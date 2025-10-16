@@ -21,6 +21,8 @@ import { CatchGameModule } from './catch-game/catch-game.module';
 import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
 import { RatingModule } from './rating/rating.module';
 import { RatingLikeModule } from './ratingLike/rating-like.module';
+import { PoliciesModule } from './policies/policies.module';
+import { ReportModule } from './report/report.module';
 
 @Module({
   imports: [
@@ -77,6 +79,8 @@ import { RatingLikeModule } from './ratingLike/rating-like.module';
     ChapterPurchaseModule,
     RatingModule,
     RatingLikeModule,
+    PoliciesModule,
+    ReportModule,
   ],
   providers: [],
 })

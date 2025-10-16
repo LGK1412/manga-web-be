@@ -212,4 +212,50 @@ export class UserController {
     await this.verifyToken(req);
     return await this.userService.getFollowStats(req.cookies?.access_token);
   }
+
+  // ===== Admin: Users summary =====
+@Get('/admin/summary')
+async adminUsersSummary(@Req() req: Request) {
+  const token =
+    req.cookies?.access_token ||
+    req.headers['authorization']?.replace('Bearer ', '');
+
+  if (!token) throw new BadRequestException('Thiếu token xác minh');
+
+  const decoded: any = this.jwtService.verify(token);
+  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+
+  return await this.userService.getUsersSummary();
+}
+
+// ===== Admin: Weekly new users =====
+@Get('/admin/charts/weekly-new')
+async adminUsersWeeklyNew(@Req() req: Request) {
+  const token =
+    req.cookies?.access_token ||
+    req.headers['authorization']?.replace('Bearer ', '');
+
+  if (!token) throw new BadRequestException('Thiếu token xác minh');
+  const decoded: any = this.jwtService.verify(token);
+  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+
+  const weeks = Number((req.query as any).weeks ?? 4);
+  return await this.userService.getUsersWeeklyNew(weeks);
+}
+
+// ===== Admin: Recent users =====
+@Get('/admin/recent')
+async adminRecentUsers(@Req() req: Request) {
+  const token =
+    req.cookies?.access_token ||
+    req.headers['authorization']?.replace('Bearer ', '');
+
+  if (!token) throw new BadRequestException('Thiếu token xác minh');
+  const decoded: any = this.jwtService.verify(token);
+  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+
+  const limit = Number((req.query as any).limit ?? 5);
+  return await this.userService.getRecentUsers(limit);
+}
+
 }

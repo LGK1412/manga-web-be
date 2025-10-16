@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
+
 // FileInterceptor config cho cover image
 const coverImageInterceptor = FileInterceptor('coverImage', {
   storage: diskStorage({
@@ -64,6 +65,30 @@ export class MangaController {
     } catch {
       throw new BadRequestException('Invalid or expired token');
     }
+  }
+
+  // ====== ADMIN ANALYTICS: SUMMARY ======
+  @Get('admin/summary')
+  async adminSummary() {
+    // không cần auth nếu dashboard public; nếu cần thì verifyToken như bạn đang làm
+    return this.mangaService.adminSummary();
+  }
+
+  // ====== ADMIN ANALYTICS: MONTHLY GROWTH ======
+  @Get('admin/charts/monthly-growth')
+  async monthlyGrowth(@Query('months') months = '6') {
+    const m = Math.max(1, Math.min(24, parseInt(months, 10) || 6));
+    return this.mangaService.monthlyGrowth(m);
+  }
+
+  // ====== ADMIN ANALYTICS: TOP STORIES ======
+  @Get('admin/top')
+  async topStories(
+    @Query('limit') limit = '5',
+    @Query('by') by: 'views' | 'recent' = 'views',
+  ) {
+    const l = Math.max(1, Math.min(50, parseInt(limit, 10) || 5));
+    return this.mangaService.topStories(l, by);
   }
 
   @Get(':authorId')
