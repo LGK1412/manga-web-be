@@ -12,8 +12,8 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true })); //Cua Cuong big
   app.use(cookieParser())
-  app.use(bodyParser.json({ limit: '2.5mb' }));
-  app.use(bodyParser.urlencoded({ limit: '2.5mb', extended: true }));
+  app.use(bodyParser.json({ limit: '3mb' }));
+  app.use(bodyParser.urlencoded({ limit: '3mb', extended: true }));
   app.enableCors({
     origin: process.env.CLIENT_URL,
     credentials: true,

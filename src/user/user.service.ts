@@ -442,6 +442,10 @@ export class UserService {
       throw new BadRequestException('Người dùng bị ban');
     }
 
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
     // Truyền user_id đúng cú pháp
     return await this.notificationClient.sendMarkAsRead(id, existingUser._id.toString());
   }
@@ -455,6 +459,10 @@ export class UserService {
 
     if (existingUser.status === 'ban') {
       throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
     }
 
     // Truyền user_id đúng cú pháp
@@ -473,6 +481,10 @@ export class UserService {
       throw new BadRequestException('Người dùng bị ban');
     }
 
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
     // Truyền user_id đúng cú pháp
     return await this.notificationClient.deleteNoti(id, existingUser._id.toString());
   }
@@ -486,6 +498,10 @@ export class UserService {
 
     if (existingUser.status === 'ban') {
       throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
     }
 
     // Truyền user_id đúng cú pháp

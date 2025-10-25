@@ -21,6 +21,10 @@ import { CatchGameModule } from './catch-game/catch-game.module';
 import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
 import { RatingModule } from './rating/rating.module';
 import { RatingLikeModule } from './ratingLike/rating-like.module';
+import { ReplyModule } from './reply/reply.module';
+import { ReadChapterModule } from './socket-gateway/read-chapter/read-chapter-gateway.module';
+import { EmojiPackModule } from './emoji-pack/emoji-pack.module';
+import { EmojiModule } from './emoji/emoji.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
 
@@ -79,6 +83,10 @@ import { ReportModule } from './report/report.module';
     ChapterPurchaseModule,
     RatingModule,
     RatingLikeModule,
+    ReplyModule,
+    ReadChapterModule,
+    EmojiPackModule,
+    EmojiModule,
     PoliciesModule,
     ReportModule,
   ],

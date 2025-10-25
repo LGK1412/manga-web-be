@@ -9,7 +9,7 @@ import { NotificationModule } from "src/notification-gateway/notification.module
 
 @Module({
     imports: [
-         NotificationModule,
+        NotificationModule,
         MongooseModule.forFeature([
             {
                 name: User.name,

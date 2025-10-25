@@ -30,6 +30,8 @@
     "@nestjs/microservices": "^11.1.6",
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/platform-socket.io": "^11.1.6",
+    "@nestjs/websockets": "^11.1.6",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "class-transformer": "^0.5.1",

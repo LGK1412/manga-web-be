@@ -15,6 +15,10 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
 import { MangaModule } from 'src/manga/manga.module';
 import { ChapterModule } from 'src/textChapter/text-chapter.module';
 import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.module';
+import { ReplyService } from 'src/reply/reply.service';
+import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
+import { VoteComment, VoteCommentSchema } from 'src/schemas/VoteComment.schema';
+import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
 
 @Module({
     imports: [
@@ -27,6 +31,9 @@ import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.
             { name: User.name, schema: UserSchema },
             { name: Styles.name, schema: StylesSchema },
             { name: Genres.name, schema: GenresSchema },
+            { name: Reply.name, schema: ReplySchema },
+            { name: VoteComment.name, schema: VoteCommentSchema },
+            { name: VoteReply.name, schema: VoteReplySchema }
         ]),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -43,6 +50,7 @@ import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.
         UserService,
         StylesService,
         GenreService,
+        ReplyService
     ],
 })
 export class CommentModule { }
