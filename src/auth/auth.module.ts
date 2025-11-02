@@ -8,15 +8,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserService } from 'src/user/user.service';
 import { OAuth2Client } from 'google-auth-library';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { Achievement, AchievementSchema } from 'src/schemas/achievement.schema';
+import { AchievementProgress, AchievementProgressSchema } from 'src/schemas/achievement-progress.schema';
+import { AchievementEventModule } from 'src/achievement/achievement.event.module';
 
 @Module({
   imports: [
     NotificationModule,
     MongooseModule.forFeature([
-      {
-        name: User.name,
-        schema: UserSchema
-      }
+      { name: User.name, schema: UserSchema },
+      { name: Achievement.name, schema: AchievementSchema },
+      { name: AchievementProgress.name, schema: AchievementProgressSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -26,6 +28,7 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
         signOptions: { expiresIn: '10m' },
       }),
     }),
+    AchievementEventModule
   ],
   providers: [
     AuthService, UserService,

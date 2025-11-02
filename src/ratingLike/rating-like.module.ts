@@ -26,6 +26,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
   controllers: [RatingLikeController],
   exports: [RatingLikeService],
 })
-export class RatingLikeModule {}
+export class RatingLikeModule { }
 
 

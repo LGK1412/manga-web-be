@@ -161,15 +161,15 @@ export class UserController {
         return await this.userService.getAllNotiForUser(id)
     }
 
-  @Get('/public/:id')
-  async getPublicUser(@Param('id') id: string) {
-    return await this.userService.getPublicUserById(id)
-  }
+    @Get('/public/:id')
+    async getPublicUser(@Param('id') id: string) {
+        return await this.userService.getPublicUserById(id)
+    }
 
-  @Get('/public-follow-stats/:id')
-  async getPublicFollowStats(@Param('id') id: string) {
-    return await this.userService.getPublicFollowStats(id)
-  }
+    @Get('/public-follow-stats/:id')
+    async getPublicFollowStats(@Param('id') id: string) {
+        return await this.userService.getPublicFollowStats(id)
+    }
 
     @Patch('/mark-noti-as-read/:id')
     async markNotiAsRead(@Param('id') id: string, @Req() req: Request) {
@@ -207,55 +207,55 @@ export class UserController {
         return await this.userService.toggleFollowAuthor(req.cookies?.access_token, authorId);
     }
 
-  @Get('/follow-stats')
-  async getFollowStats(@Req() req: Request) {
-    await this.verifyToken(req);
-    return await this.userService.getFollowStats(req.cookies?.access_token);
-  }
+    @Get('/follow-stats')
+    async getFollowStats(@Req() req: Request) {
+        await this.verifyToken(req);
+        return await this.userService.getFollowStats(req.cookies?.access_token);
+    }
 
-  // ===== Admin: Users summary =====
-@Get('/admin/summary')
-async adminUsersSummary(@Req() req: Request) {
-  const token =
-    req.cookies?.access_token ||
-    req.headers['authorization']?.replace('Bearer ', '');
+    // ===== Admin: Users summary =====
+    @Get('/admin/summary')
+    async adminUsersSummary(@Req() req: Request) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers['authorization']?.replace('Bearer ', '');
 
-  if (!token) throw new BadRequestException('Thiếu token xác minh');
+        if (!token) throw new BadRequestException('Thiếu token xác minh');
 
-  const decoded: any = this.jwtService.verify(token);
-  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+        const decoded: any = this.jwtService.verify(token);
+        if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
 
-  return await this.userService.getUsersSummary();
-}
+        return await this.userService.getUsersSummary();
+    }
 
-// ===== Admin: Weekly new users =====
-@Get('/admin/charts/weekly-new')
-async adminUsersWeeklyNew(@Req() req: Request) {
-  const token =
-    req.cookies?.access_token ||
-    req.headers['authorization']?.replace('Bearer ', '');
+    // ===== Admin: Weekly new users =====
+    @Get('/admin/charts/weekly-new')
+    async adminUsersWeeklyNew(@Req() req: Request) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers['authorization']?.replace('Bearer ', '');
 
-  if (!token) throw new BadRequestException('Thiếu token xác minh');
-  const decoded: any = this.jwtService.verify(token);
-  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+        if (!token) throw new BadRequestException('Thiếu token xác minh');
+        const decoded: any = this.jwtService.verify(token);
+        if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
 
-  const weeks = Number((req.query as any).weeks ?? 4);
-  return await this.userService.getUsersWeeklyNew(weeks);
-}
+        const weeks = Number((req.query as any).weeks ?? 4);
+        return await this.userService.getUsersWeeklyNew(weeks);
+    }
 
-// ===== Admin: Recent users =====
-@Get('/admin/recent')
-async adminRecentUsers(@Req() req: Request) {
-  const token =
-    req.cookies?.access_token ||
-    req.headers['authorization']?.replace('Bearer ', '');
+    // ===== Admin: Recent users =====
+    @Get('/admin/recent')
+    async adminRecentUsers(@Req() req: Request) {
+        const token =
+            req.cookies?.access_token ||
+            req.headers['authorization']?.replace('Bearer ', '');
 
-  if (!token) throw new BadRequestException('Thiếu token xác minh');
-  const decoded: any = this.jwtService.verify(token);
-  if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
+        if (!token) throw new BadRequestException('Thiếu token xác minh');
+        const decoded: any = this.jwtService.verify(token);
+        if (decoded.role !== 'admin') throw new BadRequestException('Chỉ admin');
 
-  const limit = Number((req.query as any).limit ?? 5);
-  return await this.userService.getRecentUsers(limit);
-}
+        const limit = Number((req.query as any).limit ?? 5);
+        return await this.userService.getRecentUsers(limit);
+    }
 
 }

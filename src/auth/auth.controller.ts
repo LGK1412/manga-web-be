@@ -87,4 +87,10 @@ export class AuthController {
     async changePassword(@Body('password') password: string, @Req() req: Request) {
         return await this.authService.changePassword(password, req.cookies?.access_token);
     }
+
+    @Get('me')
+    async getMe(@Req() req) {
+        return this.authService.getMe(req);
+    }
+
 }

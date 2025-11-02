@@ -10,6 +10,7 @@ import { sendNotificationDto } from './dto/sendNoti.dto';
 import { NotificationClient } from 'src/notification-gateway/notification.client';
 import { ReplyService } from 'src/reply/reply.service';
 import { VoteComment } from 'src/schemas/VoteComment.schema';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class CommentService {
@@ -21,6 +22,7 @@ export class CommentService {
         private mangaService: MangaService,
         private replyService: ReplyService,
         @InjectModel(VoteComment.name) private voteCommentModel: Model<VoteComment>,
+        private readonly eventEmitter: EventEmitter2,
     ) { }
 
     private async checkUser(payload: any) {
@@ -67,6 +69,9 @@ export class CommentService {
                 receiver_id: manga?.authorId._id as unknown as string, // ép kiểu sang string
                 sender_id: payload.user_id
             };
+
+            //Emit
+            this.eventEmitter.emit("comment_count", { userId: payload.user_id })
 
             const send_noti_result = await this.notificationClient.sendNotification(dto);
             await this.userService.removeDeviceId(manga?.authorId as unknown as string, send_noti_result);

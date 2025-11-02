@@ -1,20 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
-import { User, UserStatus } from "src/schemas/User.schema";
+import { User, UserDocument, UserStatus } from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
 import { NotificationClient } from "src/notification-gateway/notification.client";
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 
 @Injectable()
 export class UserService {
   constructor(
     private readonly notificationClient: NotificationClient,
-    @InjectModel(User.name) private userModel: Model<User>,
-    private jwtService: JwtService
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private jwtService: JwtService,
+    private readonly eventEmitter: EventEmitter2,
   ) { }
   // ---------------- Của auth -------------------- //
   async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
@@ -323,6 +325,8 @@ export class UserService {
     } else {
       // Add manga vào favourites
       updatedFavourites = [...user.favourites, mangaObjectId];
+      // Emit
+      this.eventEmitter.emit("favorite_story_count", { userId: user._id })
     }
 
     user.favourites = updatedFavourites;
@@ -342,7 +346,7 @@ export class UserService {
     return user;
   }
 
-  async getPublicUserById(userId: string) {
+  async getPublicUserById(userId: string): Promise<any> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new NotFoundException('User not found');
     }
@@ -558,18 +562,20 @@ export class UserService {
 
     let updatedFollowing: Types.ObjectId[];
     const exists = user.following_authors.some((m: any) => m._id.equals(authorObjectId));
-
     if (exists) {
       // UNFOLLOW - Không gửi notification
       updatedFollowing = user.following_authors.filter((m: any) => !m._id.equals(authorObjectId));
+      // Emit
+      this.eventEmitter.emit("follow_count_decrease", { userId: user._id.toString() });
+      this.eventEmitter.emit("follower_count_decrease", { userId: authorId });
     } else {
       // FOLLOW MỚI - Gửi notification cho author
       updatedFollowing = [...user.following_authors, authorObjectId];
-      
+
       try {
         const follower = await this.userModel.findById(decoded.user_id).select('username');
         const author = await this.userModel.findById(authorId).select('device_id');
-        
+
         if (follower && author) {
           const notificationDto: sendNotificationDto = {
             title: "Bạn có người theo dõi mới",
@@ -581,13 +587,16 @@ export class UserService {
 
           // Gửi notification
           const sendNotiResult = await this.notificationClient.sendNotification(notificationDto);
-          
+
           // Xóa các device token lỗi
           await this.removeDeviceId(authorId, sendNotiResult);
         }
       } catch (error) {
         console.error('Lỗi gửi notification follow:', error);
       }
+      // Emit
+      this.eventEmitter.emit("follow_count_increase", { userId: user._id.toString() });
+      this.eventEmitter.emit("follower_count_increase", { userId: authorId });
     }
 
     user.following_authors = updatedFollowing;
@@ -629,83 +638,83 @@ export class UserService {
 
 
   // ===== Dashboard: User Summary (total + MoM) =====
-async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
-  const now = new Date();
-  const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
+    const now = new Date();
+    const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [total, thisMonth, lastMonth] = await Promise.all([
-    this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
-    this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
-    this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
-  ]);
+    const [total, thisMonth, lastMonth] = await Promise.all([
+      this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
+      this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
+      this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
+    ]);
 
-  const deltaPctMoM =
-    lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
+    const deltaPctMoM =
+      lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
 
-  return { total, deltaPctMoM };
-}
+    return { total, deltaPctMoM };
+  }
 
-// ===== Dashboard: Weekly new users =====
-// user.service.ts
-async getUsersWeeklyNew(weeks = 4) {
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() - weeks * 7);
+  // ===== Dashboard: Weekly new users =====
+  // user.service.ts
+  async getUsersWeeklyNew(weeks = 4) {
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - weeks * 7);
 
-  return this.userModel.aggregate([
-    { $match: { createdAt: { $gte: from, $lte: now } } },
-    {
-      $group: {
-        _id: {
-          y: { $isoWeekYear: "$createdAt" },
-          w: { $isoWeek: "$createdAt" },
+    return this.userModel.aggregate([
+      { $match: { createdAt: { $gte: from, $lte: now } } },
+      {
+        $group: {
+          _id: {
+            y: { $isoWeekYear: "$createdAt" },
+            w: { $isoWeek: "$createdAt" },
+          },
+          cnt: { $sum: 1 },
         },
-        cnt: { $sum: 1 },
       },
-    },
-    {
-      $project: {
-        _id: 0,
-        week: {
-          $concat: [
-            { $toString: "$_id.y" },
-            "-W",
-            {
-              // pad 2 digits cho tuần
-              $cond: [
-                { $lt: ["$_id.w", 10] },
-                { $concat: ["0", { $toString: "$_id.w" }] },
-                { $toString: "$_id.w" },
-              ],
-            },
-          ],
+      {
+        $project: {
+          _id: 0,
+          week: {
+            $concat: [
+              { $toString: "$_id.y" },
+              "-W",
+              {
+                // pad 2 digits cho tuần
+                $cond: [
+                  { $lt: ["$_id.w", 10] },
+                  { $concat: ["0", { $toString: "$_id.w" }] },
+                  { $toString: "$_id.w" },
+                ],
+              },
+            ],
+          },
+          new: "$cnt",
         },
-        new: "$cnt",
       },
-    },
-    { $sort: { week: 1 } },
-  ]);
-}
+      { $sort: { week: 1 } },
+    ]);
+  }
 
 
-// ===== Dashboard: Recent users =====
-async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
-  const docs = await this.userModel
-    .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
-    .sort({ createdAt: -1 })
-    .limit(Math.min(Math.max(limit, 1), 50))
-    .lean();
+  // ===== Dashboard: Recent users =====
+  async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
+    const docs = await this.userModel
+      .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(limit, 1), 50))
+      .lean();
 
-  return docs.map((u: any) => ({
-    id: u._id.toString(),
-    name: u.username,
-    email: u.email,
-    role: u.role,
-    joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
-  }));
-}
+    return docs.map((u: any) => ({
+      id: u._id.toString(),
+      name: u.username,
+      email: u.email,
+      role: u.role,
+      joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
+    }));
+  }
 
 }
 

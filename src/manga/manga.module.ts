@@ -12,6 +12,7 @@ import { GenreModule } from '../genre/genre.module';
 import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purchase.schema';
 import { Rating, RatingSchema } from 'src/schemas/Rating.schema';
+import { AchievementEventModule } from 'src/achievement/achievement.event.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { Rating, RatingSchema } from 'src/schemas/Rating.schema';
     }),
     StylesModule,
     GenreModule,
+    AchievementEventModule
   ],
   controllers: [MangaController],
   providers: [MangaService],

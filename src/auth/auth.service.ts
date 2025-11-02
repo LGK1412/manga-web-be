@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Req, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User } from 'src/schemas/User.schema';
+import { User, UserDocument } from 'src/schemas/User.schema';
 import { RegisterDto } from './dto/Register.dto';
 import { comparePassword, hashPassword } from 'utils/hashingBcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -10,6 +10,8 @@ import { UserService } from 'src/user/user.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { OAuth2Client } from 'google-auth-library';
 import { randomBytes } from 'crypto';
+import { Achievement, AchievementDocument } from 'src/schemas/achievement.schema';
+import { AchievementProgress, AchievementProgressDocument } from 'src/schemas/achievement-progress.schema';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +19,10 @@ export class AuthService {
         private userService: UserService,
         private jwtService: JwtService,
         private mailerService: MailerService,
-        private googleClient: OAuth2Client
+        private googleClient: OAuth2Client,
+        @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        @InjectModel(Achievement.name) private readonly achievementModel: Model<AchievementDocument>,
+        @InjectModel(AchievementProgress.name) private readonly achievementProgressModel: Model<AchievementProgressDocument>,
     ) {
         this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
     }
@@ -38,7 +43,19 @@ export class AuthService {
             password: passHash,
         };
 
-        await this.userService.createUser(newUserData);
+        const user = await this.userService.createUser(newUserData);
+
+        const achievements = await this.achievementModel.find({ isActive: true });
+
+        const achievementProgresses = achievements.map(a => ({
+            userId: user._id,
+            achievementId: a._id,
+            progressCount: 0,
+            isCompleted: false,
+            rewardClaimed: false,
+        }));
+
+        await this.achievementProgressModel.insertMany(achievementProgresses);
 
         return { "success": true };
     }
@@ -365,5 +382,37 @@ export class AuthService {
         } catch {
             throw new BadRequestException('Không thể cập nhật trạng thái xác minh');
         }
+    }
+    async getMe(req: any) {
+        const token = req.cookies?.access_token;
+        if (!token) {
+            throw new UnauthorizedException('Không tìm thấy access token');
+        }
+
+        let payload: any;
+        try {
+            payload = this.jwtService.verify(token);
+        } catch {
+            throw new UnauthorizedException('Token không hợp lệ hoặc đã hết hạn');
+        }
+
+        const userId = payload.user_id;
+
+        const user = await this.userModel
+            .findById(userId)
+            .select('_id username email role avatar')
+            .lean();
+
+        if (!user) {
+            throw new UnauthorizedException('Người dùng không tồn tại');
+        }
+
+        return {
+            user_id: user._id,
+            username: user.username,
+            role: user.role,
+            avatar: user.avatar,
+            email: user.email,
+        };
     }
 }

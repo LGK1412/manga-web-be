@@ -5,6 +5,7 @@ import { RatingService } from './rating.service'
 import { RatingController } from './rating.controller'
 import { JwtModule } from '@nestjs/jwt'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { AchievementEventModule } from 'src/achievement/achievement.event.module'
 
 @Module({
   imports: [
@@ -17,12 +18,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
         signOptions: { expiresIn: '360d' },
       }),
     }),
+    AchievementEventModule
   ],
   providers: [RatingService],
   controllers: [RatingController],
   exports: [RatingService],
 })
-export class RatingModule {}
+export class RatingModule { }
 
 
 
