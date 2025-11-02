@@ -26,6 +26,8 @@ async function bootstrap() {
   //Serve static files (ảnh)
   app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
 
+  app.use('/donation-items', express.static(join(process.cwd(), 'public', 'donation-items')));
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

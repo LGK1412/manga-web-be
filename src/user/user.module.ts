@@ -6,6 +6,7 @@ import { UserController } from "./user.controller";
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationModule } from "src/notification-gateway/notification.module";
+import { AchievementEventModule } from "src/achievement/achievement.event.module";
 
 @Module({
     imports: [
@@ -24,6 +25,7 @@ import { NotificationModule } from "src/notification-gateway/notification.module
                 signOptions: { expiresIn: '360d' },
             }),
         }),
+        AchievementEventModule
     ],
     providers: [UserService],
     controllers: [UserController],

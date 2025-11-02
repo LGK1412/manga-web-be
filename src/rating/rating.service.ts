@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { Rating, RatingDocument } from '../schemas/Rating.schema'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 interface UpsertRatingInput {
   userId: Types.ObjectId
@@ -14,7 +15,8 @@ interface UpsertRatingInput {
 export class RatingService {
   constructor(
     @InjectModel(Rating.name) private readonly ratingModel: Model<RatingDocument>,
-  ) {}
+    private eventEmitter: EventEmitter2
+  ) { }
 
   async upsertRating(input: UpsertRatingInput) {
     const { userId, mangaId, rating, comment } = input
@@ -27,6 +29,8 @@ export class RatingService {
       { $set: { rating, comment } },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     )
+    // Emit
+    this.eventEmitter.emit("rating_count", { userId: userId });
     return doc
   }
 
@@ -75,7 +79,7 @@ export class RatingService {
       )
     return { items, total: items.length }
   }
-  
+
 }
 
 

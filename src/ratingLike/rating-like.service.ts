@@ -9,7 +9,7 @@ export class RatingLikeService {
   constructor(
     @InjectModel(RatingLike.name) private readonly ratingLikeModel: Model<RatingLikeDocument>,
     @InjectModel(Rating.name) private readonly ratingModel: Model<RatingDocument>,
-  ) {}
+  ) { }
 
   async toggleLike(ratingId: Types.ObjectId, userId: Types.ObjectId) {
     const existing = await this.ratingLikeModel.findOne({ ratingId, userId })

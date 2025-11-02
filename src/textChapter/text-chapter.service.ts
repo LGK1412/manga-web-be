@@ -9,6 +9,8 @@ import {
 import { CreateChapterWithTextDto } from './dto/create-chapter-with-text.dto';
 import { UpdateChapterWithTextDto } from './dto/update-chapter-with-text.dto';
 import { Types } from 'mongoose';
+import { Manga, MangaDocument } from 'src/schemas/Manga.schema';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class ChapterService {
@@ -16,6 +18,8 @@ export class ChapterService {
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(TextChapter.name)
     private textChapterModel: Model<TextChapterDocument>,
+    @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
+    private readonly eventEmitter: EventEmitter2,
   ) { }
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
     return this.chapterModel.aggregate([
@@ -98,6 +102,13 @@ export class ChapterService {
       content,
       is_completed: is_completed ?? false,
     });
+
+    const manga = await this.mangaModel.findById(manga_id).select("authorId");
+    if (manga && manga.authorId) {
+      this.eventEmitter.emit("chapter_create_count", { userId: manga.authorId.toString() });
+    } else {
+      console.warn("Không tìm thấy authorId cho manga:", manga_id);
+    }
 
     return { chapter, text };
   }

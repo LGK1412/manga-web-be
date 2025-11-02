@@ -19,6 +19,7 @@ import { ReplyService } from 'src/reply/reply.service';
 import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
 import { VoteComment, VoteCommentSchema } from 'src/schemas/VoteComment.schema';
 import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
+import { AchievementEventModule } from 'src/achievement/achievement.event.module';
 
 @Module({
     imports: [
@@ -43,6 +44,7 @@ import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
                 signOptions: { expiresIn: '10m' },
             }),
         }),
+        AchievementEventModule
     ],
     controllers: [CommentController],
     providers: [

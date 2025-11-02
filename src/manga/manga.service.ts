@@ -14,6 +14,7 @@ import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseDocument } from 'src/schemas/chapter-purchase.schema';
 import { Rating, RatingDocument } from '../schemas/Rating.schema';
 import { startOfMonth, subMonths } from 'date-fns';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class MangaService {
@@ -24,6 +25,7 @@ export class MangaService {
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(ChapterPurchase.name) private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
     @InjectModel(Rating.name) private ratingModel: Model<RatingDocument>,
+    private readonly eventEmitter: EventEmitter2,
   ) { }
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
@@ -68,6 +70,9 @@ export class MangaService {
         ...createMangaDto,
         authorId,
       });
+      // Emit
+      this.eventEmitter.emit("story_create_count", { userId: authorId })
+
       return await newManga.save();
     } catch (error) {
       console.error('Error creating manga:', error);
@@ -331,7 +336,7 @@ export class MangaService {
       .sort({ order: 1 })
       .select('_id title order price')
       .lean();
-    
+
     let purchasedChapterIds: string[] = [];
     if (userId) {
       const purchases = await this.chapterPurchaseModel
@@ -476,28 +481,28 @@ export class MangaService {
 
   // ===== TOP STORIES =====
   async topStories(limit = 5, by: 'views' | 'recent' = 'views') {
-  // const sort = by === 'recent' ? { createdAt: -1 } : { views: -1 }; // ❌ gây lỗi TS
+    // const sort = by === 'recent' ? { createdAt: -1 } : { views: -1 }; // ❌ gây lỗi TS
 
-  // ✅ Cách 1: tạo field trước rồi map vào object
-  const sortField = by === 'recent' ? 'createdAt' : 'views';
-  const sortObj: Record<string, 1 | -1> = { [sortField]: -1 };
+    // ✅ Cách 1: tạo field trước rồi map vào object
+    const sortField = by === 'recent' ? 'createdAt' : 'views';
+    const sortObj: Record<string, 1 | -1> = { [sortField]: -1 };
 
-  const items = await this.mangaModel
-    .find({ isDeleted: false, isPublish: true })
-    .sort(sortObj) // ✅
-    .limit(limit)
-    .select('title authorId views status')
-    .populate('authorId', 'username')
-    .lean();
+    const items = await this.mangaModel
+      .find({ isDeleted: false, isPublish: true })
+      .sort(sortObj) // ✅
+      .limit(limit)
+      .select('title authorId views status')
+      .populate('authorId', 'username')
+      .lean();
 
-  return items.map((m) => ({
-    id: m._id,
-    title: m.title,
-    views: m.views || 0,
-    author: (m as any).authorId?.username || 'Unknown',
-    status: m.status || 'ongoing',
-  }));
-}
+    return items.map((m) => ({
+      id: m._id,
+      title: m.title,
+      views: m.views || 0,
+      author: (m as any).authorId?.username || 'Unknown',
+      status: m.status || 'ongoing',
+    }));
+  }
 
   async getRandomManga() {
     const pipeline: any[] = [
@@ -510,15 +515,15 @@ export class MangaService {
       {
         $lookup: {
           from: 'chapters',
-          let: { mangaId: '$_id'},
+          let: { mangaId: '$_id' },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ['$manga_id', '$$mangaId']},
-                    { $ne: ['$isDeleted', true]},
-                    { $eq: ['$is_published', true]},
+                    { $eq: ['$manga_id', '$$mangaId'] },
+                    { $ne: ['$isDeleted', true] },
+                    { $eq: ['$is_published', true] },
                   ],
                 },
               },
@@ -533,7 +538,7 @@ export class MangaService {
         },
       },
       {
-        $sample: { size: 1},
+        $sample: { size: 1 },
       },
 
       {
@@ -545,9 +550,9 @@ export class MangaService {
     ];
 
     const [result] = await this.mangaModel
-    .aggregate(pipeline)
-    .allowDiskUse(true)
-    .exec();
+      .aggregate(pipeline)
+      .allowDiskUse(true)
+      .exec();
 
     if (result) {
       return {
@@ -563,9 +568,9 @@ export class MangaService {
       .find({ authorId, isDeleted: false })
       .select('_id')
       .lean();
-    
+
     const mangaIdList = mangaIds.map(m => m._id);
-  
+
     if (mangaIdList.length === 0) {
       return {
         totalStories: 0,
@@ -580,7 +585,7 @@ export class MangaService {
         },
       };
     }
-  
+
     const [totalStories, publishedStories, totalViews, statusBreakdown] = await Promise.all([
       this.mangaModel.countDocuments({ authorId, isDeleted: false }),
       this.mangaModel.countDocuments({ authorId, isDeleted: false, isPublish: true }),
@@ -593,27 +598,27 @@ export class MangaService {
         { $group: { _id: '$status', cnt: { $sum: 1 } } },
       ]),
     ]);
-  
+
     const totalChapters = await this.chapterModel.countDocuments({
       manga_id: { $in: mangaIdList },
       is_published: true,
     });
-  
+
     const avgViewsPerStory = publishedStories > 0 ? Math.round(totalViews / publishedStories) : 0;
-  
+
     const statusMap: any = {
       ongoing: 0,
       completed: 0,
       hiatus: 0,
     };
-    
+
     statusBreakdown.forEach(item => {
       const status = item._id || 'ongoing';
       if (statusMap.hasOwnProperty(status)) {
         statusMap[status] = item.cnt;
       }
     });
-  
+
     return {
       totalStories,
       publishedStories,

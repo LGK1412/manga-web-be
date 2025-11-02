@@ -7,7 +7,8 @@ import type { CreateImageChapterDto } from "./dto/create-image-chapter.dto"
 import * as fs from "fs"
 import * as path from "path"
 import sharp from "sharp"
-import type { Express } from "express"
+import { EventEmitter2 } from "@nestjs/event-emitter"
+import { Manga, MangaDocument } from "src/schemas/Manga.schema"
 
 @Injectable()
 export class ImageChapterService {
@@ -16,6 +17,8 @@ export class ImageChapterService {
     private imageChapterModel: Model<ImageChapterDocument>,
     @InjectModel(Chapter.name)
     private chapterModel: Model<ChapterDocument>,
+    @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
+    private readonly eventEmitter: EventEmitter2,
   ) { }
 
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
@@ -128,6 +131,14 @@ export class ImageChapterService {
         images: savedImages,
         is_completed: is_completed ?? false,
       })
+
+      // Emit
+      const manga = await this.mangaModel.findById(manga_id).select("authorId");
+      if (manga && manga.authorId) {
+        this.eventEmitter.emit("chapter_create_count", { userId: manga.authorId.toString() });
+      } else {
+        console.warn("Không tìm thấy authorId cho manga:", manga_id);
+      }
     }
 
     return { chapter, imageChapter }

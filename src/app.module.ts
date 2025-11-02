@@ -27,6 +27,9 @@ import { EmojiPackModule } from './emoji-pack/emoji-pack.module';
 import { EmojiModule } from './emoji/emoji.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
+import { DonationModule } from './donation/donation.module';
+import { AchievementModule } from './achievement/achievement.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 
 @Module({
@@ -66,6 +69,7 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
         },
       }),
     }),
+    EventEmitterModule.forRoot(),
 
     UserModule,
     AuthModule,
@@ -90,6 +94,8 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
     EmojiModule,
     PoliciesModule,
     ReportModule,
+    DonationModule,
+    AchievementModule,
     SpellCheckModule,
   ],
   providers: [],
