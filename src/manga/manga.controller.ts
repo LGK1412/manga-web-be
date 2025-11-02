@@ -91,9 +91,26 @@ export class MangaController {
     return this.mangaService.topStories(l, by);
   }
 
+  @Get('random')
+  async getRandom() {
+    const randomManga = await this.mangaService.getRandomManga();
+
+    if (!randomManga) {
+      throw new NotFoundException('Không tìm thấy truyện nào');
+    }
+
+    return randomManga;
+  }
+
+
   @Get(':authorId')
   async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
     return await this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
+  }
+
+  @Get('author/:authorId/stats')
+  async getAuthorStats(@Param('authorId') authorId: string) {
+    return this.mangaService.authorStats(new Types.ObjectId(authorId));
   }
 
   @Post(':id')
@@ -194,4 +211,3 @@ export class MangaController {
     return data;
   }
 }
-

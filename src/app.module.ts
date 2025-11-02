@@ -27,6 +27,7 @@ import { EmojiPackModule } from './emoji-pack/emoji-pack.module';
 import { EmojiModule } from './emoji/emoji.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
+import { SpellCheckModule } from './spellcheck/spellcheck.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { ReportModule } from './report/report.module';
     EmojiModule,
     PoliciesModule,
     ReportModule,
+    SpellCheckModule,
   ],
   providers: [],
 })

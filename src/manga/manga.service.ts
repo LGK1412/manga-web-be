@@ -498,4 +498,129 @@ export class MangaService {
     status: m.status || 'ongoing',
   }));
 }
+
+  async getRandomManga() {
+    const pipeline: any[] = [
+      {
+        $match: {
+          isDeleted: false,
+          isPublish: true,
+        },
+      },
+      {
+        $lookup: {
+          from: 'chapters',
+          let: { mangaId: '$_id'},
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$manga_id', '$$mangaId']},
+                    { $ne: ['$isDeleted', true]},
+                    { $eq: ['$is_published', true]},
+                  ],
+                },
+              },
+            },
+          ],
+          as: '_chapters',
+        },
+      },
+      {
+        $match: {
+          '_chapters.0': { $exists: true },
+        },
+      },
+      {
+        $sample: { size: 1},
+      },
+
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+        },
+      },
+    ];
+
+    const [result] = await this.mangaModel
+    .aggregate(pipeline)
+    .allowDiskUse(true)
+    .exec();
+
+    if (result) {
+      return {
+        _id: result._id.toString(),
+        title: result.title,
+      }
+    }
+    return null;
+  }
+
+  async authorStats(authorId: Types.ObjectId) {
+    const mangaIds = await this.mangaModel
+      .find({ authorId, isDeleted: false })
+      .select('_id')
+      .lean();
+    
+    const mangaIdList = mangaIds.map(m => m._id);
+  
+    if (mangaIdList.length === 0) {
+      return {
+        totalStories: 0,
+        publishedStories: 0,
+        totalViews: 0,
+        totalChapters: 0,
+        avgViewsPerStory: 0,
+        statusBreakdown: {
+          ongoing: 0,
+          completed: 0,
+          hiatus: 0,
+        },
+      };
+    }
+  
+    const [totalStories, publishedStories, totalViews, statusBreakdown] = await Promise.all([
+      this.mangaModel.countDocuments({ authorId, isDeleted: false }),
+      this.mangaModel.countDocuments({ authorId, isDeleted: false, isPublish: true }),
+      this.mangaModel.aggregate([
+        { $match: { authorId, isDeleted: false } },
+        { $group: { _id: null, total: { $sum: '$views' } } },
+      ]).then(res => res[0]?.total || 0),
+      this.mangaModel.aggregate([
+        { $match: { authorId, isDeleted: false } },
+        { $group: { _id: '$status', cnt: { $sum: 1 } } },
+      ]),
+    ]);
+  
+    const totalChapters = await this.chapterModel.countDocuments({
+      manga_id: { $in: mangaIdList },
+      is_published: true,
+    });
+  
+    const avgViewsPerStory = publishedStories > 0 ? Math.round(totalViews / publishedStories) : 0;
+  
+    const statusMap: any = {
+      ongoing: 0,
+      completed: 0,
+      hiatus: 0,
+    };
+    
+    statusBreakdown.forEach(item => {
+      const status = item._id || 'ongoing';
+      if (statusMap.hasOwnProperty(status)) {
+        statusMap[status] = item.cnt;
+      }
+    });
+  
+    return {
+      totalStories,
+      publishedStories,
+      totalViews,
+      totalChapters,
+      avgViewsPerStory,
+      statusBreakdown: statusMap,
+    };
+  }
 }

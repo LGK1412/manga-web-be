@@ -6,6 +6,7 @@ import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
 import { NotificationClient } from "src/notification-gateway/notification.client";
+import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 
 
 @Injectable()
@@ -559,9 +560,34 @@ export class UserService {
     const exists = user.following_authors.some((m: any) => m._id.equals(authorObjectId));
 
     if (exists) {
+      // UNFOLLOW - Không gửi notification
       updatedFollowing = user.following_authors.filter((m: any) => !m._id.equals(authorObjectId));
     } else {
+      // FOLLOW MỚI - Gửi notification cho author
       updatedFollowing = [...user.following_authors, authorObjectId];
+      
+      try {
+        const follower = await this.userModel.findById(decoded.user_id).select('username');
+        const author = await this.userModel.findById(authorId).select('device_id');
+        
+        if (follower && author) {
+          const notificationDto: sendNotificationDto = {
+            title: "Bạn có người theo dõi mới",
+            body: `${follower.username} đã theo dõi bạn`,
+            deviceId: author.device_id ?? [],
+            receiver_id: authorId,
+            sender_id: decoded.user_id
+          };
+
+          // Gửi notification
+          const sendNotiResult = await this.notificationClient.sendNotification(notificationDto);
+          
+          // Xóa các device token lỗi
+          await this.removeDeviceId(authorId, sendNotiResult);
+        }
+      } catch (error) {
+        console.error('Lỗi gửi notification follow:', error);
+      }
     }
 
     user.following_authors = updatedFollowing;
