@@ -15,11 +15,13 @@ import { Types } from 'mongoose';
 export class ChapterController {
   constructor(
     private readonly chapterService: ChapterServiceOnlyNormalChapterInfor,
-  ) {}
-  @Get()
+  ) { }
+
+  @Get("/")
   async getAllchapter() {
     return this.chapterService.getAllChapter();
   }
+  
   @Get(':id')
   async getChapterById(@Param('id') id: string) {
     return await this.chapterService.getChapterById(new Types.ObjectId(id));

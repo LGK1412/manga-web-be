@@ -210,4 +210,9 @@ export class MangaController {
     const data = await this.mangaService.findMangaDetail(id, userId);
     return data;
   }
+
+  @Patch('view/:id/increase')
+  async ViewCounter(@Req() req, @Param('id') id: Types.ObjectId) {
+    return await this.mangaService.ViewCounter(id);
+  }
 }

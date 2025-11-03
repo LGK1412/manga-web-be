@@ -628,4 +628,18 @@ export class MangaService {
       statusBreakdown: statusMap,
     };
   }
+
+  async ViewCounter(Id: Types.ObjectId) {
+    const chapter = await this.chapterModel.findById(Id).exec();
+    if (!chapter) {
+      throw new Error('Chapter not found');
+    }
+    return this.mangaModel
+      .findByIdAndUpdate(
+        chapter.manga_id,
+        { $inc: { views: 1 } },
+        { new: true },
+      )
+      .exec();
+  }
 }

@@ -32,7 +32,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
   }
   async getAllChapter() {
     // lọc soft-delete cho an toàn
-    return this.chapterModel.find({ isDeleted: false }).lean().exec();
+    return this.chapterModel.find({ isDeleted: {$ne: true} }).lean().exec();
   }
 
   async getChapterCompact(id: Types.ObjectId) {

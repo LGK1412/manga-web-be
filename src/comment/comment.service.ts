@@ -291,6 +291,4 @@ export class CommentService {
             return { success: true, message: "Đã downvote" };
         }
     }
-
-
 }
