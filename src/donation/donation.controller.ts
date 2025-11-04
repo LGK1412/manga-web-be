@@ -85,12 +85,18 @@ export class DonationController {
   }
 
   @Patch('mark-read')
-  async markAsRead(
-    @Req() req,
-    @Body() body: { donationIds?: string[] },
-  ) {
-    const userId = req.user?._id || req.user?.id;
-    return this.donationService.markAsRead(userId, body.donationIds);
+  async markAsRead(@Req() req, @Body() body: { donationIds?: string[]; id?: string }) {
+    const token = req.cookies?.['access_token'];
+    if (!token) {
+      throw new BadRequestException('Authentication required - No access token');
+    }
+
+    const payload: any = this.jwtService.verify(token);
+    const userId = payload.user_id;
+
+    const ids = body.donationIds || (body.id ? [body.id] : []);
+    return this.donationService.markAsRead(userId, ids);
   }
+
 }
 
