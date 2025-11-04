@@ -31,7 +31,7 @@ export class EmojiPackController {
         return true;
     }
 
-    @Get()
+    @Get("/")
     async getAllPack() {
         return await this.emojiPackService.getAllPack()
     }

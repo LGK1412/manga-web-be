@@ -52,7 +52,7 @@ export class EmojiPackService {
     }
 
     async getAllFreePack() {
-        return await this.emojiPackModel.find({ price: 0 }).populate("emojis");
+        return await this.emojiPackModel.find({ price: 0, is_hide: false }).populate("emojis");
     }
 
     async updateEmojiPack(
