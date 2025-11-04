@@ -60,4 +60,40 @@ export class AchievementService {
       reward: { point: rewardPoint, author_point: rewardAuthorPoint },
     };
   }
+
+  async syncUserAchievements(userId: string) {
+    // Lấy toàn bộ thành tựu đang hoạt động
+    const achievements = await this.achievementModel.find({ isActive: true }).lean();
+
+    // Lấy toàn bộ progress hiện tại của user
+    const existingProgress = await this.achievementProgressModel
+      .find({ userId: new Types.ObjectId(userId) })
+      .select("achievementId")
+      .lean();
+
+    const existingIds = new Set(
+      existingProgress.map((p) => p.achievementId.toString())
+    );
+
+    // Tìm những achievement mà user chưa có progress
+    const missingAchievements = achievements.filter(
+      (a) => !existingIds.has(a._id.toString())
+    );
+
+    if (missingAchievements.length > 0) {
+      const newProgresses = missingAchievements.map((a) => ({
+        userId: new Types.ObjectId(userId),
+        achievementId: a._id,
+        progressCount: 0,
+        isCompleted: false,
+        rewardClaimed: false,
+      }));
+
+      await this.achievementProgressModel.insertMany(newProgresses);
+      console.log(`🆕 Synced ${newProgresses.length} missing achievements for user ${userId}`);
+    }
+
+    return { synced: missingAchievements.length };
+  }
+
 }

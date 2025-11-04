@@ -81,11 +81,9 @@ export class DonationService {
     const platformFee = Math.floor(totalPrice * platformFeeRate);
     const receivedAuthorPoint = totalPrice - platformFee;
 
-    // Cộng điểm cho người nhận
     receiver.author_point = (receiver.author_point || 0) + receivedAuthorPoint;
     await receiver.save();
 
-    // Lưu bản ghi donation
     const donation = await this.donationModel.create({
       senderId: new Types.ObjectId(senderId),
       receiverId: new Types.ObjectId(receiverId),
@@ -111,9 +109,9 @@ export class DonationService {
 
     const donations = await this.donationModel
       .find({ receiverId: receiverObjectId })
-      .populate('senderId', 'username avatar') // Ai tặng
-      .populate('itemId', 'name price image rarity') // Quà gì
-      .sort({ createdAt: -1 }) // Mới nhất trước
+      .populate('senderId', 'username avatar')
+      .populate('itemId', 'name price image rarity')
+      .sort({ createdAt: -1 })
       .lean();
 
     return donations.map((donation) => ({

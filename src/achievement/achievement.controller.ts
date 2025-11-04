@@ -32,4 +32,15 @@ export class AchievementController {
     return this.achievementService.claimReward(userId, achievementId)
   }
 
+  @Post("sync")
+  async syncAchievement(@Req() req) {
+    const token = req.cookies['access_token'];
+    if (!token) {
+      throw new Error('Authentication required - No access token');
+    }
+
+    const payload: any = this.jwtService.verify(token);
+    const userId = payload.user_id;
+    return this.achievementService.syncUserAchievements(userId)
+  }
 }
