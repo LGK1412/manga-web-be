@@ -4,22 +4,14 @@ import { Model, Types } from 'mongoose'
 import { Report, ReportDocument } from '../schemas/Report.schema'
 import { User } from '../schemas/User.schema'
 
-// Define interfaces for populated target_id structures
+// === Interface definitions ===
 export interface MangaTarget {
   _id: Types.ObjectId
   title: string
   authorId: Types.ObjectId
-  summary?: string
-  coverImage?: string
   isPublish?: boolean
   isDeleted?: boolean
-  styles?: any[]
-  genres?: any[]
-  rating?: any[]
   status?: string
-  views?: number
-  createdAt?: Date
-  updatedAt?: Date
 }
 
 export interface ChapterTarget {
@@ -49,7 +41,7 @@ export interface ReportWithTargetDetail {
     role: string
   }
   target_type: string
-  target_id: MangaTarget | ChapterTarget | CommentTarget | null
+  target_id: MangaTarget | ChapterTarget | CommentTarget
   reason: string
   description: string
   status: string
@@ -60,8 +52,8 @@ export interface ReportWithTargetDetail {
   target_detail?: {
     title?: string | null
     content?: string | null
-    author?: {
-      authorId: Types.ObjectId | null
+    target_human?: {
+      user_Id: Types.ObjectId | null
       username: string
       email: string
     } | null
@@ -77,11 +69,15 @@ export class ReportService {
 
   // 🟢 Tạo report mới
   async create(dto: any) {
-    const created = await this.reportModel.create(dto)
-    return created
+    const payload = {
+      ...dto,
+      reporter_id: new Types.ObjectId(dto.reporter_id),
+      target_id: new Types.ObjectId(dto.target_id),
+    }
+    return await this.reportModel.create(payload)
   }
 
-  // 🟡 Lấy toàn bộ report, kèm populate reporter + chi tiết target
+  // 🟡 Lấy toàn bộ report, kèm populate reporter + chi tiết target + author/comment user info
   async findAll(): Promise<ReportWithTargetDetail[]> {
     const reports = await this.reportModel
       .find()
@@ -91,27 +87,30 @@ export class ReportService {
       })
       .populate({
         path: 'target_id',
+        select: 'title authorId content manga_id user_id isPublish isDeleted status',
         options: { strictPopulate: false },
       })
       .exec()
 
-    // 🧠 Hậu xử lý: thêm chi tiết (title + author/username/email) tuỳ loại
     const detailedReports = await Promise.all(
       reports.map(async (report) => {
-        const reportObj = report.toObject()
-        const reportAny = reportObj as unknown as ReportWithTargetDetail // Sử dụng assertion với unknown để bỏ qua kiểm tra overlap
+        // ✅ fix TS2352: cast qua unknown trước
+        const reportAny = report.toObject() as unknown as ReportWithTargetDetail
 
         try {
-          /** ===== 🟦 MANGA ===== */
-          if (report.target_type === 'Manga' && (reportAny.target_id as MangaTarget)?.authorId) {
+          // ✅ MANGA: thêm author info
+          if (report.target_type === 'Manga') {
+            const manga = reportAny.target_id as MangaTarget
             const author = await this.userModel
-              .findById((reportAny.target_id as MangaTarget).authorId)
+              .findById(manga.authorId)
               .select('username email')
+              .lean()
+
             reportAny.target_detail = {
-              title: (reportAny.target_id as MangaTarget).title,
-              author: author
+              title: manga.title,
+              target_human: author
                 ? {
-                    authorId: (reportAny.target_id as MangaTarget).authorId,
+                    user_Id: manga.authorId,
                     username: author.username,
                     email: author.email,
                   }
@@ -119,22 +118,29 @@ export class ReportService {
             }
           }
 
-          /** ===== 🟧 CHAPTER ===== */
-          else if (report.target_type === 'Chapter' && (reportAny.target_id as ChapterTarget)?.manga_id) {
+          // ✅ CHAPTER: thêm author info qua manga
+          else if (report.target_type === 'Chapter') {
+            const chapter = reportAny.target_id as ChapterTarget
+
+            // lấy manga theo manga_id
             const manga = await this.reportModel.db
               .collection('mangas')
               .findOne(
-                { _id: (reportAny.target_id as ChapterTarget).manga_id },
+                { _id: chapter.manga_id },
                 { projection: { title: 1, authorId: 1 } },
               )
 
-            if (manga && manga.authorId) {
-              const author = await this.userModel.findById(manga.authorId).select('username email')
+            if (manga) {
+              const author = await this.userModel
+                .findById(manga.authorId)
+                .select('username email')
+                .lean()
+
               reportAny.target_detail = {
-                title: manga.title,
-                author: author
+                title: chapter.title || manga.title,
+                target_human: author
                   ? {
-                      authorId: manga.authorId,
+                      user_Id: manga.authorId,
                       username: author.username,
                       email: author.email,
                     }
@@ -142,37 +148,44 @@ export class ReportService {
               }
             } else {
               reportAny.target_detail = {
-                title: manga?.title || null,
-                author: null,
+                title: chapter.title || null,
+                target_human: null,
               }
             }
           }
 
-          /** ===== 🟥 COMMENT ===== */
-          else if (report.target_type === 'Comment' && (reportAny.target_id as CommentTarget)?.user_id) {
+          // ✅ COMMENT: thêm info của user viết comment
+          else if (report.target_type === 'Comment') {
+            const comment = reportAny.target_id as CommentTarget
             const user = await this.userModel
-              .findById((reportAny.target_id as CommentTarget).user_id)
+              .findById(comment.user_id)
               .select('username email')
+              .lean()
+
             reportAny.target_detail = {
-              content: (reportAny.target_id as CommentTarget).content,
-              author: user
+              content: comment.content,
+              target_human: user
                 ? {
-                    authorId: (reportAny.target_id as CommentTarget).user_id,
+                    user_Id: comment.user_id,
                     username: user.username,
                     email: user.email,
                   }
                 : {
-                    authorId: null,
+                    // ✅ fix TS2322: dùng "as unknown as Types.ObjectId" để ép kiểu null an toàn
+                    user_Id: null as unknown as Types.ObjectId,
                     username: 'Unknown User',
                     email: 'No email available',
                   },
             }
-          } else {
-            reportAny.target_detail = { title: null, author: null }
+          }
+
+          // ⚫ fallback
+          else {
+            reportAny.target_detail = { title: null, target_human: null }
           }
         } catch (err) {
-          console.error('Populate detail error for report', report._id, ':', err.message)
-          reportAny.target_detail = { title: null, author: null }
+          console.error(`❌ Populate detail error for report ${report._id}:`, err.message)
+          reportAny.target_detail = { title: null, target_human: null }
         }
 
         return reportAny
@@ -198,12 +211,11 @@ export class ReportService {
 
     if (!report) throw new NotFoundException(`Report with id ${id} not found`)
 
-    // Reuse logic từ findAll để thêm target_detail
     const all = await this.findAll()
     return all.find((r) => String(r._id) === String(id)) || null
   }
 
-  // 🔵 Alias cho findById (controller đang gọi findOne)
+  // 🔵 Alias cho findById
   async findOne(id: string): Promise<ReportWithTargetDetail | null> {
     return this.findById(id)
   }
@@ -222,55 +234,54 @@ export class ReportService {
     return { message: 'Report deleted successfully', deleted }
   }
 
-  // == SUMMARY: tổng số report đang mở + số "new" trong 7 ngày gần nhất ==
-async getAdminSummary() {
-  const [open, new7d] = await Promise.all([
-    this.reportModel.countDocuments({ status: { $in: ["new", "in-progress"] } }),
-    this.reportModel.countDocuments({
-      status: "new",
-      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-    }),
-  ]);
-  return { open, new7d }; // FE sẽ hiển thị "open" + "+new7d"
-}
+  // == SUMMARY ==
+  async getAdminSummary() {
+    const [open, new7d] = await Promise.all([
+      this.reportModel.countDocuments({ status: { $in: ['new', 'in-progress'] } }),
+      this.reportModel.countDocuments({
+        status: 'new',
+        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      }),
+    ])
+    return { open, new7d }
+  }
 
-// == WEEKLY NEW REPORTS (last N weeks) ==
-async getWeeklyNew(weeks = 4) {
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() - weeks * 7);
+  // == WEEKLY ==
+  async getWeeklyNew(weeks = 4) {
+    const now = new Date()
+    const from = new Date(now)
+    from.setDate(from.getDate() - weeks * 7)
 
-  const rows = await this.reportModel.aggregate([
-    { $match: { createdAt: { $gte: from, $lte: now } } },
-    {
-      $group: {
-        _id: { y: { $isoWeekYear: "$createdAt" }, w: { $isoWeek: "$createdAt" } },
-        cnt: { $sum: 1 },
-      },
-    },
-    {
-      $project: {
-        _id: 0,
-        week: {
-          $concat: [
-            { $toString: "$_id.y" },
-            "-W",
-            {
-              $cond: [
-                { $lt: ["$_id.w", 10] },
-                { $concat: ["0", { $toString: "$_id.w" }] },
-                { $toString: "$_id.w" },
-              ],
-            },
-          ],
+    const rows = await this.reportModel.aggregate([
+      { $match: { createdAt: { $gte: from, $lte: now } } },
+      {
+        $group: {
+          _id: { y: { $isoWeekYear: '$createdAt' }, w: { $isoWeek: '$createdAt' } },
+          cnt: { $sum: 1 },
         },
-        value: "$cnt",
       },
-    },
-    { $sort: { week: 1 } },
-  ]);
+      {
+        $project: {
+          _id: 0,
+          week: {
+            $concat: [
+              { $toString: '$_id.y' },
+              '-W',
+              {
+                $cond: [
+                  { $lt: ['$_id.w', 10] },
+                  { $concat: ['0', { $toString: '$_id.w' }] },
+                  { $toString: '$_id.w' },
+                ],
+              },
+            ],
+          },
+          value: '$cnt',
+        },
+      },
+      { $sort: { week: 1 } },
+    ])
 
-  return rows; // [{ week: "2025-W41", value: 7 }, ...]
-}
-
+    return rows
+  }
 }

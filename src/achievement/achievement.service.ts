@@ -96,4 +96,18 @@ export class AchievementService {
     return { synced: missingAchievements.length };
   }
 
+  async syncAchievements() {
+    console.log('Bắt đầu đồng bộ thành tựu cho tất cả user & author...');
+
+    const users = await this.userModel.find({
+      role: { $in: ['user', 'author'] },
+    });
+
+    for (const user of users) {
+      await this.syncUserAchievements(user._id.toString());
+    }
+
+    console.log(`Đã đồng bộ thành tựu cho ${users.length} tài khoản.`);
+  }
+
 }

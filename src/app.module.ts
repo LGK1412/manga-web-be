@@ -1,20 +1,23 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MailerModule } from '@nestjs-modules/mailer';
+import { join } from 'path';
+
+// === Core modules ===
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
 import { GenreModule } from './genre/genre.module';
-
-import { MailerModule } from '@nestjs-modules/mailer';
-import { join } from 'path';
-import { ImageChapterModule } from './imageChapter/image-chapter.module';
-import { ChapterModule } from './textChapter/text-chapter.module';
 import { StylesModule } from './styles/styles.module';
+import { ChapterModule } from './textChapter/text-chapter.module';
+import { ImageChapterModule } from './imageChapter/image-chapter.module';
+import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.module';
+
+// === Business feature modules ===
 import { VnpayModule } from './vnpay/vnpay.module';
 import { TopupModule } from './topup/topup.module';
 import { CommentModule } from './comment/comment.module';
-import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.module';
 import { NotificationModule } from './notification-gateway/notification.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
 import { CatchGameModule } from './catch-game/catch-game.module';
@@ -29,14 +32,20 @@ import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
 import { DonationModule } from './donation/donation.module';
 import { AchievementModule } from './achievement/achievement.module';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
+import { AdminNotificationModule } from './admin-notification/admin-notification.module';
+
+// === Event Emitter ===
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
+    // ===== Global Config =====
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    // ===== MongoDB =====
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -45,6 +54,7 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
       }),
     }),
 
+    // ===== Mailer =====
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -63,14 +73,19 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
         },
         template: {
           dir: join(__dirname, 'templates-mail-send'),
-          adapter:
-            new (require('@nestjs-modules/mailer/dist/adapters/handlebars.adapter').HandlebarsAdapter)(),
+          adapter: new (
+            require('@nestjs-modules/mailer/dist/adapters/handlebars.adapter')
+              .HandlebarsAdapter
+          )(),
           options: { strict: true },
         },
       }),
     }),
+
+    // ===== Event Emitter (for Comment/Notification) =====
     EventEmitterModule.forRoot(),
 
+    // ===== Main Application Modules =====
     UserModule,
     AuthModule,
     MangaModule,
@@ -78,10 +93,12 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
     StylesModule,
     ChapterModule,
     ImageChapterModule,
+    ChapterServiceOnlyNormalChapterInforModule,
+
+    // ===== Features =====
     VnpayModule,
     TopupModule,
     CommentModule,
-    ChapterServiceOnlyNormalChapterInforModule,
     NotificationModule,
     WithdrawModule,
     CatchGameModule,
@@ -97,7 +114,8 @@ import { SpellCheckModule } from './spellcheck/spellcheck.module';
     DonationModule,
     AchievementModule,
     SpellCheckModule,
+    AdminNotificationModule,
   ],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

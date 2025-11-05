@@ -301,4 +301,17 @@ export class ChapterServiceOnlyNormalChapterInfor {
       .lean()
       .exec();
   }
+
+  // ---------------- [31/10/2025] FIX: dùng cho controller mới ----------------
+    async findChaptersByMangaId(mangaId: string) {
+      if (!Types.ObjectId.isValid(mangaId)) {
+        throw new BadRequestException('mangaId không hợp lệ');
+      }
+      return this.chapterModel
+        .find({ manga_id: new Types.ObjectId(mangaId), isDeleted: { $ne: true } })
+        .select('_id title manga_id')
+        .sort({ order: 1, createdAt: 1 })
+        .lean()
+        .exec();
+    }
 }

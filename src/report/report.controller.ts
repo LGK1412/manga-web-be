@@ -20,7 +20,7 @@ export class ReportController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.reportsService.findOne(id) // ✅ đổi findById → findOne
+    return this.reportsService.findOne(id) 
   }
 
   @Put(':id')

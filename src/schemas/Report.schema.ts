@@ -28,7 +28,7 @@ export class Report {
   /** ⚠️ Lý do báo cáo */
   @Prop({
     type: String,
-    enum: ['Spam', 'Copyright', 'Inappropriate', 'Harassment', 'Other'],
+     enum: ['Spam', 'Copyright', 'Inappropriate', 'Harassment', 'Offense', 'Other'],
     required: true,
   })
   reason: string
@@ -56,8 +56,24 @@ export class Report {
 
 export const ReportSchema = SchemaFactory.createForClass(Report)
 
-ReportSchema.set('toJSON', { virtuals: true })
-ReportSchema.set('toObject', { virtuals: true })
+ReportSchema.set('toJSON', {
+  virtuals: true,
+  versionKey: false,
+  transform: function (doc, ret: any) {
+    delete ret.id; // ✅ không lỗi nữa
+    return ret;
+  },
+});
+
+ReportSchema.set('toObject', {
+  virtuals: true,
+  versionKey: false,
+  transform: function (doc, ret: any) {
+    delete ret.id;
+    return ret;
+  },
+});
+
 
 /** 🧩 Virtual field: hiển thị mã report (RPT-XXXXXX) */
 ReportSchema.virtual('reportCode').get(function () {
