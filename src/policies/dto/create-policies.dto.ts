@@ -1,15 +1,30 @@
 import { IsString, IsEnum, IsOptional, IsBoolean, IsDateString } from 'class-validator';
 
+export enum MainType {
+  TERM = 'TERM',
+  PRIVACY = 'PRIVACY',
+}
+
+export enum StatusType {
+  Draft = 'Draft',
+  Active = 'Active',
+  Archived = 'Archived',
+}
+
 export class CreatePoliciesDto {
   @IsString()
   title: string;
 
   @IsString()
-  @IsOptional() // ✅ Cho phép không gửi slug
+  @IsOptional()
   slug?: string;
 
-  @IsEnum(['Policy', 'Terms', 'Guidelines', 'Internal'])
-  type: string;
+  @IsEnum(MainType)
+  mainType: MainType;
+
+  @IsString()
+  @IsOptional()
+  subCategory?: 'posting' | 'comment' | 'account' | 'general' | 'data_usage';
 
   @IsString()
   @IsOptional()
@@ -18,9 +33,9 @@ export class CreatePoliciesDto {
   @IsString()
   content: string;
 
-  @IsEnum(['Draft', 'Active', 'Archived'])
+  @IsEnum(StatusType)
   @IsOptional()
-  status?: 'Draft' | 'Active' | 'Archived';
+  status?: StatusType;
 
   @IsBoolean()
   @IsOptional()

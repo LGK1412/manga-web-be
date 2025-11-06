@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 // === Core modules ===
 import { UserModule } from './user/user.module';
@@ -30,13 +31,12 @@ import { EmojiPackModule } from './emoji-pack/emoji-pack.module';
 import { EmojiModule } from './emoji/emoji.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
+
+// === Optional / Advanced Modules (giữ nếu có) ===
 import { DonationModule } from './donation/donation.module';
 import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 import { AdminNotificationModule } from './admin-notification/admin-notification.module';
-
-// === Event Emitter ===
-import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -85,7 +85,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     // ===== Event Emitter (for Comment/Notification) =====
     EventEmitterModule.forRoot(),
 
-    // ===== Main Application Modules =====
+    // ===== Core Modules =====
     UserModule,
     AuthModule,
     MangaModule,
@@ -95,7 +95,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ImageChapterModule,
     ChapterServiceOnlyNormalChapterInforModule,
 
-    // ===== Features =====
+    // ===== Business Features =====
     VnpayModule,
     TopupModule,
     CommentModule,
@@ -111,6 +111,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     EmojiModule,
     PoliciesModule,
     ReportModule,
+
+    // ===== Optional Advanced Features (uncomment if available) =====
     DonationModule,
     AchievementModule,
     SpellCheckModule,

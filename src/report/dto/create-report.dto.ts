@@ -15,7 +15,7 @@ export class CreateReportDto {
 
   /** ⚠️ Lý do report */
   @IsEnum(['Spam', 'Copyright', 'Inappropriate', 'Harassment', 'Offense', 'Other'])
-  reason: 'Spam' | 'Copyright' | 'Inappropriate' | 'Harassment' | 'Offense' | 'Other'
+  reason: 'Spam' | 'Copyright' | 'Inappropriate' | 'Harassment' | 'Offense' | 'Other';
 
   /** 📝 Mô tả chi tiết (tuỳ chọn) */
   @IsOptional()

@@ -14,7 +14,6 @@ export class NotificationClient {
     async sendGetNotiForUser(id: string) {
         return await firstValueFrom(this.notiClient.send({ cmd: 'get-all-noti-for-user' }, id));
     }
-
     async sendGetNotiForSender(id: string) {
         return await firstValueFrom(this.notiClient.send({ cmd: 'get-all-noti-for-sender' }, id));
     }// bữa mới thêm vô

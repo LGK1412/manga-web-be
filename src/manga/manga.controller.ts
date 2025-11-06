@@ -209,6 +209,12 @@ export class MangaController {
     const userId = await this.verifyToken(req);
     const data = await this.mangaService.findMangaDetail(id, userId);
     return data;
+  }z
+
+    // ====== GET ALL BASIC (no pagination) ======
+  @Get('/')
+  async getAllMangaBasic() {
+    return this.mangaService.getAllBasic();
   }
 
   @Patch('view/:id/increase')

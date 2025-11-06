@@ -3,9 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel, Schema } from '@nestjs/mongoose';
-import { isValidObjectId, Model, PipelineStage, Types } from 'mongoose';
-import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Chapter } from 'src/schemas/chapter.schema';
 import {
   UserChapterProgress,
   UserChapterProgressDocument,
@@ -14,6 +14,7 @@ import {
   UserStoryHistory,
   UserStoryHistoryDocument,
 } from 'src/schemas/UserStoryHistory.schema';
+
 @Injectable()
 export class ChapterServiceOnlyNormalChapterInfor {
   constructor(
@@ -24,23 +25,29 @@ export class ChapterServiceOnlyNormalChapterInfor {
     private historyModel: Model<UserStoryHistoryDocument>,
   ) {}
 
-  async getChapterById(id) {
+  async getChapterById(id: Types.ObjectId) {
     return this.chapterModel
       .findById(id)
       .populate({ path: 'manga_id', populate: { path: 'authorId' } })
       .lean();
   }
+
   async getAllChapter() {
-    // lọc soft-delete cho an toàn
-    return this.chapterModel.find({ isDeleted: {$ne: true} }).lean().exec();
+    // [31/10/2025] FIX: trước đây lọc { isDeleted: false } khiến trả []
+    // Dùng { isDeleted: { $ne: true } } để vẫn trả về bản ghi chưa có field isDeleted
+    // Đồng thời chỉ select field cần cho FE (dropdown)
+    return this.chapterModel
+      .find({ isDeleted: { $ne: true } })
+      // .select('_id title manga_id')
+      .lean()
+      .exec();
   }
 
   async getChapterCompact(id: Types.ObjectId) {
     const docs = await this.chapterModel
       .aggregate([
         { $match: { _id: id } },
-
-        // lấy text và image subdocs
+        // ... (giữ nguyên phần aggregate như bản của bạn)
         {
           $lookup: {
             from: 'textchapters',
@@ -57,16 +64,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
             as: 'imageDocs',
           },
         },
-
-        // chuẩn hóa: lấy phần tử đầu (giả định 1-1), fallback rỗng
-        {
-          $addFields: {
-            _text: { $first: '$texts' },
-            _image: { $first: '$imageDocs' },
-          },
-        },
-
-        // dựng fields gộp
+        { $addFields: { _text: { $first: '$texts' }, _image: { $first: '$imageDocs' } } },
         {
           $addFields: {
             content: { $ifNull: ['$_text.content', null] },
@@ -74,25 +72,11 @@ export class ChapterServiceOnlyNormalChapterInfor {
             type: {
               $switch: {
                 branches: [
-                  {
-                    case: {
-                      $gt: [{ $size: { $ifNull: ['$_image.images', []] } }, 0],
-                    },
-                    then: 'image',
-                  },
+                  { case: { $gt: [{ $size: { $ifNull: ['$_image.images', []] } }, 0] }, then: 'image' },
                   {
                     case: {
                       $and: [
-                        {
-                          $not: [
-                            {
-                              $gt: [
-                                { $size: { $ifNull: ['$_image.images', []] } },
-                                0,
-                              ],
-                            },
-                          ],
-                        },
+                        { $not: [{ $gt: [{ $size: { $ifNull: ['$_image.images', []] } }, 0] }] },
                         { $ne: ['$_text.content', null] },
                       ],
                     },
@@ -110,21 +94,12 @@ export class ChapterServiceOnlyNormalChapterInfor {
               $map: {
                 input: '$_imageFiles',
                 as: 'f',
-                in: {
-                  $concat: [
-                    '/uploads/image-chapters/',
-                    { $toString: '$_id' },
-                    '/',
-                    '$$f',
-                  ],
-                },
+                in: { $concat: ['/uploads/image-chapters/', { $toString: '$_id' }, '/', '$$f'] },
               },
             },
             image_count: { $size: '$_imageFiles' },
           },
         },
-
-        // loại bỏ rác
         {
           $project: {
             texts: 0,
@@ -141,6 +116,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
     if (!docs?.[0]) throw new NotFoundException('Chapter not found');
     return docs[0];
   }
+
   async checkChapterHaveNextOrPre(id: Types.ObjectId) {
     const cur = await this.chapterModel
       .findById(id)
@@ -149,14 +125,8 @@ export class ChapterServiceOnlyNormalChapterInfor {
     if (!cur) return { prevId: null, nextId: null };
 
     const [prev, next] = await Promise.all([
-      this.chapterModel
-        .findOne({ manga_id: cur.manga_id, order: cur.order - 1 })
-        .select('_id')
-        .lean(),
-      this.chapterModel
-        .findOne({ manga_id: cur.manga_id, order: cur.order + 1 })
-        .select('_id')
-        .lean(),
+      this.chapterModel.findOne({ manga_id: cur.manga_id, order: cur.order - 1 }).select('_id').lean(),
+      this.chapterModel.findOne({ manga_id: cur.manga_id, order: cur.order + 1 }).select('_id').lean(),
     ]);
 
     return {
@@ -164,6 +134,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
       nextId: next?._id ?? null,
     };
   }
+
   async getChapterList(id: Types.ObjectId) {
     const cur = await this.chapterModel.findById(id).select('manga_id').lean();
     if (!cur) return [];
@@ -174,13 +145,13 @@ export class ChapterServiceOnlyNormalChapterInfor {
       .select('_id order title is_published created_at updated_at')
       .lean();
   }
+
   // ================== CREATE & GET PROGRESS ==================
   async createChapterProgress(
     user_id: Types.ObjectId,
     chapter_id: Types.ObjectId,
     progressPercent: number,
   ) {
-    // ✅ Cập nhật tiến trình chapter
     const chapterProgress = await this.progressModel
       .findOneAndUpdate(
         { user_id, chapter_id },
@@ -191,30 +162,19 @@ export class ChapterServiceOnlyNormalChapterInfor {
             is_completed: progressPercent >= 100,
           },
         },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-          runValidators: true,
-        },
+        { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
       )
       .lean()
       .exec();
 
-    // ✅ Lấy story_id từ chapter
     const chapter = await this.chapterModel.findById(chapter_id).lean();
     if (!chapter?.manga_id) return chapterProgress;
 
-    // ✅ Cập nhật lịch sử đọc (UserStoryHistory)
     await this.historyModel
       .findOneAndUpdate(
         { user_id, story_id: chapter.manga_id },
         {
-          $set: {
-            last_read_chapter: chapter_id,
-            last_read_at: new Date(),
-          },
-          // Chỉ update overall_progress khi có progress của chapter
+          $set: { last_read_chapter: chapter_id, last_read_at: new Date() },
           $max: { overall_progress: progressPercent },
         },
         { upsert: true, new: true },
@@ -229,7 +189,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
     chapter_id: Types.ObjectId,
   ) {
     const now = new Date();
-    const progress = await this.progressModel
+    return this.progressModel
       .findOneAndUpdate(
         { user_id, chapter_id },
         { $set: { last_read_at: now } },
@@ -237,8 +197,6 @@ export class ChapterServiceOnlyNormalChapterInfor {
       )
       .lean()
       .exec();
-
-    return progress;
   }
 
   // ================== CREATE & GET HISTORY ==================
@@ -254,12 +212,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
     return this.historyModel
       .findOneAndUpdate(
         { user_id, story_id },
-        {
-          $set: {
-            last_read_chapter: latestProgress.chapter_id,
-            last_read_at: latestProgress.last_read_at,
-          },
-        },
+        { $set: { last_read_chapter: latestProgress.chapter_id, last_read_at: latestProgress.last_read_at } },
         { new: true, upsert: true },
       )
       .lean()
@@ -276,42 +229,36 @@ export class ChapterServiceOnlyNormalChapterInfor {
       .lean()
       .exec();
   }
-  async deleteStoryHistory(userId: Types.ObjectId, storyId: Types.ObjectId) {
-    const result = await this.historyModel.deleteOne({
-      user_id: userId,
-      story_id: storyId,
-    });
 
+  async deleteStoryHistory(userId: Types.ObjectId, storyId: Types.ObjectId) {
+    const result = await this.historyModel.deleteOne({ user_id: userId, story_id: storyId });
     if (result.deletedCount === 0) {
       return { message: 'No history found for this user and story' };
     }
-
     return { message: 'History deleted successfully' };
   }
+
   async getReadingHistoryListByUser(user_id: Types.ObjectId) {
     return this.historyModel
       .find({ user_id })
       .populate({
         path: 'last_read_chapter',
-        populate: {
-          path: 'manga_id',
-          select: 'coverImage',
-        },
+        populate: { path: 'manga_id', select: 'coverImage' },
       })
       .lean()
       .exec();
   }
 
   // ---------------- [31/10/2025] FIX: dùng cho controller mới ----------------
-    async findChaptersByMangaId(mangaId: string) {
-      if (!Types.ObjectId.isValid(mangaId)) {
-        throw new BadRequestException('mangaId không hợp lệ');
-      }
-      return this.chapterModel
-        .find({ manga_id: new Types.ObjectId(mangaId), isDeleted: { $ne: true } })
-        .select('_id title manga_id')
-        .sort({ order: 1, createdAt: 1 })
-        .lean()
-        .exec();
+  async findChaptersByMangaId(mangaId: string) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('mangaId không hợp lệ');
     }
+    return this.chapterModel
+      .find({ manga_id: new Types.ObjectId(mangaId), isDeleted: { $ne: true } })
+      .select('_id title manga_id')
+      .sort({ order: 1, createdAt: 1 })
+      .lean()
+      .exec();
+  }
 }

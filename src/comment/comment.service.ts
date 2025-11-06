@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Comment } from 'src/schemas/comment.schema';
@@ -25,6 +25,7 @@ export class CommentService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
+  // ================== VALIDATION ==================
   private async checkUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
     if (!existingUser) throw new BadRequestException('Người dùng không tồn tại');
@@ -35,47 +36,67 @@ export class CommentService {
     return existingUser;
   }
 
+  // ================== CREATE COMMENT ==================
   async createCommentChapter(createCommentDto: CreateCommentDTO, payload: any) {
     const existingUser = await this.checkUser(payload);
 
+    // ✅ Validate & ép kiểu chapter_id
+    if (!Types.ObjectId.isValid(createCommentDto.chapter_id)) {
+      throw new BadRequestException('chapter_id không hợp lệ');
+    }
+    const chapterId = new Types.ObjectId(createCommentDto.chapter_id);
+
     const newComment = new this.commentModel({
-      chapter_id: new Types.ObjectId(createCommentDto.chapter_id),
+      chapter_id: chapterId,
       user_id: new Types.ObjectId(payload.user_id),
       content: createCommentDto.content,
     });
 
     const savedComment = await newComment.save();
-
     if (!savedComment?._id)
       throw new BadRequestException('Lỗi không tạo được comment');
 
-    const chapter = await this.chapterService.getChapterById(
-      createCommentDto.chapter_id,
-    );
+    // ✅ Lấy thông tin chapter + manga + author
+    const chapter = await this.chapterService.getChapterById(chapterId);
+    if (!chapter) throw new BadRequestException('Chapter không tồn tại');
+
     const manga = await this.mangaService.getAuthorByMangaIdForCommentChapter(
-      chapter?.manga_id._id,
+      (chapter as any)?.manga_id?._id?.toString?.() ??
+        (chapter as any)?.manga_id?.toString?.(),
     );
-    const author = await this.userService.getUserById(manga?.authorId);
+    const author = manga
+      ? await this.userService.getUserById(manga?.authorId)
+      : null;
 
-    const dto: sendNotificationDto = {
-      title: 'Có 1 comment mới',
-      body: `${payload.username} đã comment vào Chapter ${chapter?.title} của Truyện: ${manga?.title}`,
-      deviceId: author?.device_id ?? [],
-      receiver_id: manga?.authorId._id as unknown as string,
-      sender_id: payload.user_id,
-    };
+    // ✅ Gửi notification
+    if (author) {
+      const dto: sendNotificationDto = {
+        title: 'Có 1 comment mới',
+        body: `${payload.username} đã comment vào Chapter ${chapter?.title} của Truyện: ${manga?.title}`,
+        deviceId: author?.device_id ?? [],
+        receiver_id:
+          (manga?.authorId as any)?._id?.toString?.() ??
+          (manga?.authorId as any)?.toString?.(),
+        sender_id: payload.user_id,
+      };
 
-    this.eventEmitter.emit('comment_count', { userId: payload.user_id });
+      // Emit event để cập nhật realtime
+      this.eventEmitter.emit('comment_count', { userId: payload.user_id });
 
-    const send_noti_result = await this.notificationClient.sendNotification(dto);
-    await this.userService.removeDeviceId(
-      manga?.authorId as unknown as string,
-      send_noti_result,
-    );
+      const send_noti_result = await this.notificationClient.sendNotification(
+        dto,
+      );
+      await this.userService.removeDeviceId(
+        ((manga?.authorId as any)?._id?.toString?.() ??
+          (manga?.authorId as any)?.toString?.()) as string,
+        send_noti_result,
+      );
+    }
 
     return { success: true };
   }
 
+  // ================== COMMENT QUERY ==================
   async getAllCommentForChapter(chapterId: string, payload: any) {
     const userId = payload?.user_id || null;
 
@@ -202,7 +223,6 @@ export class CommentService {
     ]);
 
     const replyMap = await this.replyService.getReplyCountByChapter(chapterId);
-
     return comments.map((c) => ({
       ...c,
       replyCount: replyMap[c._id.toString()]?.replyCount || 0,
@@ -210,6 +230,7 @@ export class CommentService {
     }));
   }
 
+  // ================== VOTE ==================
   async upVote(comment_id: string, payload: any) {
     await this.checkUser(payload);
 
@@ -272,8 +293,7 @@ export class CommentService {
     }
   }
 
-  // ===== ADMIN =====
-
+  // ================== ADMIN ==================
   async getAllComments() {
     return await this.commentModel
       .find()

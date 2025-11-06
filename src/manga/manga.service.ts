@@ -11,7 +11,10 @@ import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
 import { GenreService } from '../genre/genre.service';
 import { Chapter, ChapterDocument } from 'src/schemas/chapter.schema';
-import { ChapterPurchase, ChapterPurchaseDocument } from 'src/schemas/chapter-purchase.schema';
+import {
+  ChapterPurchase,
+  ChapterPurchaseDocument,
+} from 'src/schemas/chapter-purchase.schema';
 import { Rating, RatingDocument } from '../schemas/Rating.schema';
 import { startOfMonth, subMonths } from 'date-fns';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -23,21 +26,22 @@ export class MangaService {
     private stylesService: StylesService,
     private genreService: GenreService,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
-    @InjectModel(ChapterPurchase.name) private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
+    @InjectModel(ChapterPurchase.name)
+    private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
     @InjectModel(Rating.name) private ratingModel: Model<RatingDocument>,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
+
+  // ====================== CRUD ======================
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
     try {
-      // Kiểm tra styles có bị hide không
-      if (createMangaDto.styles && createMangaDto.styles.length > 0) {
+      // Validate styles
+      if (createMangaDto.styles?.length) {
         for (const styleId of createMangaDto.styles) {
           const style = await this.stylesService.findById(styleId.toString());
           if (!style) {
-            throw new BadRequestException(
-              `Style với ID ${styleId} không tồn tại`,
-            );
+            throw new BadRequestException(`Style với ID ${styleId} không tồn tại`);
           }
           if (style.status === 'hide') {
             throw new BadRequestException(
@@ -47,16 +51,12 @@ export class MangaService {
         }
       }
 
-      // Kiểm tra genres có bị hide không
-      if (createMangaDto.genres && createMangaDto.genres.length > 0) {
+      // Validate genres
+      if (createMangaDto.genres?.length) {
         for (const genreId of createMangaDto.genres) {
-          const genre = await this.genreService.getGenreById(
-            genreId.toString(),
-          );
+          const genre = await this.genreService.getGenreById(genreId.toString());
           if (!genre) {
-            throw new BadRequestException(
-              `Genre với ID ${genreId} không tồn tại`,
-            );
+            throw new BadRequestException(`Genre với ID ${genreId} không tồn tại`);
           }
           if (genre.status === 'hide') {
             throw new BadRequestException(
@@ -70,15 +70,14 @@ export class MangaService {
         ...createMangaDto,
         authorId,
       });
-      // Emit
-      this.eventEmitter.emit("story_create_count", { userId: authorId })
+
+      // Emit thống kê khi tạo truyện
+      this.eventEmitter.emit('story_create_count', { userId: authorId });
 
       return await newManga.save();
     } catch (error) {
       console.error('Error creating manga:', error);
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
+      if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('Không thể tạo manga mới');
     }
   }
@@ -92,14 +91,12 @@ export class MangaService {
       throw new BadRequestException('ID manga không hợp lệ');
     }
 
-    // Kiểm tra styles có bị hide không (nếu có update styles)
-    if (updateMangaDto.styles && updateMangaDto.styles.length > 0) {
+    // Validate styles nếu có
+    if (updateMangaDto.styles?.length) {
       for (const styleId of updateMangaDto.styles) {
         const style = await this.stylesService.findById(styleId.toString());
         if (!style) {
-          throw new BadRequestException(
-            `Style với ID ${styleId} không tồn tại`,
-          );
+          throw new BadRequestException(`Style với ID ${styleId} không tồn tại`);
         }
         if (style.status === 'hide') {
           throw new BadRequestException(
@@ -119,11 +116,11 @@ export class MangaService {
         'Không thể cập nhật manga hoặc manga không tồn tại',
       );
     }
-    const updatedManga = await this.mangaModel
+
+    return this.mangaModel
       .findById(id)
       .populate('genres', 'name')
       .populate('styles', 'name');
-    return updatedManga;
   }
 
   async deleteManga(id: string, authorId: Types.ObjectId) {
@@ -132,7 +129,6 @@ export class MangaService {
     }
 
     const result = await this.mangaModel.deleteOne({ _id: id, authorId });
-
     if (result.deletedCount === 0) {
       throw new BadRequestException(
         'Không thể xóa manga hoặc manga không tồn tại',
@@ -140,20 +136,6 @@ export class MangaService {
     }
 
     return { success: true, message: 'Xóa manga thành công' };
-  }
-
-  async getAllMangasByAuthor(authorId: Types.ObjectId) {
-    const mangas = await this.mangaModel
-      .find({ authorId })
-      .populate('genres', 'name')
-      .populate('styles', 'name')
-      .sort({ createdAt: -1 });
-
-    if (!mangas || mangas.length === 0) {
-      return [];
-    }
-
-    return mangas;
   }
 
   async toggleDelete(id: string, authorId: Types.ObjectId) {
@@ -174,12 +156,24 @@ export class MangaService {
       { $set: { isDeleted: nextDeleted } },
     );
 
-    const updated = await this.mangaModel
+    return this.mangaModel
       .findById(id)
       .populate('genres', 'name')
       .populate('styles', 'name');
-    return updated;
   }
+
+  // ====================== LISTING & DETAIL ======================
+
+  async getAllMangasByAuthor(authorId: Types.ObjectId) {
+    const mangas = await this.mangaModel
+      .find({ authorId })
+      .populate('genres', 'name')
+      .populate('styles', 'name')
+      .sort({ createdAt: -1 });
+
+    return mangas ?? [];
+  }
+
   async getAllManga(page = 1, limit = 24) {
     const skip = (page - 1) * limit;
 
@@ -191,7 +185,7 @@ export class MangaService {
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // Chapters public gần nhất (đổi field cho đúng schema của bạn)
+      // Chapters public gần nhất (theo schema chapter: manga_id, is_published, isDeleted)
       {
         $lookup: {
           from: 'chapters',
@@ -201,9 +195,9 @@ export class MangaService {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ['$mangaId', '$$mangaId'] }, // đổi thành '$manga_id' nếu schema snake_case
+                    { $eq: ['$manga_id', '$$mangaId'] },
                     { $ne: ['$isDeleted', true] },
-                    { $eq: ['$isPublished', true] }, // đổi thành '$is_published'
+                    { $eq: ['$is_published', true] },
                   ],
                 },
               },
@@ -215,7 +209,7 @@ export class MangaService {
         },
       },
 
-      // Styles (manga.styles là mảng ObjectId)
+      // Styles
       {
         $lookup: {
           from: 'styles',
@@ -225,7 +219,7 @@ export class MangaService {
         },
       },
 
-      // Genres (manga.genres là mảng ObjectId)
+      // Genres
       {
         $lookup: {
           from: 'genres',
@@ -235,17 +229,16 @@ export class MangaService {
         },
       },
 
-      // Ratings (nếu có)
+      // Ratings (Rating schema dùng mangaId)
       {
         $lookup: {
           from: 'ratings',
           localField: '_id',
-          foreignField: 'mangaId', // Sửa từ 'storyId' thành 'mangaId'
+          foreignField: 'mangaId',
           as: 'ratings',
         },
       },
 
-      // Tổng hợp field chuẩn
       {
         $addFields: {
           chapters_count: { $size: '$_chapters' },
@@ -268,7 +261,6 @@ export class MangaService {
         },
       },
 
-      // Chọn field trả về
       {
         $project: {
           _id: 1,
@@ -276,17 +268,15 @@ export class MangaService {
           slug: 1,
           authorId: 1,
           summary: 1,
-          coverImage: 1, // <- frontend sẽ map coverImage thành coverUrl
+          coverImage: 1,
           isPublish: 1,
           status: 1,
           views: 1,
           follows: 1,
           createdAt: 1,
           updatedAt: 1,
-
           styles: 1,
           genres: 1,
-
           rating_avg: { $ifNull: ['$rating_avg', 0] },
           chapters_count: 1,
           'latest_chapter.title': 1,
@@ -295,10 +285,8 @@ export class MangaService {
         },
       },
 
-      // Sắp xếp mới cập nhật (client vẫn có thể sort lại view/follow local)
       { $sort: { updatedAt: -1 } },
 
-      // Phân trang + total trong 1 lần query
       {
         $facet: {
           data: [{ $skip: skip }, { $limit: limit }],
@@ -313,15 +301,14 @@ export class MangaService {
       },
     ];
 
-    const [res] = await this.mangaModel
-      .aggregate(pipeline)
-      .allowDiskUse(true)
-      .exec();
+    const [res] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
   async findMangaDetail(mangaId: string, userId: string): Promise<any> {
-    if (!Types.ObjectId.isValid(mangaId)) throw new NotFoundException('Manga not found');
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new NotFoundException('Manga not found');
+    }
 
     const manga = await this.mangaModel
       .findById(mangaId)
@@ -330,22 +317,23 @@ export class MangaService {
 
     if (!manga) throw new NotFoundException('Manga not found');
 
-    // Lấy danh sách chapter đã publish
+    // Chapters đã publish
     const chapters = await this.chapterModel
       .find({ manga_id: new Types.ObjectId(mangaId), is_published: true })
       .sort({ order: 1 })
       .select('_id title order price')
       .lean();
 
+    // Các chapter user đã mua
     let purchasedChapterIds: string[] = [];
     if (userId) {
       const purchases = await this.chapterPurchaseModel
         .find({ userId: new Types.ObjectId(userId) })
         .select('chapterId');
-      purchasedChapterIds = purchases.map(p => p.chapterId.toString());
+      purchasedChapterIds = purchases.map((p) => p.chapterId.toString());
     }
 
-    const chaptersWithPurchase = chapters.map(c => {
+    const chaptersWithPurchase = chapters.map((c) => {
       const purchased = purchasedChapterIds.includes(c._id.toString());
       const isFree = c.price === 0;
       return {
@@ -354,14 +342,23 @@ export class MangaService {
         locked: !isFree && !purchased,
       };
     });
-    // Tính summary rating ở đây
+
+    // Summary rating
     const summaryAgg = await this.ratingModel.aggregate([
       { $match: { mangaId: new Types.ObjectId(mangaId) } },
-      { $group: { _id: '$mangaId', count: { $sum: 1 }, avgRating: { $avg: '$rating' } } },
-    ])
-    const ratingSummary = summaryAgg[0] ? { count: summaryAgg[0].count, avgRating: summaryAgg[0].avgRating } : { count: 0, avgRating: 0 }
+      {
+        $group: {
+          _id: '$mangaId',
+          count: { $sum: 1 },
+          avgRating: { $avg: '$rating' },
+        },
+      },
+    ]);
 
-    // Trả về dữ liệu gộp
+    const ratingSummary = summaryAgg[0]
+      ? { count: summaryAgg[0].count, avgRating: summaryAgg[0].avgRating }
+      : { count: 0, avgRating: 0 };
+
     return {
       _id: manga._id.toString(),
       title: manga.title,
@@ -375,20 +372,31 @@ export class MangaService {
     };
   }
 
-  // lấy thông tin manga + author cho comment chapter
-  async getAuthorByMangaIdForCommentChapter(id) {
-    return this.mangaModel.findById(id).populate("authorId").exec()
+  // FE cần list cơ bản (id + title)
+  async getAllBasic() {
+    const mangas = await this.mangaModel
+      .find({ isDeleted: false, isPublish: true })
+      .select('_id title')
+      .sort({ title: 1 })
+      .lean();
+    return mangas;
   }
 
-  // ===== SUMMARY CHO CARD =====
+  // Lấy thông tin manga + author cho luồng comment chapter
+  async getAuthorByMangaIdForCommentChapter(id: string | Types.ObjectId) {
+    return this.mangaModel.findById(id).populate('authorId').exec();
+  }
+
+  // ====================== DASHBOARD / STATS ======================
+
   async adminSummary() {
     const [totals, byMonth] = await Promise.all([
-      this.mangaModel.countDocuments({ isDeleted: false }), // tổng tất cả (publish lẫn unpublish nếu muốn)
+      this.mangaModel.countDocuments({ isDeleted: false }),
       this.mangaModel.aggregate([
         {
           $match: {
             createdAt: {
-              $gte: startOfMonth(subMonths(new Date(), 1)), // 1 tháng trước đến nay để lấy MoM
+              $gte: startOfMonth(subMonths(new Date(), 1)),
             },
             isDeleted: { $ne: true },
           },
@@ -406,23 +414,22 @@ export class MangaService {
       ]),
     ]);
 
-    // tách current month vs previous month
     const now = new Date();
     const curY = now.getFullYear();
     const curM = now.getMonth() + 1;
 
-    let cur = 0, prev = 0;
+    let cur = 0,
+      prev = 0;
     for (const row of byMonth) {
       const { y, m } = row._id;
       if (y === curY && m === curM) cur = row.cnt;
-      // previous month:
+
       const prevDate = subMonths(new Date(curY, curM - 1, 1), 1);
       if (y === prevDate.getFullYear() && m === prevDate.getMonth() + 1) prev = row.cnt;
     }
 
     const deltaPctMoM = prev === 0 ? (cur > 0 ? 100 : 0) : ((cur - prev) / prev) * 100;
 
-    // breakdown publish & status (nếu muốn hiển thị thêm)
     const [published, statusAgg] = await Promise.all([
       this.mangaModel.countDocuments({ isDeleted: false, isPublish: true }),
       this.mangaModel.aggregate([
@@ -444,7 +451,6 @@ export class MangaService {
     };
   }
 
-  // ===== CHART TĂNG TRƯỞNG THEO THÁNG =====
   async monthlyGrowth(months = 6) {
     const from = startOfMonth(subMonths(new Date(), months - 1));
     const rows = await this.mangaModel.aggregate([
@@ -463,7 +469,6 @@ export class MangaService {
       { $sort: { '_id.y': 1, '_id.m': 1 } },
     ]);
 
-    // map thành mảng đủ số tháng (kể cả tháng không có dữ liệu)
     const out: { month: string; stories: number }[] = [];
     for (let i = months - 1; i >= 0; i--) {
       const d = subMonths(new Date(), i);
@@ -471,7 +476,7 @@ export class MangaService {
       const m = d.getMonth() + 1;
       const key = rows.find((r) => r._id.y === y && r._id.m === m);
       out.push({
-        month: `${y}-${String(m).padStart(2, '0')}`, // ví dụ "2025-10"
+        month: `${y}-${String(m).padStart(2, '0')}`,
         stories: key?.stories || 0,
       });
     }
@@ -479,17 +484,13 @@ export class MangaService {
     return out;
   }
 
-  // ===== TOP STORIES =====
   async topStories(limit = 5, by: 'views' | 'recent' = 'views') {
-    // const sort = by === 'recent' ? { createdAt: -1 } : { views: -1 }; // ❌ gây lỗi TS
-
-    // ✅ Cách 1: tạo field trước rồi map vào object
     const sortField = by === 'recent' ? 'createdAt' : 'views';
     const sortObj: Record<string, 1 | -1> = { [sortField]: -1 };
 
     const items = await this.mangaModel
       .find({ isDeleted: false, isPublish: true })
-      .sort(sortObj) // ✅
+      .sort(sortObj)
       .limit(limit)
       .select('title authorId views status')
       .populate('authorId', 'username')
@@ -503,6 +504,8 @@ export class MangaService {
       status: m.status || 'ongoing',
     }));
   }
+
+  // ====================== MISC ======================
 
   async getRandomManga() {
     const pipeline: any[] = [
@@ -537,31 +540,19 @@ export class MangaService {
           '_chapters.0': { $exists: true },
         },
       },
-      {
-        $sample: { size: 1 },
-      },
-
-      {
-        $project: {
-          _id: 1,
-          title: 1,
-        },
-      },
+      { $sample: { size: 1 } },
+      { $project: { _id: 1, title: 1 } },
     ];
 
-    const [result] = await this.mangaModel
-      .aggregate(pipeline)
-      .allowDiskUse(true)
-      .exec();
-
+    const [result] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
     if (result) {
       return {
         _id: result._id.toString(),
         title: result.title,
-      }
+      };
     }
     return null;
-  }
+    }
 
   async authorStats(authorId: Types.ObjectId) {
     const mangaIds = await this.mangaModel
@@ -569,7 +560,7 @@ export class MangaService {
       .select('_id')
       .lean();
 
-    const mangaIdList = mangaIds.map(m => m._id);
+    const mangaIdList = mangaIds.map((m) => m._id);
 
     if (mangaIdList.length === 0) {
       return {
@@ -586,25 +577,33 @@ export class MangaService {
       };
     }
 
-    const [totalStories, publishedStories, totalViews, statusBreakdown] = await Promise.all([
-      this.mangaModel.countDocuments({ authorId, isDeleted: false }),
-      this.mangaModel.countDocuments({ authorId, isDeleted: false, isPublish: true }),
-      this.mangaModel.aggregate([
-        { $match: { authorId, isDeleted: false } },
-        { $group: { _id: null, total: { $sum: '$views' } } },
-      ]).then(res => res[0]?.total || 0),
-      this.mangaModel.aggregate([
-        { $match: { authorId, isDeleted: false } },
-        { $group: { _id: '$status', cnt: { $sum: 1 } } },
-      ]),
-    ]);
+    const [totalStories, publishedStories, totalViews, statusBreakdown] =
+      await Promise.all([
+        this.mangaModel.countDocuments({ authorId, isDeleted: false }),
+        this.mangaModel.countDocuments({
+          authorId,
+          isDeleted: false,
+          isPublish: true,
+        }),
+        this.mangaModel
+          .aggregate([
+            { $match: { authorId, isDeleted: false } },
+            { $group: { _id: null, total: { $sum: '$views' } } },
+          ])
+          .then((res) => res[0]?.total || 0),
+        this.mangaModel.aggregate([
+          { $match: { authorId, isDeleted: false } },
+          { $group: { _id: '$status', cnt: { $sum: 1 } } },
+        ]),
+      ]);
 
     const totalChapters = await this.chapterModel.countDocuments({
       manga_id: { $in: mangaIdList },
       is_published: true,
     });
 
-    const avgViewsPerStory = publishedStories > 0 ? Math.round(totalViews / publishedStories) : 0;
+    const avgViewsPerStory =
+      publishedStories > 0 ? Math.round(totalViews / publishedStories) : 0;
 
     const statusMap: any = {
       ongoing: 0,
@@ -612,7 +611,7 @@ export class MangaService {
       hiatus: 0,
     };
 
-    statusBreakdown.forEach(item => {
+    statusBreakdown.forEach((item) => {
       const status = item._id || 'ongoing';
       if (statusMap.hasOwnProperty(status)) {
         statusMap[status] = item.cnt;
