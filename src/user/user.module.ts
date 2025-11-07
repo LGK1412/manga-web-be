@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationModule } from "src/notification-gateway/notification.module";
 import { AchievementEventModule } from "src/achievement/achievement.event.module";
+import { Emoji, EmojiSchema } from "src/schemas/Emoji.schema";
 
 @Module({
     imports: [
@@ -15,7 +16,8 @@ import { AchievementEventModule } from "src/achievement/achievement.event.module
             {
                 name: User.name,
                 schema: UserSchema
-            }
+            },
+            { name: Emoji.name, schema: EmojiSchema },
         ]),
         JwtModule.registerAsync({
             imports: [ConfigModule],

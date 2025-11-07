@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { EmojiPackService } from './emoji-pack.service';
 import type { Request } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -41,6 +41,12 @@ export class EmojiPackController {
         return await this.emojiPackService.getAllFreePack()
     }
 
+    @Get("/get-pack-for-shop")
+    async getPackForShop(@Query("page") page = 1, @Query("limit") limit = 12, @Req() req: Request) {
+        const payload = await this.jwtService.verify(req.cookies?.access_token)
+        return this.emojiPackService.getPackForShop(+page, +limit, payload);
+    }
+
     @Patch("/edit/:id")
     @UseInterceptors(FilesInterceptor("newEmojis")) // phải trùng tên field frontend append
     async editEmojiPack(
@@ -64,7 +70,7 @@ export class EmojiPackController {
 
         const payload = this.jwtService.verify(req.cookies?.access_token)
         await this.emojiPackService.checkAdmin(payload)
-        
+
         if (body?.deletedEmojis) {
             if (typeof body.deletedEmojis === 'string') {
                 try {
@@ -113,7 +119,7 @@ export class EmojiPackController {
 
     @Delete("/delete-pack/:id")
     async deletePackById(@Param("id") id: string, @Req() req: Request) {
-        const payload = this.jwtService.verify(req.cookies?.access_token)
+        const payload = await this.jwtService.verify(req.cookies?.access_token)
         return await this.emojiPackService.deletePackById(id, payload)
     }
 }

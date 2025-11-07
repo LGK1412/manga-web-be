@@ -258,4 +258,15 @@ export class UserController {
         return await this.userService.getRecentUsers(limit);
     }
 
+    @Get("/emoji-packs-own")
+    async getUserEmojiPacksOwn(@Req() req: Request) {
+        const userId = await this.verifyToken(req);
+        return await this.userService.getEmojiPackOwn(userId)
+    }
+
+    @Post("/buy-emoji-pack")
+    async buyEmojiPack(@Req() req: Request, @Body("pack_id") pack_id: string,@Body("price") price: string){
+        const userId = await this.verifyToken(req);
+        return await this.userService.buyEmojiPack(userId, pack_id, price)
+    }
 }

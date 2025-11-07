@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt'
 import { NotificationClient } from "src/notification-gateway/notification.client";
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { Emoji } from "src/schemas/Emoji.schema";
 
 
 @Injectable()
@@ -19,6 +20,24 @@ export class UserService {
     private readonly eventEmitter: EventEmitter2,
   ) { }
   // ---------------- Của auth -------------------- //
+
+  async checkUserLegit(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+
+    return existingUser
+  }
+
   async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
     try {
       const newUser = new this.userModel(createUserGoogleDto);
@@ -716,6 +735,48 @@ export class UserService {
     }));
   }
 
+  async getEmojiPackOwn(id: string) {
+    const user = await this.userModel
+      .findById(id)
+      .select("emoji_packs")
+      .populate({
+        path: "emoji_packs",
+        populate: { path: "emojis", model: Emoji.name },
+      });
+    // console.log(JSON.stringify(user, null, 2));
+    return user?.emoji_packs || [];
+  }
+
+  // Nhiều pack
+  async checkEmojiPacskOwn(id: string, emoji_ids: string[]) {
+    const user = await this.userModel.findById(id).select("emoji_packs");
+    if (!user) return false;
+
+    const ownedIds = user.emoji_packs.map((e: Types.ObjectId) => e.toString());
+    const hasAll = emoji_ids.every((id) => ownedIds.includes(id));
+
+    return hasAll;
+  }
+
+  // 1 pack duy nhất
+  async checkEmojiPackOwn(id: string, emoji_id: string) {
+    const user = await this.userModel.findById(id).select("emoji_packs");
+    if (!user) return false;
+    return user.emoji_packs.some(
+      (e: Types.ObjectId) => e.toString() === emoji_id
+    );
+  }
+
+  async buyEmojiPack(user_id: string, pack_id: string, price: string) {
+    const existingUser = await this.checkUserLegit(user_id)
+    if (existingUser.emoji_packs.includes(new Types.ObjectId(pack_id))) {
+      throw new BadRequestException("Đã mua Emoji Pack này rồi")
+    }
+    existingUser.emoji_packs.push(new Types.ObjectId(pack_id))
+    existingUser.point -= Number(price);
+    existingUser.save()
+    return { success: true }
+  }
 }
 
 

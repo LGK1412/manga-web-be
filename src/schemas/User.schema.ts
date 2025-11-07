@@ -88,6 +88,9 @@ export class User {
 
     @Prop({ type: [String], required: false })
     device_id: string[]
+
+    @Prop({type: [Types.ObjectId], ref: 'EmojiPack', required: false})
+    emoji_packs: Types.ObjectId[]
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

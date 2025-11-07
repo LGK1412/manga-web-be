@@ -100,4 +100,40 @@ export class EmojiPackService {
 
         return { success: true, is_hide: pack.is_hide };
     }
+
+    async getPackForShop(page: number, limit: number, payload: any) {
+        // Lấy danh sách pack user đã sở hữu
+        const userOwnEmojiPack = await this.userService.getEmojiPackOwn(payload.user_id);
+
+        // Lấy danh sách _id pack user đã có (convert sang string để so sánh dễ)
+        const ownedIds = userOwnEmojiPack.map((pack: any) => pack._id.toString());
+
+        const skip = (page - 1) * limit;
+
+        // Lấy pack có giá > 0 (pack bán)
+        const [packs, total] = await Promise.all([
+            this.emojiPackModel
+                .find({ price: { $gt: 0 } })
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .populate("emojis"),
+            this.emojiPackModel.countDocuments({ price: { $gt: 0 } }),
+        ]);
+
+        // ✅ Lọc bỏ pack mà user đã sở hữu
+        const filteredPacks = packs.filter(
+            (pack) => !ownedIds.includes(pack._id.toString())
+        );
+
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            packs: filteredPacks.length > 0 ? filteredPacks : [],
+            totalPages,
+            currentPage: page,
+            totalItems: filteredPacks.length,
+        };
+    }
+
 }
