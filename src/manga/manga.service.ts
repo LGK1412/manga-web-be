@@ -15,6 +15,11 @@ import {
   ChapterPurchase,
   ChapterPurchaseDocument,
 } from 'src/schemas/chapter-purchase.schema';
+import {
+  UserStoryHistory,
+  UserStoryHistoryDocument,
+} from 'src/schemas/UserStoryHistory.schema';
+
 import { Rating, RatingDocument } from '../schemas/Rating.schema';
 import { startOfMonth, subMonths } from 'date-fns';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -30,7 +35,10 @@ export class MangaService {
     private chapterPurchaseModel: Model<ChapterPurchaseDocument>,
     @InjectModel(Rating.name) private ratingModel: Model<RatingDocument>,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+    @InjectModel(UserStoryHistory.name)
+    private historyModel: Model<UserStoryHistoryDocument>,
+
+  ) { }
 
   // ====================== CRUD ======================
 
@@ -552,7 +560,7 @@ export class MangaService {
       };
     }
     return null;
-    }
+  }
 
   async authorStats(authorId: Types.ObjectId) {
     const mangaIds = await this.mangaModel
@@ -641,4 +649,159 @@ export class MangaService {
       )
       .exec();
   }
+  async getRecommendStory(user_id: Types.ObjectId) {
+    // 1️⃣ Lấy danh sách manga mà user đã đọc
+    const histories = await this.historyModel
+      .find({ user_id: user_id })
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .select('story_id')
+      .lean();
+
+    if (histories.length === 0) {
+      // Nếu user chưa đọc gì → fallback top phổ biến
+      return this.getAllManga(1, 10);
+    }
+
+    const readMangaIds = histories.map((h) => h.story_id);
+
+    // 2️⃣ Lấy những manga user đã rate >=4
+    const highRated = await this.ratingModel
+      .find({ userId: user_id, rating: { $gte: 4 } })
+      .select('mangaId')
+      .lean();
+
+    const likedIds = highRated.length ? highRated.map((r) => r.mangaId) : readMangaIds;
+
+    // 3️⃣ Lấy genres & styles từ manga đã rate cao
+    const likedManga = await this.mangaModel
+      .find({ _id: { $in: likedIds } })
+      .select('genres styles')
+      .lean();
+
+    const genreIds = [...new Set(likedManga.flatMap((m) => m.genres.map(String)))];
+    const styleIds = [...new Set(likedManga.flatMap((m) => m.styles.map(String)))];
+
+    // 4️⃣ Pipeline giống getAllManga nhưng có filter theo genre/style
+    const pipeline: any[] = [
+      {
+        $match: {
+          isDeleted: false,
+          isPublish: true,
+          _id: { $nin: readMangaIds },
+          $or: [
+            { genres: { $in: genreIds.map((id) => new Types.ObjectId(id)) } },
+            { styles: { $in: styleIds.map((id) => new Types.ObjectId(id)) } },
+          ],
+        },
+      },
+
+      // Chapters
+      {
+        $lookup: {
+          from: 'chapters',
+          let: { mangaId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$manga_id', '$$mangaId'] },
+                    { $ne: ['$isDeleted', true] },
+                    { $eq: ['$is_published', true] },
+                  ],
+                },
+              },
+            },
+            { $sort: { createdAt: -1 } },
+            { $project: { _id: 1, title: 1, order: 1, createdAt: 1 } },
+          ],
+          as: '_chapters',
+        },
+      },
+
+      // Styles
+      {
+        $lookup: {
+          from: 'styles',
+          localField: 'styles',
+          foreignField: '_id',
+          as: 'styles',
+        },
+      },
+
+      // Genres
+      {
+        $lookup: {
+          from: 'genres',
+          localField: 'genres',
+          foreignField: '_id',
+          as: 'genres',
+        },
+      },
+
+      // Ratings
+      {
+        $lookup: {
+          from: 'ratings',
+          localField: '_id',
+          foreignField: 'mangaId',
+          as: 'ratings',
+        },
+      },
+
+      {
+        $addFields: {
+          chapters_count: { $size: '$_chapters' },
+          latest_chapter: { $arrayElemAt: ['$_chapters', 0] },
+          rating_avg: { $avg: '$ratings.rating' },
+          styles: {
+            $map: {
+              input: '$styles',
+              as: 's',
+              in: { _id: '$$s._id', name: '$$s.name' },
+            },
+          },
+          genres: {
+            $map: {
+              input: '$genres',
+              as: 'g',
+              in: { _id: '$$g._id', name: '$$g.name' },
+            },
+          },
+        },
+      },
+
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          slug: 1,
+          authorId: 1,
+          summary: 1,
+          coverImage: 1,
+          isPublish: 1,
+          status: 1,
+          views: 1,
+          follows: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          styles: 1,
+          genres: 1,
+          rating_avg: { $ifNull: ['$rating_avg', 0] },
+          chapters_count: 1,
+          'latest_chapter.title': 1,
+          'latest_chapter.order': 1,
+          'latest_chapter.createdAt': 1,
+        },
+      },
+
+      { $sort: { rating_avg: -1, views: -1 } },
+      { $limit: 10 },
+    ];
+
+    const recommend = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
+    return recommend;
+  }
+
 }

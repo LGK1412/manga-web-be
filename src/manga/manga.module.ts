@@ -5,6 +5,7 @@ import { MangaService } from './manga.service';
 import { MangaController } from './manga.controller';
 import { Manga, MangaSchema } from '../schemas/Manga.schema';
 import { Genres, GenresSchema } from '../schemas/Genres.schema';
+import { UserStoryHistory, UserStoryHistorySchema } from '../schemas/UserStoryHistory.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StylesModule } from '../styles/styles.module';
@@ -22,6 +23,7 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
       { name: Chapter.name, schema: ChapterSchema },
       { name: ChapterPurchase.name, schema: ChapterPurchaseSchema },
       { name: Rating.name, schema: RatingSchema },
+      { name: UserStoryHistory.name, schema: UserStoryHistorySchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
