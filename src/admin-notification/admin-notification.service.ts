@@ -13,18 +13,40 @@ export class AdminNotificationService {
   ) {}
 
   async sendToUser({ title, body, receiver_id, sender_id }: SendArgs) {
-    // lấy device_id người nhận (nếu cần), ở đây NotificationClient phía bạn chỉ cần receiver_id
-    const dto = {
-      title,
-      body,
-      deviceId: [],           // microservice có thể tự lấy tokens bằng user_id
-      receiver_id,
-      sender_id,
-    };
+    const dto = { title, body, deviceId: [], receiver_id, sender_id };
     const result = await this.noti.sendNotification(dto);
-
-    // dọn token die nếu có
     await this.users.removeDeviceId(receiver_id, result);
     return { success: true };
+  }
+
+  // ✅ Lấy tất cả thông báo mà admin (sender) đã gửi
+  async getSentByAdmin(sender_id: string) {
+    const rows = await this.noti.sendGetNotiForSender(sender_id);
+    // Đảm bảo trả về mảng
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  // ✅ Thống kê nhanh
+  async getSentStats(sender_id: string) {
+    const rows = await this.getSentByAdmin(sender_id);
+    const total = rows.length;
+    const read = rows.filter((r: any) => r.is_read).length;
+    const unread = total - read;
+    return { total, read, unread };
+  }
+
+  // ✅ Mark-as-read thay mặt user (dùng cho QA/moderation)
+  async markAsReadForReceiver(noti_id: string, receiver_id: string) {
+    return this.noti.sendMarkAsRead(noti_id, receiver_id);
+  }
+
+  // ✅ Delete noti thay mặt user (cần receiver_id để xác thực microservice)
+  async deleteForReceiver(noti_id: string, receiver_id: string) {
+    return this.noti.deleteNoti(noti_id, receiver_id);
+  }
+
+  // ✅ Save/Unsave noti thay mặt user (cần receiver_id)
+  async saveToggleForReceiver(noti_id: string, receiver_id: string) {
+    return this.noti.sendSaveNoti(noti_id, receiver_id);
   }
 }
