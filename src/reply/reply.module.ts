@@ -5,18 +5,15 @@ import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.
 import { NotificationModule } from 'src/notification-gateway/notification.module';
 import { MangaModule } from 'src/manga/manga.module';
 import { ChapterModule } from 'src/textChapter/text-chapter.module';
+import { UserModule } from 'src/user/user.module';
+import { StylesModule } from 'src/styles/styles.module';
+import { GenreModule } from 'src/genre/genre.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CommentSchema } from 'src/schemas/comment.schema';
-import { User, UserSchema } from 'src/schemas/User.schema';
-import { Styles, StylesSchema } from 'src/schemas/Styles.schema';
-import { Genres, GenresSchema } from 'src/schemas/Genres.schema';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UserService } from 'src/user/user.service';
-import { StylesService } from 'src/styles/styles.service';
-import { GenreService } from 'src/genre/genre.service';
 import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
 import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -24,10 +21,10 @@ import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
     NotificationModule,
     MangaModule,
     ChapterModule,
+    UserModule,
+    StylesModule,
+    GenreModule,
     MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Styles.name, schema: StylesSchema },
-      { name: Genres.name, schema: GenresSchema },
       { name: Reply.name, schema: ReplySchema },
       { name: VoteReply.name, schema: VoteReplySchema }
     ]),
@@ -42,9 +39,6 @@ import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
   ],
   providers: [
     ReplyService,
-    UserService,
-    StylesService,
-    GenreService,
   ],
   controllers: [ReplyController],
   exports: [ReplyService]

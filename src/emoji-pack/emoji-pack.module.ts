@@ -6,7 +6,7 @@ import { EmojiPack, EmojiPackSchema } from 'src/schemas/EmojiPack.schema';
 import { Emoji, EmojiSchema } from 'src/schemas/Emoji.schema';
 import { EmojiService } from 'src/emoji/emoji.service';
 import { User, UserSchema } from 'src/schemas/User.schema';
-import { UserService } from 'src/user/user.service';
+import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
@@ -19,6 +19,7 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
       { name: Emoji.name, schema: EmojiSchema },
       { name: User.name, schema: UserSchema }
     ]),
+    UserModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -28,7 +29,7 @@ import { NotificationModule } from 'src/notification-gateway/notification.module
       }),
     }),
   ],
-  providers: [EmojiPackService, EmojiService, UserService],
+  providers: [EmojiPackService, EmojiService],
   controllers: [EmojiPackController]
 })
 export class EmojiPackModule { }

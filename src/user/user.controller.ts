@@ -269,4 +269,18 @@ export class UserController {
         const userId = await this.verifyToken(req);
         return await this.userService.buyEmojiPack(userId, pack_id, price)
     }
+
+    // ==================== Author Approval ====================
+
+    @Get("/author-request/status")
+    async getAuthorRequestStatus(@Req() req: Request) {
+        const userId = await this.verifyToken(req);
+        return await this.userService.getAuthorRequestStatus(userId);
+    }
+
+    @Post("/author-request")
+    async requestAuthor(@Req() req: Request) {
+        const userId = await this.verifyToken(req);
+        return await this.userService.requestAuthor(userId);
+    }
 }

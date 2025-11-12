@@ -5,18 +5,14 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Comment, CommentSchema } from 'src/schemas/comment.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UserService } from 'src/user/user.service';
-import { User, UserSchema } from 'src/schemas/User.schema';
-import { StylesService } from 'src/styles/styles.service';
-import { Styles, StylesSchema } from 'src/schemas/Styles.schema';
-import { GenreService } from 'src/genre/genre.service';
-import { Genres, GenresSchema } from 'src/schemas/Genres.schema';
+import { UserModule } from 'src/user/user.module';
+import { StylesModule } from 'src/styles/styles.module';
+import { GenreModule } from 'src/genre/genre.module';
+import { ReplyModule } from 'src/reply/reply.module';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
 import { MangaModule } from 'src/manga/manga.module';
 import { ChapterModule } from 'src/textChapter/text-chapter.module';
 import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.module';
-import { ReplyService } from 'src/reply/reply.service';
-import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
 import { VoteComment, VoteCommentSchema } from 'src/schemas/VoteComment.schema';
 import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
 import { AchievementEventModule } from 'src/achievement/achievement.event.module';
@@ -27,12 +23,12 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
         NotificationModule,
         MangaModule,
         ChapterModule,
+        UserModule,
+        StylesModule,
+        GenreModule,
+        ReplyModule,
         MongooseModule.forFeature([
             { name: Comment.name, schema: CommentSchema },
-            { name: User.name, schema: UserSchema },
-            { name: Styles.name, schema: StylesSchema },
-            { name: Genres.name, schema: GenresSchema },
-            { name: Reply.name, schema: ReplySchema },
             { name: VoteComment.name, schema: VoteCommentSchema },
             { name: VoteReply.name, schema: VoteReplySchema }
         ]),
@@ -49,10 +45,6 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
     controllers: [CommentController],
     providers: [
         CommentService,
-        UserService,
-        StylesService,
-        GenreService,
-        ReplyService
     ],
 })
 export class CommentModule { }

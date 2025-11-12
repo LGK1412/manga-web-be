@@ -5,7 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from 'src/schemas/User.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UserService } from 'src/user/user.service';
+import { UserModule } from 'src/user/user.module';
 import { OAuth2Client } from 'google-auth-library';
 import { NotificationModule } from 'src/notification-gateway/notification.module';
 import { Achievement, AchievementSchema } from 'src/schemas/achievement.schema';
@@ -15,6 +15,7 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
 @Module({
   imports: [
     NotificationModule,
+    UserModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Achievement.name, schema: AchievementSchema },
@@ -31,7 +32,7 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
     AchievementEventModule
   ],
   providers: [
-    AuthService, UserService,
+    AuthService,
     {
       provide: OAuth2Client,
       useFactory: () => {

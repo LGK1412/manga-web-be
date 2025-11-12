@@ -106,6 +106,10 @@ export class ChapterService {
     const manga = await this.mangaModel.findById(manga_id).select("authorId");
     if (manga && manga.authorId) {
       this.eventEmitter.emit("chapter_create_count", { userId: manga.authorId.toString() });
+      // Emit event khi chapter được publish
+      if (isPublished) {
+        this.eventEmitter.emit("chapter_published", { userId: manga.authorId.toString() });
+      }
     } else {
       console.warn("Không tìm thấy authorId cho manga:", manga_id);
     }
@@ -121,6 +125,10 @@ export class ChapterService {
     text: TextChapterDocument | null;
   }> {
     const { title, price, order, isPublished, content, is_completed } = dto;
+
+    // Lấy chapter cũ để check is_published
+    const oldChapter = await this.chapterModel.findById(id).lean();
+    const wasPublished = oldChapter?.is_published || false;
 
     // update chapter first
     const chapter = await this.chapterModel.findByIdAndUpdate(
@@ -145,6 +153,14 @@ export class ChapterService {
         },
         { new: true },
       );
+    }
+
+    // Emit event nếu chapter được publish (từ false -> true)
+    if (isPublished !== undefined && isPublished && !wasPublished && chapter) {
+      const manga = await this.mangaModel.findById(chapter.manga_id).select("authorId");
+      if (manga && manga.authorId) {
+        this.eventEmitter.emit("chapter_published", { userId: manga.authorId.toString() });
+      }
     }
 
     return { chapter, text };

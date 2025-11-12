@@ -13,6 +13,12 @@ export enum UserStatus {
     MUTE = 'mute',
 }
 
+export enum AuthorRequestStatus {
+    NONE = 'none',
+    PENDING = 'pending',
+    APPROVED = 'approved',
+}
+
 export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
@@ -91,6 +97,22 @@ export class User {
 
     @Prop({type: [Types.ObjectId], ref: 'EmojiPack', required: false})
     emoji_packs: Types.ObjectId[]
+
+    @Prop({
+        type: String,
+        enum: AuthorRequestStatus,
+        default: AuthorRequestStatus.NONE
+    })
+    authorRequestStatus: AuthorRequestStatus
+
+    @Prop({ required: false })
+    authorRequestedAt: Date
+
+    @Prop({ required: false })
+    authorApprovedAt: Date
+
+    @Prop({ required: false, default: false })
+    authorAutoApproved: boolean
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

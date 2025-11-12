@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Chapter } from 'src/schemas/chapter.schema';
 import {
   UserChapterProgress,
@@ -23,6 +24,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
     private progressModel: Model<UserChapterProgressDocument>,
     @InjectModel(UserStoryHistory.name)
     private historyModel: Model<UserStoryHistoryDocument>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getChapterById(id: Types.ObjectId) {
@@ -152,6 +154,13 @@ export class ChapterServiceOnlyNormalChapterInfor {
     chapter_id: Types.ObjectId,
     progressPercent: number,
   ) {
+    // Lấy progress cũ để check xem có chuyển từ chưa completed -> completed không
+    const oldProgress = await this.progressModel
+      .findOne({ user_id, chapter_id })
+      .lean();
+    const wasCompleted = oldProgress?.is_completed || false;
+    const isNowCompleted = progressPercent >= 100;
+
     const chapterProgress = await this.progressModel
       .findOneAndUpdate(
         { user_id, chapter_id },
@@ -159,13 +168,18 @@ export class ChapterServiceOnlyNormalChapterInfor {
           $set: {
             progress: progressPercent,
             last_read_at: new Date(),
-            is_completed: progressPercent >= 100,
+            is_completed: isNowCompleted,
           },
         },
         { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
       )
       .lean()
       .exec();
+
+    // Emit event nếu chapter vừa được completed (từ chưa completed -> completed)
+    if (!wasCompleted && isNowCompleted) {
+      this.eventEmitter.emit('chapter_completed', { userId: user_id.toString() });
+    }
 
     const chapter = await this.chapterModel.findById(chapter_id).lean();
     if (!chapter?.manga_id) return chapterProgress;
