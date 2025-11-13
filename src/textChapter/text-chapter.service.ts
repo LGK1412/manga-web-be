@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import {
   TextChapter,
@@ -8,7 +8,6 @@ import {
 } from '../schemas/text-chapter.schema';
 import { CreateChapterWithTextDto } from './dto/create-chapter-with-text.dto';
 import { UpdateChapterWithTextDto } from './dto/update-chapter-with-text.dto';
-import { Types } from 'mongoose';
 import { Manga, MangaDocument } from 'src/schemas/Manga.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -20,7 +19,8 @@ export class ChapterService {
     private textChapterModel: Model<TextChapterDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
+
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
     return this.chapterModel.aggregate([
       { $match: { manga_id: new Types.ObjectId(manga_id) } },
@@ -39,6 +39,15 @@ export class ChapterService {
           order: 1,
           price: 1,
           is_published: 1,
+
+          // === trả về cờ AI cho FE ===
+          ai_checked: 1,
+          ai_verdict: 1,
+          risk_score: 1,
+          policy_version: 1,
+          last_content_hash: 1,
+
+          // === text ===
           'texts._id': 1,
           'texts.content': 1,
           'texts.is_completed': 1,
@@ -66,6 +75,15 @@ export class ChapterService {
           order: 1,
           price: 1,
           is_published: 1,
+
+          // === cờ AI ===
+          ai_checked: 1,
+          ai_verdict: 1,
+          risk_score: 1,
+          policy_version: 1,
+          last_content_hash: 1,
+
+          // === text ===
           'texts._id': 1,
           'texts.content': 1,
           'texts.is_completed': 1,
@@ -89,30 +107,52 @@ export class ChapterService {
       is_completed,
     } = dto;
 
+    // 1) Tạo Chapter + khởi tạo cờ AI
     const chapter = await this.chapterModel.create({
       title,
       manga_id: new Types.ObjectId(manga_id),
       price: price ?? 0,
       order: order ?? 1,
       is_published: isPublished ?? false,
+
+      // === AI flags (invalidate mặc định) ===
+      ai_checked: false,
+      ai_verdict: null,
+      risk_score: null,
+      policy_version: null,
+      last_content_hash: null,
     });
-    // console.log(chapter.is_published);
+
+    // 2) Tạo TextChapter
     const text = await this.textChapterModel.create({
       chapter_id: chapter._id,
       content,
       is_completed: is_completed ?? false,
     });
 
-    const manga = await this.mangaModel.findById(manga_id).select("authorId");
+    // 3) Emit achievement (tạo chapter + publish)
+    const manga = await this.mangaModel.findById(manga_id).select('authorId');
     if (manga && manga.authorId) {
-      this.eventEmitter.emit("chapter_create_count", { userId: manga.authorId.toString() });
-      // Emit event khi chapter được publish
+      // đếm số chapter tạo
+      this.eventEmitter.emit('chapter_create_count', {
+        userId: manga.authorId.toString(),
+      });
+
+      // nếu tạo chapter ở trạng thái đã publish -> emit publish luôn
       if (isPublished) {
-        this.eventEmitter.emit("chapter_published", { userId: manga.authorId.toString() });
+        this.eventEmitter.emit('chapter_published', {
+          userId: manga.authorId.toString(),
+        });
       }
     } else {
-      console.warn("Không tìm thấy authorId cho manga:", manga_id);
+      console.warn('Không tìm thấy authorId cho manga:', manga_id);
     }
+
+    // 4) Phát event nội dung đổi (cho ModerationModule / AI)
+    this.eventEmitter.emit('chapter.content_changed', {
+      chapterId: chapter._id.toString(),
+      // contentHash: null // FE/BE khác có thể set sau ở endpoint riêng
+    });
 
     return { chapter, text };
   }
@@ -126,11 +166,14 @@ export class ChapterService {
   }> {
     const { title, price, order, isPublished, content, is_completed } = dto;
 
-    // Lấy chapter cũ để check is_published
+    // 1) Lấy chapter cũ để check publish transition
     const oldChapter = await this.chapterModel.findById(id).lean();
     const wasPublished = oldChapter?.is_published || false;
 
-    // update chapter first
+    // 2) Check xem nội dung có thay đổi không (để invalidate AI)
+    const contentChanged = content !== undefined || title !== undefined;
+
+    // 3) Update chapter trước
     const chapter = await this.chapterModel.findByIdAndUpdate(
       id,
       {
@@ -142,7 +185,7 @@ export class ChapterService {
       { new: true }, // return updated doc
     );
 
-    // update textChapter (if exists)
+    // 4) Update textChapter (nếu có)
     let text: TextChapterDocument | null = null;
     if (content !== undefined || is_completed !== undefined) {
       text = await this.textChapterModel.findOneAndUpdate(
@@ -155,16 +198,57 @@ export class ChapterService {
       );
     }
 
-    // Emit event nếu chapter được publish (từ false -> true)
+    // 5) Nếu nội dung/tiêu đề thay đổi → Invalidate AI flags + phát event
+    if (contentChanged) {
+      await this.chapterModel.updateOne(
+        { _id: id },
+        {
+          $set: {
+            ai_checked: false,
+            ai_verdict: null,
+            risk_score: null,
+            policy_version: null,
+            // không đụng last_content_hash vì chưa có hash mới
+          },
+        },
+      );
+
+      this.eventEmitter.emit('chapter.content_changed', {
+        chapterId: id.toString(),
+        // contentHash: <hash mới nếu có>
+      });
+    }
+
+    // 6) Emit event nếu chapter được publish (false -> true)
     if (isPublished !== undefined && isPublished && !wasPublished && chapter) {
-      const manga = await this.mangaModel.findById(chapter.manga_id).select("authorId");
+      const manga = await this.mangaModel
+        .findById(chapter.manga_id)
+        .select('authorId');
       if (manga && manga.authorId) {
-        this.eventEmitter.emit("chapter_published", { userId: manga.authorId.toString() });
+        this.eventEmitter.emit('chapter_published', {
+          userId: manga.authorId.toString(),
+        });
       }
     }
 
+    // (OPTIONAL) Guard nếu muốn chặn publish khi AI chưa pass:
+    /*
+    if (isPublished === true) {
+      const cur = await this.chapterModel
+        .findById(id)
+        .select('ai_checked ai_verdict')
+        .lean();
+      if (!cur?.ai_checked || cur?.ai_verdict === 'BLOCK') {
+        throw new Error(
+          'Chương chưa vượt kiểm duyệt tự động hoặc bị BLOCK — không thể đăng.',
+        );
+      }
+    }
+    */
+
     return { chapter, text };
   }
+
   async deleteChapterAndText(
     id: Types.ObjectId,
   ): Promise<{ deletedChapter: any; deletedTexts: any }> {

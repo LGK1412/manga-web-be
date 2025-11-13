@@ -31,6 +31,7 @@ import { EmojiPackModule } from './emoji-pack/emoji-pack.module';
 import { EmojiModule } from './emoji/emoji.module';
 import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 // === Optional / Advanced Modules (giữ nếu có) ===
 import { DonationModule } from './donation/donation.module';
@@ -117,6 +118,7 @@ import { AdminNotificationModule } from './admin-notification/admin-notification
     AchievementModule,
     SpellCheckModule,
     AdminNotificationModule,
+    ModerationModule,
   ],
   providers: [],
 })
