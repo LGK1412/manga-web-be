@@ -660,6 +660,7 @@ export class MangaService {
 
     if (histories.length === 0) {
       // Nếu user chưa đọc gì → fallback top phổ biến
+      // This already returns { data: [], total: 0 }
       return this.getAllManga(1, 10);
     }
 
@@ -671,7 +672,9 @@ export class MangaService {
       .select('mangaId')
       .lean();
 
-    const likedIds = highRated.length ? highRated.map((r) => r.mangaId) : readMangaIds;
+    const likedIds = highRated.length
+      ? highRated.map((r) => r.mangaId)
+      : readMangaIds;
 
     // 3️⃣ Lấy genres & styles từ manga đã rate cao
     const likedManga = await this.mangaModel
@@ -796,12 +799,34 @@ export class MangaService {
         },
       },
 
+      // Sort by recommendation score first
       { $sort: { rating_avg: -1, views: -1 } },
-      { $limit: 10 },
+
+      // *** MODIFICATION START ***
+      // Use $facet to get both the limited data and the total count
+      {
+        $facet: {
+          data: [{ $skip: 0 }, { $limit: 10 }], // Hard-code limit to 10
+          total: [{ $count: 'count' }],
+        },
+      },
+      {
+        $project: {
+          data: 1,
+          total: { $ifNull: [{ $arrayElemAt: ['$total.count', 0] }, 0] },
+        },
+      },
+      // *** MODIFICATION END ***
     ];
 
-    const recommend = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
-    return recommend;
+    // Run the aggregation and destructure the result
+    const [res] = await this.mangaModel
+      .aggregate(pipeline)
+      .allowDiskUse(true)
+      .exec();
+
+    // Return in the { data, total } format
+    return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
 }
