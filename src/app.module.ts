@@ -38,6 +38,7 @@ import { DonationModule } from './donation/donation.module';
 import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 import { AdminNotificationModule } from './admin-notification/admin-notification.module';
+import { CheckInModule } from './check-in/check-in.module';
 
 @Module({
   imports: [
@@ -119,6 +120,7 @@ import { AdminNotificationModule } from './admin-notification/admin-notification
     SpellCheckModule,
     AdminNotificationModule,
     ModerationModule,
+    CheckInModule,
   ],
   providers: [],
 })
