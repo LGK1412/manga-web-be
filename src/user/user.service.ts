@@ -5,6 +5,10 @@ import { User, UserDocument, UserStatus, AuthorRequestStatus } from "src/schemas
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
+<<<<<<< HEAD
+=======
+import { NotificationClient } from "src/notification-gateway/notification.client";
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Emoji } from "src/schemas/Emoji.schema";
@@ -12,13 +16,20 @@ import { Manga, MangaDocument } from "src/schemas/Manga.schema";
 import { Chapter, ChapterDocument } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressDocument } from "src/schemas/UserChapterProgress.schema";
 import { AuthorRequestStatusResponse, EligibilityCriteria } from "./dto/author-request.dto";
+<<<<<<< HEAD
 import { NotificationService } from "src/notification/notification.service";
+=======
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
 
 
 @Injectable()
 export class UserService {
   constructor(
+<<<<<<< HEAD
     private readonly notificationService: NotificationService,
+=======
+    private readonly notificationClient: NotificationClient,
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
@@ -31,6 +42,7 @@ export class UserService {
   async checkUserLegit(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
     }
 
@@ -40,6 +52,17 @@ export class UserService {
 
     if (existingUser.status == "ban") {
       throw new BadRequestException('User does not have permission');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return existingUser
@@ -51,7 +74,11 @@ export class UserService {
       return await newUser.save();
     } catch (error) {
       if (error.code === 11000 && error.keyPattern?.email) {
+<<<<<<< HEAD
         throw new Error("Email already exists");
+=======
+        throw new Error("Email đã tồn tại");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       }
       throw error;
     }
@@ -63,7 +90,11 @@ export class UserService {
       return await newUser.save();
     } catch (error) {
       if (error.code === 11000 && error.keyPattern?.email) {
+<<<<<<< HEAD
         throw new Error("Email already exists");
+=======
+        throw new Error("Email đã tồn tại");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       }
       throw error;
     }
@@ -90,7 +121,11 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
+<<<<<<< HEAD
       throw new BadRequestException("Could not update verified status for user");
+=======
+      throw new BadRequestException("Không thể cập nhật verified cho user");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return { success: true };
@@ -104,7 +139,11 @@ export class UserService {
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
+<<<<<<< HEAD
         "Could not update email verification code for user"
+=======
+        "Không thể cập nhật verify_email_code cho user"
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       );
     }
 
@@ -119,7 +158,11 @@ export class UserService {
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
+<<<<<<< HEAD
         "Could not update forgot password verification code for user"
+=======
+        "Không thể cập nhật verify_forgot_password_code cho user"
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       );
     }
 
@@ -133,7 +176,11 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
+<<<<<<< HEAD
       throw new BadRequestException("Could not update new password for user");
+=======
+      throw new BadRequestException("Không thể cập nhật mật khẩu mới cho user");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return { success: true };
@@ -142,24 +189,40 @@ export class UserService {
   // user.service.ts
   async updateRole(role: string, token: string) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let payload: any;
     try {
       payload = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const existingUser = await this.userModel.findOne({ email: payload.email });
     if (!existingUser) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // Chặn downgrade từ author về user
     if (existingUser.role === 'author' && role === 'user') {
+<<<<<<< HEAD
       throw new BadRequestException('Cannot change from author to regular user');
+=======
+      throw new BadRequestException('Không thể chuyển từ tác giả về người dùng thường');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const result = await this.userModel.updateOne(
@@ -168,10 +231,17 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
+<<<<<<< HEAD
       throw new BadRequestException('Could not update role for user');
     }
 
     return { success: true, message: 'Role updated successfully' };
+=======
+      throw new BadRequestException('Không thể cập nhật role cho user');
+    }
+
+    return { success: true, message: 'Cập nhật role thành công' };
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
   }
   // Lấy tất cả user (chỉ admin)
   async getAllUsers(token: string) {
@@ -179,12 +249,20 @@ export class UserService {
     try {
       payload = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException("Invalid or expired token");
+=======
+      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     if (payload.role !== "admin") {
       throw new BadRequestException(
+<<<<<<< HEAD
         "Only admins are allowed to get user list"
+=======
+        "Chỉ admin mới được phép lấy danh sách user"
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       );
     }
 
@@ -198,23 +276,39 @@ export class UserService {
     try {
       payload = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException("Invalid or expired token");
+=======
+      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     if (payload.role !== "admin") {
       throw new BadRequestException(
+<<<<<<< HEAD
         "Only admins are allowed to update user status"
+=======
+        "Chỉ admin mới được phép cập nhật status user"
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       );
     }
 
     // Validate status
     if (!Object.values(UserStatus).includes(status as UserStatus)) {
+<<<<<<< HEAD
       throw new BadRequestException("Invalid status");
+=======
+      throw new BadRequestException("Status không hợp lệ");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const existingUser = await this.userModel.findById(userId);
     if (!existingUser) {
+<<<<<<< HEAD
       throw new BadRequestException("User does not exist");
+=======
+      throw new BadRequestException("Người dùng không tồn tại");
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const result = await this.userModel.updateOne(
@@ -223,10 +317,17 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
+<<<<<<< HEAD
       throw new BadRequestException("Could not update status for user");
     }
 
     return { success: true, message: "Status updated successfully" };
+=======
+      throw new BadRequestException("Không thể cập nhật status cho user");
+    }
+
+    return { success: true, message: "Cập nhật status thành công" };
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
   }
 
   async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
@@ -234,12 +335,20 @@ export class UserService {
     const user = await this.userModel.findById(userId).select('email username avatar bio role');
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // 2. Chặn downgrade từ author về user
     if (user.role === 'author' && role === 'user') {
+<<<<<<< HEAD
       throw new BadRequestException('Cannot change from author to regular user');
+=======
+      throw new BadRequestException('Không thể chuyển từ tác giả về người dùng thường');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // 3. So sánh thông tin từ cookie với database
@@ -250,7 +359,11 @@ export class UserService {
 
     // 4. Nếu không khớp thì từ chối
     if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
+<<<<<<< HEAD
       throw new BadRequestException('User information does not match our records. Please log in again.');
+=======
+      throw new BadRequestException('Thông tin người dùng không khớp với dữ liệu trong hệ thống. Vui lòng đăng nhập lại.');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // 5. Nếu khớp thì cho phép update role
@@ -260,22 +373,37 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
+<<<<<<< HEAD
       throw new BadRequestException('Could not update role for user');
     }
 
     return { success: true, message: 'Role updated successfully' };
+=======
+      throw new BadRequestException('Không thể cập nhật role cho user');
+    }
+
+    return { success: true, message: 'Cập nhật role thành công' };
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
   }
 
   async updateProfile(token: string, payload: any) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any
     try {
       decoded = this.jwtService.verify(token)
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token')
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const updates: any = {}
@@ -284,7 +412,11 @@ export class UserService {
     if (payload.bio !== undefined) updates.bio = payload.bio
 
     if (Object.keys(updates).length === 0) {
+<<<<<<< HEAD
       return { success: true, message: 'No changes detected' }
+=======
+      return { success: true, message: 'Không có thay đổi' }
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const user = await this.userModel.findByIdAndUpdate(
@@ -294,7 +426,11 @@ export class UserService {
     );
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('Could not update user profile');
+=======
+      throw new BadRequestException('Không thể cập nhật hồ sơ người dùng');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return { success: true, user };
@@ -302,14 +438,22 @@ export class UserService {
 
   async getFavourites(token: string) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
     const user = await this.userModel
       .findById(decoded.user_id)
@@ -323,7 +467,11 @@ export class UserService {
       });
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return { favourites: user.favourites || [] };
@@ -331,14 +479,22 @@ export class UserService {
 
   async toggleFavourite(token: string, mangaId: string) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const mangaObjectId = new Types.ObjectId(mangaId);
@@ -349,7 +505,11 @@ export class UserService {
       .populate('favourites');
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let updatedFavourites: Types.ObjectId[];
@@ -468,16 +628,107 @@ export class UserService {
     return await this.userModel.findById(id)
   }
 
+<<<<<<< HEAD
   async getFollowingAuthors(token: string) {
     if (!token) {
       throw new BadRequestException('Missing verification token');
+=======
+  async getAllNotiForUser(id: string) {
+    return await this.notificationClient.sendGetNotiForUser(id)
+  }
+
+  async markNotiAsRead(id: string, payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendMarkAsRead(id, existingUser._id.toString());
+  }
+
+  async markAllNotiAsRead(payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendAllMarkAsRead(existingUser._id.toString());
+  }
+
+  async deleteNoti(id: string, payload: any) {
+
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.deleteNoti(id, existingUser._id.toString());
+  }
+
+  async saveNoti(id: string, payload: any) {
+    const existingUser = await this.userModel.findById({ _id: payload });
+
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    if (existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng bị ban');
+    }
+
+    if (existingUser.role !== "user" && existingUser.role !== "author") {
+      throw new BadRequestException("Bạn Không có quyền comment")
+    }
+
+    // Truyền user_id đúng cú pháp
+    return await this.notificationClient.sendSaveNoti(id, existingUser._id.toString());
+  }
+
+  async getFollowingAuthors(token: string) {
+    if (!token) {
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
     const user = await this.userModel
       .findById(decoded.user_id)
@@ -486,7 +737,11 @@ export class UserService {
 
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     return { following: user.following_authors || [] };
@@ -494,14 +749,22 @@ export class UserService {
 
   async toggleFollowAuthor(token: string, authorId: string) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const authorObjectId = new Types.ObjectId(authorId);
@@ -512,7 +775,11 @@ export class UserService {
       .populate('following_authors');
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let updatedFollowing: Types.ObjectId[];
@@ -533,15 +800,24 @@ export class UserService {
 
         if (follower && author) {
           const notificationDto: sendNotificationDto = {
+<<<<<<< HEAD
             title: "You have a new follower",
             body: `${follower.username} has followed you`,
+=======
+            title: "Bạn có người theo dõi mới",
+            body: `${follower.username} đã theo dõi bạn`,
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
             deviceId: author.device_id ?? [],
             receiver_id: authorId,
             sender_id: decoded.user_id
           };
 
           // Gửi notification
+<<<<<<< HEAD
           const sendNotiResult = await this.notificationService.createNotification(notificationDto);
+=======
+          const sendNotiResult = await this.notificationClient.sendNotification(notificationDto);
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
 
           // Xóa các device token lỗi
           await this.removeDeviceId(authorId, sendNotiResult);
@@ -562,14 +838,22 @@ export class UserService {
 
   async getFollowStats(token: string) {
     if (!token) {
+<<<<<<< HEAD
       throw new BadRequestException('Missing verification token');
+=======
+      throw new BadRequestException('Thiếu token xác minh');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
+<<<<<<< HEAD
       throw new BadRequestException('Invalid or expired token');
+=======
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const user = await this.userModel
@@ -577,7 +861,11 @@ export class UserService {
       .select('following_authors');
 
     if (!user) {
+<<<<<<< HEAD
       throw new BadRequestException('User does not exist');
+=======
+      throw new BadRequestException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     const followingCount = Array.isArray((user as any).following_authors)
@@ -593,6 +881,7 @@ export class UserService {
 
 
   // ===== Dashboard: User Summary (total + MoM) =====
+<<<<<<< HEAD
   async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
     const now = new Date();
     const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -670,6 +959,85 @@ export class UserService {
       joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
     }));
   }
+=======
+async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
+  const now = new Date();
+  const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const [total, thisMonth, lastMonth] = await Promise.all([
+    this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
+    this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
+    this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
+  ]);
+
+  const deltaPctMoM =
+    lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
+
+  return { total, deltaPctMoM };
+}
+
+// ===== Dashboard: Weekly new users =====
+// user.service.ts
+async getUsersWeeklyNew(weeks = 4) {
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - weeks * 7);
+
+  return this.userModel.aggregate([
+    { $match: { createdAt: { $gte: from, $lte: now } } },
+    {
+      $group: {
+        _id: {
+          y: { $isoWeekYear: "$createdAt" },
+          w: { $isoWeek: "$createdAt" },
+        },
+        cnt: { $sum: 1 },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        week: {
+          $concat: [
+            { $toString: "$_id.y" },
+            "-W",
+            {
+              // pad 2 digits cho tuần
+              $cond: [
+                { $lt: ["$_id.w", 10] },
+                { $concat: ["0", { $toString: "$_id.w" }] },
+                { $toString: "$_id.w" },
+              ],
+            },
+          ],
+        },
+        new: "$cnt",
+      },
+    },
+    { $sort: { week: 1 } },
+  ]);
+}
+
+
+// ===== Dashboard: Recent users =====
+async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
+  const docs = await this.userModel
+    .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
+    .sort({ createdAt: -1 })
+    .limit(Math.min(Math.max(limit, 1), 50))
+    .lean();
+
+  return docs.map((u: any) => ({
+    id: u._id.toString(),
+    name: u.username,
+    email: u.email,
+    role: u.role,
+    joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
+  }));
+}
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
 
   async getEmojiPackOwn(id: string) {
     const user = await this.userModel
@@ -706,7 +1074,11 @@ export class UserService {
   async buyEmojiPack(user_id: string, pack_id: string, price: string) {
     const existingUser = await this.checkUserLegit(user_id)
     if (existingUser.emoji_packs.includes(new Types.ObjectId(pack_id))) {
+<<<<<<< HEAD
       throw new BadRequestException("Emoji Pack already purchased")
+=======
+      throw new BadRequestException("Đã mua Emoji Pack này rồi")
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
     existingUser.emoji_packs.push(new Types.ObjectId(pack_id))
     existingUser.point -= Number(price);
@@ -723,7 +1095,11 @@ export class UserService {
    * - Có ít nhất 5 người theo dõi
    * - Đọc ít nhất 20 chương truyện
    */
+<<<<<<< HEAD
   async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> {
+=======
+async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> {
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     const userObjectId = new Types.ObjectId(userId);
 
     // Lấy thông tin user để kiểm tra email verification
@@ -744,21 +1120,33 @@ export class UserService {
     const criteria: EligibilityCriteria[] = [
       {
         id: 'email_verified',
+<<<<<<< HEAD
         label: 'Email verified',
+=======
+        label: 'Email đã được xác minh',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         required: 1,
         actual: isEmailVerified ? 1 : 0,
         met: isEmailVerified,
       },
       {
         id: 'followers',
+<<<<<<< HEAD
         label: 'Follower count',
+=======
+        label: 'Số người theo dõi',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         required: 5,
         actual: followersCount,
         met: followersCount >= 5,
       },
       {
         id: 'chapters_read',
+<<<<<<< HEAD
         label: 'Chapters read count',
+=======
+        label: 'Số chương đã đọc',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         required: 20,
         actual: chaptersReadCount,
         met: chaptersReadCount >= 20,
@@ -774,9 +1162,15 @@ export class UserService {
    */
   async getAuthorRequestStatus(userId: string): Promise<AuthorRequestStatusResponse> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus authorRequestedAt authorApprovedAt authorAutoApproved');
+<<<<<<< HEAD
 
     if (!user) {
       throw new NotFoundException('User does not exist');
+=======
+    
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // Nếu đã là author, trả về approved
@@ -788,7 +1182,11 @@ export class UserService {
         autoApproved: user.authorAutoApproved,
         criteria,
         canRequest: false,
+<<<<<<< HEAD
         message: 'You are already an author',
+=======
+        message: 'Bạn đã là tác giả',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       };
     }
 
@@ -802,9 +1200,15 @@ export class UserService {
         status: 'none',
         criteria,
         canRequest: true,
+<<<<<<< HEAD
         message: allCriteriaMet
           ? 'You are eligible to become an author'
           : 'You are not yet eligible to become an author',
+=======
+        message: allCriteriaMet 
+          ? 'Bạn đã đủ điều kiện để trở thành tác giả' 
+          : 'Bạn chưa đủ điều kiện để trở thành tác giả',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       };
     }
 
@@ -815,9 +1219,15 @@ export class UserService {
         requestedAt: user.authorRequestedAt?.toISOString(),
         criteria,
         canRequest: false,
+<<<<<<< HEAD
         message: allCriteriaMet
           ? 'Your request is being processed. The system will automatically approve it once you meet all criteria.'
           : 'Your request is pending. Please improve the missing criteria.',
+=======
+        message: allCriteriaMet 
+          ? 'Yêu cầu của bạn đang được xử lý. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.' 
+          : 'Yêu cầu của bạn đang chờ. Vui lòng cải thiện các tiêu chí còn thiếu.',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       };
     }
 
@@ -828,7 +1238,11 @@ export class UserService {
       autoApproved: user.authorAutoApproved,
       criteria,
       canRequest: false,
+<<<<<<< HEAD
       message: 'You have been approved',
+=======
+      message: 'Bạn đã được phê duyệt',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     };
   }
 
@@ -838,19 +1252,33 @@ export class UserService {
    */
   async requestAuthor(userId: string): Promise<{ success: boolean; message: string; autoApproved?: boolean }> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus');
+<<<<<<< HEAD
 
     if (!user) {
       throw new NotFoundException('User does not exist');
+=======
+    
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // Nếu đã là author
     if (user.role === 'author') {
+<<<<<<< HEAD
       throw new BadRequestException('You are already an author');
+=======
+      throw new BadRequestException('Bạn đã là tác giả rồi');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // Nếu đã approved
     if (user.authorRequestStatus === AuthorRequestStatus.APPROVED) {
+<<<<<<< HEAD
       throw new BadRequestException('Your request has been approved');
+=======
+      throw new BadRequestException('Yêu cầu của bạn đã được phê duyệt');
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     }
 
     // Đánh giá điều kiện
@@ -878,13 +1306,22 @@ export class UserService {
         const userWithDevice = await this.userModel.findById(userId).select('device_id username');
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
+<<<<<<< HEAD
             title: 'Congratulations! You have become an author',
             body: 'Your author request has been automatically approved',
+=======
+            title: 'Chúc mừng! Bạn đã trở thành tác giả',
+            body: 'Yêu cầu trở thành tác giả của bạn đã được tự động phê duyệt',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
           };
+<<<<<<< HEAD
           await this.notificationService.createNotification(notificationDto);
+=======
+          await this.notificationClient.sendNotification(notificationDto);
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         }
       } catch (error) {
         console.error('Lỗi gửi notification author approval:', error);
@@ -892,7 +1329,11 @@ export class UserService {
 
       return {
         success: true,
+<<<<<<< HEAD
         message: 'Congratulations! You have become an author',
+=======
+        message: 'Chúc mừng! Bạn đã trở thành tác giả',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         autoApproved: true,
       };
     }
@@ -910,7 +1351,11 @@ export class UserService {
 
     return {
       success: true,
+<<<<<<< HEAD
       message: 'Your request has been sent. The system will automatically approve it once you meet all criteria.',
+=======
+      message: 'Yêu cầu của bạn đã được gửi. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
       autoApproved: false,
     };
   }
@@ -921,7 +1366,11 @@ export class UserService {
    */
   async reEvaluateAuthorRequest(userId: string): Promise<void> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus');
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     if (!user || user.role === 'author' || user.authorRequestStatus !== AuthorRequestStatus.PENDING) {
       return; // Không cần re-evaluate
     }
@@ -948,13 +1397,22 @@ export class UserService {
         const userWithDevice = await this.userModel.findById(userId).select('device_id username');
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
+<<<<<<< HEAD
             title: 'Congratulations! You have become an author',
             body: 'Your author request has been automatically approved',
+=======
+            title: 'Chúc mừng! Bạn đã trở thành tác giả',
+            body: 'Yêu cầu trở thành tác giả của bạn đã được tự động phê duyệt',
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
           };
+<<<<<<< HEAD
           await this.notificationService.createNotification(notificationDto);
+=======
+          await this.notificationClient.sendNotification(notificationDto);
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
         }
       } catch (error) {
         console.error('Lỗi gửi notification author approval:', error);

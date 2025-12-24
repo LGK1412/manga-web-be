@@ -383,7 +383,10 @@ export class AuthService {
             throw new BadRequestException('Không thể cập nhật trạng thái xác minh');
         }
     }
+<<<<<<< HEAD
     
+=======
+>>>>>>> 3f8d1601729612b33900753c573783070fc330f5
     async getMe(req: any) {
         const token = req.cookies?.access_token;
         if (!token) {
