@@ -1,0 +1,45 @@
+
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { MangaService } from './manga.service';
+import { MangaController } from './manga.controller';
+import { Manga, MangaSchema } from '../schemas/Manga.schema';
+import { Genres, GenresSchema } from '../schemas/Genres.schema';
+import { UserStoryHistory, UserStoryHistorySchema } from '../schemas/UserStoryHistory.schema';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { StylesModule } from '../styles/styles.module';
+import { GenreModule } from '../genre/genre.module';
+import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
+import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purchase.schema';
+import { Rating, RatingSchema } from 'src/schemas/Rating.schema';
+import { AchievementEventModule } from 'src/achievement/achievement.event.module';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([
+      { name: Manga.name, schema: MangaSchema },
+      { name: Genres.name, schema: GenresSchema },
+      { name: Chapter.name, schema: ChapterSchema },
+      { name: ChapterPurchase.name, schema: ChapterPurchaseSchema },
+      { name: Rating.name, schema: RatingSchema },
+      { name: UserStoryHistory.name, schema: UserStoryHistorySchema },
+    ]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '360d' },
+      }),
+    }),
+    StylesModule,
+    GenreModule,
+    AchievementEventModule
+  ],
+  controllers: [MangaController],
+  providers: [MangaService],
+  exports: [MangaService, MongooseModule],
+})
+export class MangaModule { }
+
