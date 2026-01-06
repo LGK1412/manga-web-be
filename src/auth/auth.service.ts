@@ -15,6 +15,10 @@ import { AchievementProgress, AchievementProgressDocument } from 'src/schemas/ac
 
 @Injectable()
 export class AuthService {
+    private emailRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+    private loginRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+    private forgotPasswordRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
     constructor(
         private userService: UserService,
         private jwtService: JwtService,
@@ -29,11 +33,15 @@ export class AuthService {
 
     // Đăng ký người dùng mới
     async register(registerDto: RegisterDto) {
+        const existingUserByEmail = await this.userService.findByEmail(registerDto.email);
+        const existingUserByUsername = await this.userService.findByUsername(registerDto.username);
 
-        const existingUser = await this.userService.findByEmailAndUsername(registerDto.email, registerDto.username);
+        if (existingUserByEmail) {
+            throw new BadRequestException('Email already exists');
+        }
 
-        if (existingUser) {
-            throw new BadRequestException('Người dùng có email hoặc tên người dùng này đã tồn tại');
+        if (existingUserByUsername) {
+            throw new BadRequestException('Username already exists');
         }
 
         const passHash = await hashPassword(registerDto.password);
@@ -47,43 +55,67 @@ export class AuthService {
 
         const achievements = await this.achievementModel.find({ isActive: true });
 
-        const achievementProgresses = achievements.map(a => ({
-            userId: user._id,
-            achievementId: a._id,
-            progressCount: 0,
-            isCompleted: false,
-            rewardClaimed: false,
-        }));
+        if (achievements.length > 0) {
+            const achievementProgresses = achievements.map(a => ({
+                userId: user._id,
+                achievementId: a._id,
+                progressCount: 0,
+                isCompleted: false,
+                rewardClaimed: false,
+            }));
 
-        await this.achievementProgressModel.insertMany(achievementProgresses);
+            await this.achievementProgressModel.insertMany(achievementProgresses);
+        }
 
         return { "success": true };
     }
 
     // Đăng nhập
     async login(loginDto: LoginDto) {
+        const now = Date.now();
+        const rateLimitKey = `${loginDto.email}_${loginDto.password.substring(0, 3)}`;
+        const rateLimitData = this.loginRateLimitMap.get(rateLimitKey);
+
+        if (rateLimitData) {
+            if (now < rateLimitData.resetTime) {
+                if (rateLimitData.count >= 5) {
+                    const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
+                    throw new BadRequestException(
+                        `Too many login attempts. Please try again in ${remainingSeconds} seconds.`
+                    );
+                }
+                rateLimitData.count += 1;
+            } else {
+                this.loginRateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60 * 1000 });
+            }
+        } else {
+            this.loginRateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60 * 1000 });
+        }
+
         const existingUser = await this.userService.findByEmail(loginDto.email);
 
         if (!existingUser) {
-            throw new BadRequestException('Email này không tồn tại');
+            throw new BadRequestException('Invalid email or password');
         }
 
         if (!existingUser.verified) {
-            throw new BadRequestException('Tài khoản này chưa được xác minh');
+            throw new BadRequestException('This account has not been verified yet');
         }
 
         if (existingUser.status === 'ban') {
-            throw new BadRequestException('Tài khoản này đã bị cấm');
+            throw new BadRequestException('This account has been banned');
         }
 
         if (existingUser.google_id) {
-            throw new BadRequestException('Tài khoản này đã được đăng ký với Google. Vui lòng sử dụng thông tin đăng nhập Google.');
+            throw new BadRequestException(
+                'This account was registered with Google. Please use Google login instead.'
+            );
         }
 
         const compare = await comparePassword(loginDto.password, existingUser.password)
 
         if (!compare) {
-            throw new BadRequestException('Mật khẩu không hợp lệ');
+            throw new BadRequestException('Invalid email or password');
         }
 
         const tokenPayload = {
@@ -127,9 +159,28 @@ export class AuthService {
             throw new BadRequestException('Email không hợp lệ');
         }
 
+        const now = Date.now();
+        const rateLimitData = this.emailRateLimitMap.get(email);
+
+        if (rateLimitData) {
+            if (now < rateLimitData.resetTime) {
+                if (rateLimitData.count >= 3) {
+                    const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
+                    throw new BadRequestException(
+                        `Bạn đã gửi quá nhiều email. Vui lòng thử lại sau ${remainingSeconds} giây.`
+                    );
+                }
+                rateLimitData.count += 1;
+            } else {
+                this.emailRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
+            }
+        } else {
+            this.emailRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
+        }
+
         const code = this.jwtService.sign(
             { email, action: 'verify_email' },
-            { expiresIn: '3m' },
+            { expiresIn: '15m' },
         );
 
         const verifyUrl = `${process.env.CLIENT_URL}/verify-email?token=${code}`;
@@ -222,15 +273,36 @@ export class AuthService {
 
             if (!user) {
                 const randomName = "user_" + randomBytes(4).toString("hex");
-                user = await this.userService.createUserGoogle({
+                const newUser = await this.userService.createUserGoogle({
                     username: payload.name ?? randomName,
                     email: payload.email,
                     verified: true,
                     google_id: payload.sub,
                     avatar: payload.picture ?? "avatar-default.webp",
                 });
+
+                user = newUser;
+
+                if (newUser) {
+                    const achievements = await this.achievementModel.find({ isActive: true });
+
+                    if (achievements.length > 0) {
+                        const achievementProgresses = achievements.map(a => ({
+                            userId: newUser._id,
+                            achievementId: a._id,
+                            progressCount: 0,
+                            isCompleted: false,
+                            rewardClaimed: false,
+                        }));
+
+                        await this.achievementProgressModel.insertMany(achievementProgresses);
+                    }
+                }
             }
 
+            if (!user) {
+                throw new InternalServerErrorException('Không thể tạo hoặc tìm thấy người dùng');
+            }
 
             const tokenPayload = {
                 user_id: user._id,
@@ -255,10 +327,29 @@ export class AuthService {
             throw new BadRequestException('Email không hợp lệ');
         }
 
+        const now = Date.now();
+        const rateLimitData = this.forgotPasswordRateLimitMap.get(email);
+
+        if (rateLimitData) {
+            if (now < rateLimitData.resetTime) {
+                if (rateLimitData.count >= 3) {
+                    const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
+                    throw new BadRequestException(
+                        `Bạn đã gửi quá nhiều email. Vui lòng thử lại sau ${remainingSeconds} giây.`
+                    );
+                }
+                rateLimitData.count += 1;
+            } else {
+                this.forgotPasswordRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
+            }
+        } else {
+            this.forgotPasswordRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
+        }
+
         const existingUser = await this.userService.findByEmail(email)
 
         if (!existingUser || existingUser.status === 'ban') {
-            throw new BadRequestException('Người dùng không tồn tại hoặc đã bị khóa');
+            throw new BadRequestException('Email không hợp lệ hoặc tài khoản không khả dụng');
         }
 
         if (existingUser.google_id) {
@@ -271,7 +362,7 @@ export class AuthService {
 
         const code = this.jwtService.sign(
             { email, action: 'verify_forgot_password' },
-            { expiresIn: '3m' },
+            { expiresIn: '15m' },
         );
 
         const verifyUrl = `${process.env.CLIENT_URL}/reset-forgot-password?email=${email}&code=${code}`;
@@ -370,53 +461,63 @@ export class AuthService {
             throw new BadRequestException('Người dùng không tồn tại hoặc đã bị khóa');
         }
 
+        if (existingUser.google_id) {
+            throw new BadRequestException('Tài khoản Google không thể đổi mật khẩu');
+        }
+
         if (!existingUser.verified) {
             throw new BadRequestException('Người dùng chưa được xác thực');
+        }
+
+        const isSamePassword = await comparePassword(password, existingUser.password);
+        if (isSamePassword) {
+            throw new BadRequestException('New password must be different from the old password');
         }
 
         const newPassword = await hashPassword(password);
 
         try {
-            await this.userService.changePasswordForgot(newPassword, payload.email)
-            return { success: true, message: 'Cập nhật mật khẩu thành công' };
-        } catch {
-            throw new BadRequestException('Không thể cập nhật trạng thái xác minh');
+            await this.userService.changePassword(newPassword, payload.email)
+            return { success: true, message: 'Password updated successfully' };
+        } catch (error) {
+            throw new BadRequestException('Unable to update password');
         }
     }
-<<<<<<< HEAD
-    
-=======
->>>>>>> 3f8d1601729612b33900753c573783070fc330f5
+
     async getMe(req: any) {
-        const token = req.cookies?.access_token;
-        if (!token) {
-            throw new UnauthorizedException('Không tìm thấy access token');
-        }
-
-        let payload: any;
         try {
-            payload = this.jwtService.verify(token);
-        } catch {
-            throw new UnauthorizedException('Token không hợp lệ hoặc đã hết hạn');
+            const userPayload = req.user;
+            if (!userPayload || !userPayload.user_id) {
+                throw new UnauthorizedException('Thông tin người dùng không hợp lệ');
+            }
+
+            const userId = userPayload.user_id;
+
+            const user = await this.userModel
+                .findById(userId)
+                .select('_id username email role avatar bio point author_point game_point')
+                .lean();
+
+            if (!user) {
+                throw new UnauthorizedException('Người dùng không tồn tại');
+            }
+
+            return {
+                user_id: user._id,
+                username: user.username,
+                role: user.role,
+                avatar: user.avatar,
+                email: user.email,
+                bio: user.bio || '',
+                point: user.point || 0,
+                author_point: user.author_point || 0,
+                game_point: user.game_point || 0,
+            };
+        } catch (error) {
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            throw new InternalServerErrorException('Không thể lấy thông tin người dùng');
         }
-
-        const userId = payload.user_id;
-
-        const user = await this.userModel
-            .findById(userId)
-            .select('_id username email role avatar')
-            .lean();
-
-        if (!user) {
-            throw new UnauthorizedException('Người dùng không tồn tại');
-        }
-
-        return {
-            user_id: user._id,
-            username: user.username,
-            role: user.role,
-            avatar: user.avatar,
-            email: user.email,
-        };
     }
 }

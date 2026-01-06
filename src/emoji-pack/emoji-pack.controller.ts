@@ -5,6 +5,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { EmojiService } from 'src/emoji/emoji.service';
 import { JwtService } from '@nestjs/jwt';
 import { AccessTokenAdminGuard } from 'Guards/access-token-admin.guard';
+import { AccessTokenGuard } from 'Guards/access-token.guard';
 
 @Controller('api/emoji-pack')
 export class EmojiPackController {
@@ -37,34 +38,27 @@ export class EmojiPackController {
     }
 
     @Get("/get-pack-for-shop")
+    @UseGuards(AccessTokenGuard)
     async getPackForShop(@Query("page") page = 1, @Query("limit") limit = 12, @Req() req: Request) {
-        const payload = await this.jwtService.verify(req.cookies?.access_token)
+        const payload = (req as any).user;
         return this.emojiPackService.getPackForShop(+page, +limit, payload);
     }
 
     @Patch("/edit/:id")
-    @UseInterceptors(FilesInterceptor("newEmojis")) // phải trùng tên field frontend append
+    @UseGuards(AccessTokenAdminGuard)
+    @UseInterceptors(FilesInterceptor("newEmojis"))
     async editEmojiPack(
         @Param("id") id: string,
         @Body() body: any,
         @UploadedFiles() files: Express.Multer.File[],
         @Req() req: Request
     ) {
-        // console.log("ID param:", id);
-        // console.log("Body:", body);
-        // console.log("Uploaded files:", files);
-        // cập nhật tên và price cho emojiPackerService (viết code cho nó)
-        // Nếu có emoji bị xoá thì gọi emojiService truyền array id vào xoá nó (viết lun code cho emojiService). Đầu tiên là thông tin của emoji theo id sau đó lấy skins {src: "/public/link tới folder xoá file"} xoá dc cái file r sau đó xoá trong database
-        // Xoá xong thì lại gọi emojiService để add emoji server và database
-        // Cập nhật thông tin của pack        
+        const payload = (req as any).admin;
+        await this.emojiPackService.checkAdmin(payload)
 
-        // Parse trả về array cho id Emoji đã xoá
         let deletedEmojisArray: string[] = [];
         let deletedEmoji: string[] = []
         let updatedNewEmoji: string[] = []
-
-        const payload = this.jwtService.verify(req.cookies?.access_token)
-        await this.emojiPackService.checkAdmin(payload)
 
         if (body?.deletedEmojis) {
             if (typeof body.deletedEmojis === 'string') {
@@ -113,8 +107,9 @@ export class EmojiPackController {
     }
 
     @Delete("/delete-pack/:id")
+    @UseGuards(AccessTokenAdminGuard)
     async deletePackById(@Param("id") id: string, @Req() req: Request) {
-        const payload = await this.jwtService.verify(req.cookies?.access_token)
+        const payload = (req as any).admin;
         return await this.emojiPackService.deletePackById(id, payload)
     }
 }

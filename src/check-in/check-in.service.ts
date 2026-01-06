@@ -13,6 +13,20 @@ export class CheckinService {
     @InjectModel(User.name) private userModel: Model<UserDocument>
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   private getWeekStart(timezone = "Asia/Ho_Chi_Minh") {
     return moment.tz(timezone).startOf("week").add(1, "day").toDate();
   }
@@ -46,8 +60,7 @@ export class CheckinService {
     // Tự động nhận thưởng
     const reward = DAILY_REWARD_CONFIG[role][todayIndex];
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) throw new BadRequestException("Người dùng không tồn tại");
+    const user = await this.checkUser(userId);
 
     if (role === "user" && reward.points) {
       user.point = (user.point || 0) + reward.points;

@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common'
 import { RatingService } from './rating.service'
 import { JwtService } from '@nestjs/jwt'
 import { Types } from 'mongoose'
+import { AccessTokenGuard } from 'Guards/access-token.guard'
 
 @Controller('api/rating')
 export class RatingController {
@@ -10,21 +11,16 @@ export class RatingController {
     private readonly jwtService: JwtService,
   ) {}
 
-  private getUserIdFromCookie(req: any) {
-    const token = req.cookies?.access_token
-    if (!token) throw new BadRequestException('Authentication required')
-    const decoded = this.jwtService.verify(token)
-    return new Types.ObjectId(decoded.user_id)
-  }
-
   @Post('upsert')
+  @UseGuards(AccessTokenGuard)
   async upsert(
     @Body('mangaId') mangaIdStr: string,
     @Body('rating') rating: number,
     @Body('comment') comment: string,
     @Req() req: any,
   ) {
-    const userId = this.getUserIdFromCookie(req)
+    const payload = (req as any).user;
+    const userId = new Types.ObjectId(payload.user_id)
     if (!mangaIdStr) throw new BadRequestException('mangaId is required')
     if (!comment) throw new BadRequestException('comment is required')
     const mangaId = new Types.ObjectId(mangaIdStr)
@@ -33,8 +29,10 @@ export class RatingController {
   }
 
   @Get('mine')
+  @UseGuards(AccessTokenGuard)
   async mine(@Query('mangaId') mangaIdStr: string, @Req() req: any) {
-    const userId = this.getUserIdFromCookie(req)
+    const payload = (req as any).user;
+    const userId = new Types.ObjectId(payload.user_id)
     if (!mangaIdStr) throw new BadRequestException('mangaId is required')
     const mangaId = new Types.ObjectId(mangaIdStr)
     const doc = await this.ratingService.getMyRating(userId, mangaId)

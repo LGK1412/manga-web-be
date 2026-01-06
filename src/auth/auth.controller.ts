@@ -1,7 +1,9 @@
-import { BadRequestException, Body, Controller, Get, NotImplementedException, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotImplementedException, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/Register.dto';
 import { LoginDto } from './dto/Login.dto';
+import { ChangePasswordDto } from './dto/ChangePassword.dto';
+import { AccessTokenGuard } from 'Guards/access-token.guard';
 import type { Request, Response } from 'express';
 
 @Controller('api/auth')
@@ -71,24 +73,31 @@ export class AuthController {
         return await this.authService.verificationForgotPassword(code, password);
     }
 
-    @Get('/logout')
+    @Post('/logout')
+    @UseGuards(AccessTokenGuard)
     logout(@Res({ passthrough: true }) res: Response, @Req() req: Request) {
-        res.cookie('access_token', '', {
-            httpOnly: true,
-            secure: false,
-            sameSite: 'strict',
-            maxAge: 0,
-        })
+        try {
+            res.cookie('access_token', '', {
+                httpOnly: true,
+                secure: false,
+                sameSite: 'strict',
+                maxAge: 0,
+            })
 
-        return { success: true }
+            return { success: true, message: 'Đăng xuất thành công' }
+        } catch (error) {
+            throw new BadRequestException('Không thể đăng xuất. Vui lòng thử lại')
+        }
     }
 
     @Post('/change-password')
-    async changePassword(@Body('password') password: string, @Req() req: Request) {
-        return await this.authService.changePassword(password, req.cookies?.access_token);
+    @UseGuards(AccessTokenGuard)
+    async changePassword(@Body() changePasswordDto: ChangePasswordDto, @Req() req: Request) {
+        return await this.authService.changePassword(changePasswordDto.password, req.cookies?.access_token);
     }
 
     @Get('me')
+    @UseGuards(AccessTokenGuard)
     async getMe(@Req() req) {
         return this.authService.getMe(req);
     }

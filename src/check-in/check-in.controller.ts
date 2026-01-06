@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Param, Req, UnauthorizedException } from "@nestjs/common";
+import { Controller, Get, Post, Param, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { CheckinService } from "./check-in.service";
 import { JwtService } from "@nestjs/jwt";
+import { AccessTokenGuard } from "Guards/access-token.guard";
 
 @Controller("api/checkin")
 export class CheckinController {
@@ -9,27 +10,17 @@ export class CheckinController {
     private readonly jwtService: JwtService
   ) { }
 
-  private extractUser(req: any) {
-    const token = req.cookies["access_token"];
-    if (!token) throw new UnauthorizedException("Authentication required");
-
-    try {
-      const payload: any = this.jwtService.verify(token);
-      return { userId: payload.user_id, role: payload.role };
-    } catch {
-      throw new UnauthorizedException("Invalid or expired token");
-    }
-  }
-
   @Post("today")
+  @UseGuards(AccessTokenGuard)
   async checkinToday(@Req() req) {
-    const { userId, role } = this.extractUser(req);
-    return this.checkinService.checkinToday(userId, role);
+    const payload = (req as any).user;
+    return this.checkinService.checkinToday(payload.user_id, payload.role);
   }
 
   @Get("status")
+  @UseGuards(AccessTokenGuard)
   async getStatus(@Req() req) {
-    const { userId } = this.extractUser(req);
-    return this.checkinService.getCheckinStatus(userId);
+    const payload = (req as any).user;
+    return this.checkinService.getCheckinStatus(payload.user_id);
   }
 }

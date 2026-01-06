@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, BadRequestException, UseGuards } from '@nestjs/common';
 import { DonationService } from './donation.service';
 import { Types } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import { AccessTokenGuard } from 'Guards/access-token.guard';
 
 @Controller('api/donation')
 export class DonationController {
@@ -59,43 +60,25 @@ export class DonationController {
   }
 
   @Get('received')
+  @UseGuards(AccessTokenGuard)
   async getReceivedGifts(@Req() req) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    // Giải mã token để lấy userId
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.donationService.getReceivedGifts(userId);
+    const payload = (req as any).user;
+    return this.donationService.getReceivedGifts(payload.user_id);
   }
 
   @Get('sent')
+  @UseGuards(AccessTokenGuard)
   async getSentGifts(@Req() req) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    // Giải mã token để lấy userId
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.donationService.getSentGifts(userId);
+    const payload = (req as any).user;
+    return this.donationService.getSentGifts(payload.user_id);
   }
 
   @Patch('mark-read')
+  @UseGuards(AccessTokenGuard)
   async markAsRead(@Req() req, @Body() body: { donationIds?: string[]; id?: string }) {
-    const token = req.cookies?.['access_token'];
-    if (!token) {
-      throw new BadRequestException('Authentication required - No access token');
-    }
-
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-
+    const payload = (req as any).user;
     const ids = body.donationIds || (body.id ? [body.id] : []);
-    return this.donationService.markAsRead(userId, ids);
+    return this.donationService.markAsRead(payload.user_id, ids);
   }
 
 }

@@ -33,11 +33,8 @@ export class UpdateImageChapterDto {
     @IsOptional()
     @IsArray()
     existing_images?: Array<{ url: string; order: number }>
-<<<<<<< HEAD
 
     @IsOptional()
     @IsArray()
     new_images_meta?: Array<{ originalname: string; order: number }>
-=======
->>>>>>> 3f8d1601729612b33900753c573783070fc330f5
 }

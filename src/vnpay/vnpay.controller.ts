@@ -9,13 +9,15 @@ import {
     BadRequestException,
     UsePipes,
     ValidationPipe,
-    Res
+    Res,
+    UseGuards
 } from '@nestjs/common';
 import { VnpayService, CreatePaymentBody } from './vnpay.service';
 import { TopupService } from '../topup/topup.service';
 import { JwtService } from '@nestjs/jwt';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { Types } from 'mongoose';
+import { AccessTokenGuard } from 'Guards/access-token.guard';
 
 @Controller('api/vnpay')
 export class VnpayController {
@@ -25,29 +27,16 @@ export class VnpayController {
         private readonly jwtService: JwtService,
     ) { }
 
-    private verifyToken(req: any): string {
-        const token = req.cookies?.access_token;
-        console.log('TOKEN FROM COOKIE:', token);
-        if (!token) throw new BadRequestException('Authentication required');
-
-        try {
-            const decoded = this.jwtService.verify(token);
-            console.log('DECODED TOKEN:', decoded);
-            return decoded.user_id;
-        } catch (err) {
-            console.error('JWT VERIFY FAILED:', err.message);
-            throw new BadRequestException('Invalid or expired token');
-        }
-    }
-
     @Post('create-payment-url/:id')
+    @UseGuards(AccessTokenGuard)
     @UsePipes(new ValidationPipe({ transform: true }))
     async createPaymentUrl(
         @Body() body: CreatePaymentDto,
         @Req() req: any,
         @Param('id') userId: string,
     ) {
-        const userIdFromToken = this.verifyToken(req);
+        const payload = (req as any).user;
+        const userIdFromToken = payload.user_id;
         if (userId !== userIdFromToken)
             throw new BadRequestException('User ID mismatch');
 

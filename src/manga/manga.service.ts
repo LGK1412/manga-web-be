@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -637,17 +638,40 @@ export class MangaService {
   }
 
   async ViewCounter(Id: Types.ObjectId) {
-    const chapter = await this.chapterModel.findById(Id).exec();
-    if (!chapter) {
-      throw new Error('Chapter not found');
+    try {
+      // Validate ObjectId format
+      if (!Id || !Types.ObjectId.isValid(Id)) {
+        throw new BadRequestException('ID chương không hợp lệ');
+      }
+
+      const chapter = await this.chapterModel.findById(Id).exec();
+      if (!chapter) {
+        throw new NotFoundException('Chương không tồn tại');
+      }
+
+      if (!chapter.manga_id) {
+        throw new BadRequestException('Chương không có manga_id');
+      }
+
+      const updatedManga = await this.mangaModel
+        .findByIdAndUpdate(
+          chapter.manga_id,
+          { $inc: { views: 1 } },
+          { new: true },
+        )
+        .exec();
+
+      if (!updatedManga) {
+        throw new NotFoundException('Manga không tồn tại');
+      }
+
+      return updatedManga;
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Không thể tăng lượt xem');
     }
-    return this.mangaModel
-      .findByIdAndUpdate(
-        chapter.manga_id,
-        { $inc: { views: 1 } },
-        { new: true },
-      )
-      .exec();
   }
   async getRecommendStory(user_id: Types.ObjectId) {
     // 1️⃣ Lấy danh sách manga mà user đã đọc

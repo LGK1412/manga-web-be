@@ -1,10 +1,11 @@
 // src/admin-notification/admin-notification.controller.ts
-import { Body, Controller, Get, Patch, Post, Delete, Query, Param, Req, BadRequestException } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, Delete, Query, Param, Req, BadRequestException, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtService } from "@nestjs/jwt";
 import { AdminNotificationService } from "./admin-notification.service";
 import { AdminSendByEmailDto } from "./dto/admin-send-by-email.dto";
 import { UserService } from "src/user/user.service";
+import { AccessTokenAdminGuard } from "Guards/access-token-admin.guard";
 
 @Controller("/api/admin/notifications")
 export class AdminNotificationController {
@@ -14,18 +15,10 @@ export class AdminNotificationController {
     private readonly users: UserService,
   ) {}
 
-  private getAdminPayload(req: Request) {
-    const token = req.cookies?.access_token || req.headers["authorization"]?.replace("Bearer ", "");
-    if (!token) throw new BadRequestException("Thiếu token");
-    const decoded: any = this.jwt.verify(token);
-    if (decoded.role !== "admin") throw new BadRequestException("Chỉ admin");
-    return decoded;
-  }
-
-  // ===== SEND (giữ như bạn đang có) =====
   @Post("send")
+  @UseGuards(AccessTokenAdminGuard)
   async send(@Body() body: AdminSendByEmailDto, @Req() req: Request) {
-    const decoded = this.getAdminPayload(req);
+    const decoded = (req as any).admin;
 
     // Ưu tiên email nếu có
     let receiverId = body.receiver_id;
@@ -44,10 +37,10 @@ export class AdminNotificationController {
     });
   }
 
-  // ===== LIST các noti admin đã gửi =====
   @Get("sent")
+  @UseGuards(AccessTokenAdminGuard)
   async sent(@Req() req: Request, @Query("status") status?: "Read"|"Unread", @Query("q") q?: string) {
-    const decoded = this.getAdminPayload(req);
+    const decoded = (req as any).admin;
     let rows = await this.svc.getSentByAdmin(decoded.user_id);
 
     // Lọc theo trạng thái
@@ -68,31 +61,30 @@ export class AdminNotificationController {
     return rows;
   }
 
-  // ===== Stats nhanh =====
   @Get("stats")
+  @UseGuards(AccessTokenAdminGuard)
   async stats(@Req() req: Request) {
-    const decoded = this.getAdminPayload(req);
+    const decoded = (req as any).admin;
     return this.svc.getSentStats(decoded.user_id);
   }
 
-  // ===== Hỗ trợ thao tác hộ (QA/moderation) =====
   @Patch(":id/mark-as-read")
+  @UseGuards(AccessTokenAdminGuard)
   async markAsRead(@Param("id") id: string, @Body("receiver_id") receiver_id: string, @Req() req: Request) {
-    this.getAdminPayload(req);
     if (!receiver_id) throw new BadRequestException("Thiếu receiver_id");
     return this.svc.markAsReadForReceiver(id, receiver_id);
   }
 
   @Delete(":id")
+  @UseGuards(AccessTokenAdminGuard)
   async delete(@Param("id") id: string, @Body("receiver_id") receiver_id: string, @Req() req: Request) {
-    this.getAdminPayload(req);
     if (!receiver_id) throw new BadRequestException("Thiếu receiver_id");
     return this.svc.deleteForReceiver(id, receiver_id);
   }
 
   @Patch(":id/toggle-save")
+  @UseGuards(AccessTokenAdminGuard)
   async toggleSave(@Param("id") id: string, @Body("receiver_id") receiver_id: string, @Req() req: Request) {
-    this.getAdminPayload(req);
     if (!receiver_id) throw new BadRequestException("Thiếu receiver_id");
     return this.svc.saveToggleForReceiver(id, receiver_id);
   }

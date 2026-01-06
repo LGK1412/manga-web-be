@@ -14,6 +14,7 @@ import {
   UploadedFile,
   Query,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
@@ -23,6 +24,7 @@ import { Types } from 'mongoose';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { AccessTokenGuard } from 'Guards/access-token.guard';
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -50,20 +52,6 @@ export class MangaController {
     private jwtService: JwtService,
   ) { }
 
-  // sync: trả về user_id string hoặc ném BadRequestException
-  private verifyToken(req: any): string {
-    const token = req?.cookies?.access_token;
-    if (!token) {
-      throw new BadRequestException('Authentication required - no access token');
-    }
-
-    try {
-      const decoded = this.jwtService.verify(token);
-      return (decoded as any).user_id;
-    } catch {
-      throw new BadRequestException('Invalid or expired token');
-    }
-  }
 
   // ====== ADMIN ANALYTICS: SUMMARY ======
   @Get('admin/summary')
@@ -114,14 +102,12 @@ export class MangaController {
     return this.mangaService.getAllBasic();
   }
 
-  // ====== DETAIL (không bắt buộc auth) ======
   @Get('detail/:id')
   async getMangaDetail(@Req() req, @Param('id') id: string) {
     let userId = '';
-    try {
-      userId = this.verifyToken(req);
-    } catch {
-      userId = ''; // không auth -> service xử lý
+    const payload = (req as any).user;
+    if (payload) {
+      userId = payload.user_id;
     }
     return await this.mangaService.findMangaDetail(id, userId);
   }
@@ -138,9 +124,8 @@ export class MangaController {
     return await this.mangaService.getRecommendStory(new Types.ObjectId(userId));
   }
 
-  // ====== CREATE (auth required) ======
-  // explicit author param to avoid ambiguity
   @Post('author/:authorId')
+  @UseGuards(AccessTokenGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @UseInterceptors(coverImageInterceptor)
   async createManga(
@@ -149,7 +134,8 @@ export class MangaController {
     @Req() req: any,
     @Param('authorId') authorId: string,
   ) {
-    const userId = this.verifyToken(req);
+    const payload = (req as any).user;
+    const userId = payload.user_id;
     if (userId !== authorId) {
       throw new BadRequestException('Không có quyền tạo truyện cho author này');
     }
@@ -164,8 +150,8 @@ export class MangaController {
     );
   }
 
-  // ====== UPDATE (auth required) ======
   @Patch('update/:mangaId')
+  @UseGuards(AccessTokenGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @UseInterceptors(coverImageInterceptor)
   async updateManga(
@@ -174,7 +160,8 @@ export class MangaController {
     @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
   ) {
-    const userId = this.verifyToken(req);
+    const payload = (req as any).user;
+    const userId = payload.user_id;
     if (file) updateMangaDto.coverImage = file.filename;
 
     return await this.mangaService.updateManga(
@@ -184,20 +171,22 @@ export class MangaController {
     );
   }
 
-  // ====== TOGGLE DELETE (auth required) ======
   @Post('toggle-delete/:mangaId')
+  @UseGuards(AccessTokenGuard)
   async toggleDelete(@Param('mangaId') mangaId: string, @Req() req: any) {
-    const userId = this.verifyToken(req);
+    const payload = (req as any).user;
+    const userId = payload.user_id;
     return await this.mangaService.toggleDelete(
       mangaId,
       new Types.ObjectId(userId),
     );
   }
 
-  // ====== DELETE PERMANENT (auth required) ======
   @Delete(':mangaId')
+  @UseGuards(AccessTokenGuard)
   async deleteManga(@Param('mangaId') mangaId: string, @Req() req: any) {
-    const userId = this.verifyToken(req);
+    const payload = (req as any).user;
+    const userId = payload.user_id;
     return await this.mangaService.deleteManga(
       mangaId,
       new Types.ObjectId(userId),

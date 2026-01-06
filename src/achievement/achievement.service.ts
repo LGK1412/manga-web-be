@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { AchievementProgress, AchievementProgressDocument } from "src/schemas/achievement-progress.schema";
@@ -18,7 +18,22 @@ export class AchievementService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   async getAllWithProgress(userId: string) {
+    await this.checkUser(userId);
     return await this.achievementProgressModel
       .find({ userId: new Types.ObjectId(userId) })
       .populate("achievementId")
@@ -26,39 +41,69 @@ export class AchievementService {
   }
 
   async claimReward(userId: string, achievementId: string) {
-    const userObjId = new Types.ObjectId(userId);
-    const achievementObjId = new Types.ObjectId(achievementId);
+    try {
+      // Validate userId format
+      if (!userId || !Types.ObjectId.isValid(userId)) {
+        throw new BadRequestException('ID người dùng không hợp lệ');
+      }
 
-    const achievementProgress = await this.achievementProgressModel.findOne({
-      userId: userObjId,
-      achievementId: achievementObjId,
-    });
+      // Validate achievementId format
+      if (!achievementId || !Types.ObjectId.isValid(achievementId)) {
+        throw new BadRequestException('ID thành tựu không hợp lệ');
+      }
 
-    if (!achievementProgress)
-      throw new BadRequestException("Thành tựu không tồn tại.");
+      await this.checkUser(userId);
+      const userObjId = new Types.ObjectId(userId);
+      const achievementObjId = new Types.ObjectId(achievementId);
 
-    if (!achievementProgress.isCompleted)
-      throw new BadRequestException("Thành tựu chưa hoàn thành.");
+      // Check achievement exists and is active
+      const achievement = await this.achievementModel.findById(achievementObjId);
+      if (!achievement) {
+        throw new NotFoundException('Thành tựu không tồn tại');
+      }
+      if (!achievement.isActive) {
+        throw new BadRequestException('Thành tựu này đã bị vô hiệu hóa');
+      }
 
-    if (achievementProgress.rewardClaimed)
-      throw new BadRequestException("Phần thưởng đã được nhận trước đó.");
+      const achievementProgress = await this.achievementProgressModel.findOne({
+        userId: userObjId,
+        achievementId: achievementObjId,
+      });
 
-    const achievement = await this.achievementModel.findById(achievementObjId);
-    const rewardPoint = achievement?.reward.point || 0;
-    const rewardAuthorPoint = achievement?.reward.author_point || 0;
+      if (!achievementProgress) {
+        throw new NotFoundException('Tiến độ thành tựu không tồn tại');
+      }
 
-    // Cộng điểm và exp cho user
-    await this.userModel.findByIdAndUpdate(userObjId, {
-      $inc: { point: rewardPoint, author_point: rewardAuthorPoint },
-    });
+      if (!achievementProgress.isCompleted) {
+        throw new BadRequestException('Thành tựu chưa hoàn thành');
+      }
 
-    achievementProgress.rewardClaimed = true;
-    await achievementProgress.save();
+      if (achievementProgress.rewardClaimed) {
+        throw new BadRequestException('Phần thưởng đã được nhận trước đó');
+      }
 
-    return {
-      message: "Nhận thưởng thành công!",
-      reward: { point: rewardPoint, author_point: rewardAuthorPoint },
-    };
+      const rewardPoint = achievement.reward?.point || 0;
+      const rewardAuthorPoint = achievement.reward?.author_point || 0;
+
+      // Cộng điểm và exp cho user
+      await this.userModel.findByIdAndUpdate(userObjId, {
+        $inc: { point: rewardPoint, author_point: rewardAuthorPoint },
+      });
+
+      achievementProgress.rewardClaimed = true;
+      await achievementProgress.save();
+
+      return {
+        success: true,
+        message: 'Nhận thưởng thành công!',
+        reward: { point: rewardPoint, author_point: rewardAuthorPoint },
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Không thể nhận thưởng thành tựu');
+    }
   }
 
   async syncUserAchievements(userId: string) {
@@ -90,15 +135,12 @@ export class AchievementService {
       }));
 
       await this.achievementProgressModel.insertMany(newProgresses);
-      console.log(`🆕 Synced ${newProgresses.length} missing achievements for user ${userId}`);
     }
 
     return { synced: missingAchievements.length };
   }
 
   async syncAchievements() {
-    console.log('Bắt đầu đồng bộ thành tựu cho tất cả user & author...');
-
     const users = await this.userModel.find({
       role: { $in: ['user', 'author'] },
     });
@@ -107,7 +149,7 @@ export class AchievementService {
       await this.syncUserAchievements(user._id.toString());
     }
 
-    console.log(`Đã đồng bộ thành tựu cho ${users.length} tài khoản.`);
+    return { synced: users.length };
   }
 
 }

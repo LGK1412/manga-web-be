@@ -1,5 +1,5 @@
 // src/game/catch-game.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CatchGameHistory, CatchGameHistoryDocument } from 'src/schemas/catch-game-history.schema';
@@ -14,7 +14,23 @@ export class CatchGameService {
     private userModel: Model<UserDocument>,
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   async saveScore(userId: string, score: number) {
+    await this.checkUser(userId);
+    
     const newRecord = new this.gameModel({
       userId: new Types.ObjectId(userId),
       score,
@@ -89,9 +105,7 @@ export class CatchGameService {
   }
 
   async transferPoint(userId: string, game_pointToConvert: number) {
-    // Lấy user hiện tại
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) throw new Error("Người dùng không tồn tại");
+    const user = await this.checkUser(userId);
 
     // Kiểm tra game_point đủ để chuyển
     if (user.game_point < game_pointToConvert) {
