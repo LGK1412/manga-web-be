@@ -1,33 +1,38 @@
-import {
-  Controller,
-  Post,
-  Req,
-  Param,
-  UseGuards,
-  Get,
-} from '@nestjs/common';
+import { Controller, Post, Req, Param, UseGuards, Get, BadRequestException } from '@nestjs/common';
+import type { Request } from 'express';
+import { Types } from 'mongoose';
+
 import { ChapterPurchaseService } from './chapter-purchase.service';
-import { JwtService } from '@nestjs/jwt';
-import { AccessTokenGuard } from 'Guards/access-token.guard';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/chapter-purchase')
 export class ChapterPurchaseController {
-  constructor(
-    private readonly chapterPurchaseService: ChapterPurchaseService,
-    private readonly jwtService: JwtService,
-  ) { }
+  constructor(private readonly chapterPurchaseService: ChapterPurchaseService) {}
 
   @Post(':chapterId')
   @UseGuards(AccessTokenGuard)
-  async buyChapter(@Req() req, @Param('chapterId') chapterId: string) {
-    const payload = (req as any).user;
-    return await this.chapterPurchaseService.buyChapter(payload.user_id, chapterId);
+  async buyChapter(@Req() req: Request, @Param('chapterId') chapterId: string) {
+    const payload = (req as any).user as JwtPayload;
+
+    if (!payload?.userId) throw new BadRequestException('Authentication required');
+
+    // Nếu chapterId là ObjectId thì validate (nếu chapterId của bạn không phải ObjectId thì bỏ đoạn này)
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapterId');
+    }
+
+    return this.chapterPurchaseService.buyChapter(payload.userId, chapterId);
   }
 
   @Get('history')
   @UseGuards(AccessTokenGuard)
-  async getPurchaseHistory(@Req() req) {
-    const payload = (req as any).user;
-    return this.chapterPurchaseService.getPurchaseHistory(payload.user_id);
+  async getPurchaseHistory(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+
+    if (!payload?.userId) throw new BadRequestException('Authentication required');
+
+    return this.chapterPurchaseService.getPurchaseHistory(payload.userId);
   }
 }

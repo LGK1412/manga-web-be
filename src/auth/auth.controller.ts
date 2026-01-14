@@ -1,105 +1,137 @@
-import { BadRequestException, Body, Controller, Get, NotImplementedException, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/Register.dto';
 import { LoginDto } from './dto/Login.dto';
 import { ChangePasswordDto } from './dto/ChangePassword.dto';
-import { AccessTokenGuard } from 'Guards/access-token.guard';
-import type { Request, Response } from 'express';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/auth')
 export class AuthController {
-    jwtService: any;
-    userService: any;
-    constructor(private authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
-    @Post('/register')
-    async register(@Body() registerDto: RegisterDto) {
-        return this.authService.register(registerDto)
+  @Post('/register')
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
+  }
+
+  @Post('/login')
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+  ) {
+    const { accessToken, tokenPayload } = await this.authService.login(loginDto);
+
+    res.cookie('access_token', accessToken, {
+      httpOnly: true,
+      maxAge: 360 * 24 * 60 * 60 * 1000,
+      secure: false,
+      sameSite: 'strict',
+    });
+
+    return { accessToken, tokenPayload };
+  }
+
+  @Get('/check-login')
+  async checkLogin(@Req() req: Request) {
+    return this.authService.checkLogin(req.cookies?.access_token);
+  }
+
+  @Post('/send-verify-email')
+  async sendVerifyEmail(@Body('email') email: string) {
+    return this.authService.sendVerificationEmail(email);
+  }
+
+  @Post('/verify-email')
+  async verificationEmail(@Body('code') code: string) {
+    return this.authService.verificationEmail(code);
+  }
+
+  @Post('/google')
+  async loginWithGoogle(
+    @Body('idToken') idToken: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, tokenPayload } =
+      await this.authService.loginWithGoogle(idToken);
+
+    res.cookie('access_token', accessToken, {
+      httpOnly: true,
+      maxAge: 360 * 24 * 60 * 60 * 1000,
+      secure: false,
+      sameSite: 'strict',
+    });
+
+    return { accessToken, tokenPayload };
+  }
+
+  @Post('/send-forgot-password')
+  async sendVerificationForgotPassword(@Body('email') email: string) {
+    return this.authService.sendVerificationForgotPassword(email);
+  }
+
+  @Post('/verify-forgot-password')
+  async verificationForgotPassword(
+    @Body('code') code: string,
+    @Body('password') password: string,
+  ) {
+    return this.authService.verificationForgotPassword(code, password);
+  }
+
+  @Post('/logout')
+  @UseGuards(AccessTokenGuard)
+  logout(@Res({ passthrough: true }) res: Response) {
+    try {
+      res.cookie('access_token', '', {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'strict',
+        maxAge: 0,
+      });
+
+      return { success: true, message: 'Đăng xuất thành công' };
+    } catch {
+      throw new BadRequestException('Không thể đăng xuất. Vui lòng thử lại');
     }
+  }
 
-    @Post('/login')
-    async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response, @Req() req: Request) {
-        const { accessToken, tokenPayload } = await this.authService.login(loginDto);
+  @Post('/change-password')
+  @UseGuards(AccessTokenGuard)
+  async changePassword(
+    @Body() changePasswordDto: ChangePasswordDto,
+    @Req() req: Request,
+  ) {
+    // Giữ theo service hiện tại: đổi password dựa trên token cookie
+    return this.authService.changePassword(
+      changePasswordDto.password,
+      req.cookies?.access_token,
+    );
+  }
 
-        res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            maxAge: 360 * 24 * 60 * 60 * 1000,
-            secure: false,
-            sameSite: "strict",
-        });
+  @Get('me')
+  @UseGuards(AccessTokenGuard)
+  async getMe(@Req() req: Request) {
+    // Guard mới đã verify token và gắn payload vào req.user
+    const user = (req as any).user as JwtPayload;
+    return this.authService.getMe(user);
 
-        return { accessToken, tokenPayload };
-    }
-
-    @Get("/check-login")
-    async checkLogin(@Res({ passthrough: true }) res: Response, @Req() req: Request) {
-        return this.authService.checkLogin(req.cookies?.access_token);
-    }
-
-    @Post('/send-verify-email')
-    async sendVerifyEmail(@Body('email') email: string) {
-        return await this.authService.sendVerificationEmail(email);
-    }
-
-    @Post('/verify-email')
-    async verificationEmail(@Body('code') code: string) {
-        return await this.authService.verificationEmail(code);
-    }
-
-    @Post('/google')
-    async loginWithGoogle(@Body('idToken') idToken: string, @Res({ passthrough: true }) res: Response,) {
-        const { accessToken, tokenPayload } = await this.authService.loginWithGoogle(idToken)
-
-        res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            maxAge: 360 * 24 * 60 * 60 * 1000,
-            secure: false,
-            sameSite: "strict",
-        });
-
-        return { accessToken, tokenPayload };
-    }
-
-    @Post('/send-forgot-password')
-    async sendVerificationForgotPassword(@Body('email') email: string) {
-        return await this.authService.sendVerificationForgotPassword(email);
-    }
-
-    @Post('/verify-forgot-password')
-    async verificationForgotPassword(
-        @Body('code') code: string,
-        @Body('password') password: string
-    ) {
-        return await this.authService.verificationForgotPassword(code, password);
-    }
-
-    @Post('/logout')
-    @UseGuards(AccessTokenGuard)
-    logout(@Res({ passthrough: true }) res: Response, @Req() req: Request) {
-        try {
-            res.cookie('access_token', '', {
-                httpOnly: true,
-                secure: false,
-                sameSite: 'strict',
-                maxAge: 0,
-            })
-
-            return { success: true, message: 'Đăng xuất thành công' }
-        } catch (error) {
-            throw new BadRequestException('Không thể đăng xuất. Vui lòng thử lại')
-        }
-    }
-
-    @Post('/change-password')
-    @UseGuards(AccessTokenGuard)
-    async changePassword(@Body() changePasswordDto: ChangePasswordDto, @Req() req: Request) {
-        return await this.authService.changePassword(changePasswordDto.password, req.cookies?.access_token);
-    }
-
-    @Get('me')
-    @UseGuards(AccessTokenGuard)
-    async getMe(@Req() req) {
-        return this.authService.getMe(req);
-    }
-
+    /**
+     * Nếu AuthService.getMe() của bạn đang nhận nguyên req (cũ),
+     * thì dùng: return this.authService.getMe(req);
+     * Nhưng nên refactor để nhận payload/userId cho gọn.
+     */
+  }
 }

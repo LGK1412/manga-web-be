@@ -16,15 +16,25 @@ import {
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { Types } from 'mongoose';
+
 import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
-import { JwtService } from '@nestjs/jwt';
-import { Types } from 'mongoose';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { AccessTokenGuard } from 'Guards/access-token.guard';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
+// Nếu bạn đã tạo OptionalAccessTokenGuard (khuyên dùng) thì dùng để public + optional user
+import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -47,27 +57,28 @@ const coverImageInterceptor = FileInterceptor('coverImage', {
 
 @Controller('api/manga')
 export class MangaController {
-  constructor(
-    private mangaService: MangaService,
-    private jwtService: JwtService,
-  ) { }
+  constructor(private readonly mangaService: MangaService) {}
 
+  // ================= ADMIN ANALYTICS =================
 
-  // ====== ADMIN ANALYTICS: SUMMARY ======
   @Get('admin/summary')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   async adminSummary() {
     return this.mangaService.adminSummary();
   }
 
-  // ====== ADMIN ANALYTICS: MONTHLY GROWTH ======
   @Get('admin/charts/monthly-growth')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   async monthlyGrowth(@Query('months') months = '6') {
     const m = Math.max(1, Math.min(24, parseInt(months as string, 10) || 6));
     return this.mangaService.monthlyGrowth(m);
   }
 
-  // ====== ADMIN ANALYTICS: TOP STORIES ======
   @Get('admin/top')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   async topStories(
     @Query('limit') limit = '5',
     @Query('by') by: 'views' | 'recent' = 'views',
@@ -76,7 +87,8 @@ export class MangaController {
     return this.mangaService.topStories(l, by);
   }
 
-  // ====== RANDOM ======
+  // ================= PUBLIC READING =================
+
   @Get('random')
   async getRandom() {
     const randomManga = await this.mangaService.getRandomManga();
@@ -84,59 +96,71 @@ export class MangaController {
     return randomManga;
   }
 
-  // ====== PAGINATED LIST ======
   @Get('get/all')
-  async getAll(
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '24',
-  ) {
+  async getAll(@Query('page') page = '1', @Query('limit') limit = '24') {
     const p = Math.max(1, parseInt(page as string, 10) || 1);
     const l = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 24));
     const { data, total } = await this.mangaService.getAllManga(p, l);
     return { data, total, page: p, limit: l };
   }
 
-  // ====== BASIC LIST ======
   @Get('/')
   async getAllMangaBasic() {
     return this.mangaService.getAllBasic();
   }
 
+  /**
+   * Public: xem chi tiết manga
+   * Nếu có token hợp lệ => req.user có userId để cá nhân hoá (history, fav, etc)
+   */
   @Get('detail/:id')
-  async getMangaDetail(@Req() req, @Param('id') id: string) {
-    let userId = '';
-    const payload = (req as any).user;
-    if (payload) {
-      userId = payload.user_id;
-    }
-    return await this.mangaService.findMangaDetail(id, userId);
+  @UseGuards(OptionalAccessTokenGuard)
+  async getMangaDetail(@Req() req: Request, @Param('id') id: string) {
+    const payload = ((req as any).user ?? null) as JwtPayload | null;
+    const userId = payload?.userId ?? '';
+    return this.mangaService.findMangaDetail(id, userId);
   }
 
-  // ====== VIEW COUNTER ======
   @Patch('view/:id/increase')
-  async ViewCounter(@Param('id') id: string) {
-    return await this.mangaService.ViewCounter(new Types.ObjectId(id));
+  async viewCounter(@Param('id') id: string) {
+    return this.mangaService.ViewCounter(new Types.ObjectId(id));
   }
 
-  // ====== RECOMMEND ======
+  /**
+   * Recommend theo user
+   * Nên bắt login + check mismatch để tránh user xem recommend của người khác
+   */
   @Get('recomment/user/:userId')
-  async getRecommentStory(@Param('userId') userId: string) {
-    return await this.mangaService.getRecommendStory(new Types.ObjectId(userId));
+  @UseGuards(AccessTokenGuard)
+  async getRecommendStory(@Param('userId') userId: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    if (userId !== payload.userId) {
+      throw new BadRequestException('User ID mismatch');
+    }
+    return this.mangaService.getRecommendStory(new Types.ObjectId(userId));
   }
 
+  // ================= AUTHOR ACTIONS =================
+
+  /**
+   * Tạo manga (AUTHOR/ADMIN)
+   * Giữ route cũ: author/:authorId nhưng check mismatch với token
+   */
   @Post('author/:authorId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @UseInterceptors(coverImageInterceptor)
   async createManga(
     @Body() createMangaDto: CreateMangaDto,
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
+    @Req() req: Request,
     @Param('authorId') authorId: string,
   ) {
-    const payload = (req as any).user;
-    const userId = payload.user_id;
-    if (userId !== authorId) {
+    const payload = (req as any).user as JwtPayload;
+    const userId = payload.userId;
+
+    if (userId !== authorId && payload.role !== Role.ADMIN) {
       throw new BadRequestException('Không có quyền tạo truyện cho author này');
     }
 
@@ -144,27 +168,26 @@ export class MangaController {
       createMangaDto.coverImage = file.filename;
     }
 
-    return await this.mangaService.createManga(
-      createMangaDto,
-      new Types.ObjectId(authorId),
-    );
+    return this.mangaService.createManga(createMangaDto, new Types.ObjectId(authorId));
   }
 
   @Patch('update/:mangaId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @UseInterceptors(coverImageInterceptor)
   async updateManga(
     @Param('mangaId') mangaId: string,
     @Body() updateMangaDto: UpdateMangaDto,
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
-    const payload = (req as any).user;
-    const userId = payload.user_id;
+    const payload = (req as any).user as JwtPayload;
+    const userId = payload.userId;
+
     if (file) updateMangaDto.coverImage = file.filename;
 
-    return await this.mangaService.updateManga(
+    return this.mangaService.updateManga(
       mangaId,
       updateMangaDto,
       new Types.ObjectId(userId),
@@ -172,37 +195,35 @@ export class MangaController {
   }
 
   @Post('toggle-delete/:mangaId')
-  @UseGuards(AccessTokenGuard)
-  async toggleDelete(@Param('mangaId') mangaId: string, @Req() req: any) {
-    const payload = (req as any).user;
-    const userId = payload.user_id;
-    return await this.mangaService.toggleDelete(
-      mangaId,
-      new Types.ObjectId(userId),
-    );
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  async toggleDelete(@Param('mangaId') mangaId: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    const userId = payload.userId;
+
+    return this.mangaService.toggleDelete(mangaId, new Types.ObjectId(userId));
   }
 
   @Delete(':mangaId')
-  @UseGuards(AccessTokenGuard)
-  async deleteManga(@Param('mangaId') mangaId: string, @Req() req: any) {
-    const payload = (req as any).user;
-    const userId = payload.user_id;
-    return await this.mangaService.deleteManga(
-      mangaId,
-      new Types.ObjectId(userId),
-    );
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  async deleteManga(@Param('mangaId') mangaId: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    const userId = payload.userId;
+
+    return this.mangaService.deleteManga(mangaId, new Types.ObjectId(userId));
   }
 
-  // ====== AUTHOR (phải ở cuối để tránh wildcard conflict) ======
-  @Get('author/:authorId')
-  async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
-    return await this.mangaService.getAllMangasByAuthor(
-      new Types.ObjectId(authorId),
-    );
-  }
+  // ================= AUTHOR PUBLIC INFO =================
+  // NOTE: để route stats trước route author/:authorId để tránh nhầm lẫn
 
   @Get('author/:authorId/stats')
   async getAuthorStats(@Param('authorId') authorId: string) {
     return this.mangaService.authorStats(new Types.ObjectId(authorId));
+  }
+
+  @Get('author/:authorId')
+  async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
+    return this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
   }
 }

@@ -7,7 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserModule } from 'src/user/user.module';
 import { OAuth2Client } from 'google-auth-library';
-import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { NotificationModule } from 'src/notification/notification.module';
 import { Achievement, AchievementSchema } from 'src/schemas/achievement.schema';
 import { AchievementProgress, AchievementProgressSchema } from 'src/schemas/achievement-progress.schema';
 import { AchievementEventModule } from 'src/achievement/achievement.event.module';

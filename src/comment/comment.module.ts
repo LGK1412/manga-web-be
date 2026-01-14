@@ -9,7 +9,7 @@ import { UserModule } from 'src/user/user.module';
 import { StylesModule } from 'src/styles/styles.module';
 import { GenreModule } from 'src/genre/genre.module';
 import { ReplyModule } from 'src/reply/reply.module';
-import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { NotificationModule } from 'src/notification/notification.module';
 import { MangaModule } from 'src/manga/manga.module';
 import { ChapterModule } from 'src/textChapter/text-chapter.module';
 import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.module';

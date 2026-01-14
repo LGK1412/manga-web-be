@@ -5,7 +5,6 @@ import { User, UserDocument, UserStatus, AuthorRequestStatus } from "src/schemas
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
-import { NotificationClient } from "src/notification-gateway/notification.client";
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Emoji } from "src/schemas/Emoji.schema";
@@ -13,12 +12,13 @@ import { Manga, MangaDocument } from "src/schemas/Manga.schema";
 import { Chapter, ChapterDocument } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressDocument } from "src/schemas/UserChapterProgress.schema";
 import { AuthorRequestStatusResponse, EligibilityCriteria } from "./dto/author-request.dto";
+import { NotificationService } from "src/notification/notification.service";
 
 
 @Injectable()
 export class UserService {
   constructor(
-    private readonly notificationClient: NotificationClient,
+    private readonly notificationService: NotificationService,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
@@ -535,29 +535,6 @@ export class UserService {
     return await this.userModel.findById(id)
   }
 
-  async getAllNotiForUser(id: string) {
-    return await this.notificationClient.sendGetNotiForUser(id)
-  }
-
-  async markNotiAsRead(id: string, payload: any) {
-    const existingUser = await this.checkUser(payload);
-    return await this.notificationClient.sendMarkAsRead(id, existingUser._id.toString());
-  }
-
-  async markAllNotiAsRead(payload: any) {
-    const existingUser = await this.checkUser(payload);
-    return await this.notificationClient.sendAllMarkAsRead(existingUser._id.toString());
-  }
-
-  async deleteNoti(id: string, payload: any) {
-    const existingUser = await this.checkUser(payload);
-    return await this.notificationClient.deleteNoti(id, existingUser._id.toString());
-  }
-
-  async saveNoti(id: string, payload: any) {
-    const existingUser = await this.checkUser(payload);
-    return await this.notificationClient.sendSaveNoti(id, existingUser._id.toString());
-  }
 
   async getFollowingAuthors(token: string) {
     if (!token) {
@@ -632,7 +609,7 @@ export class UserService {
           };
 
           // Gửi notification
-          const sendNotiResult = await this.notificationClient.sendNotification(notificationDto);
+          const sendNotiResult = await this.notificationService.sendNotification(notificationDto);
 
           // Xóa các device token lỗi
           await this.removeDeviceId(authorId, sendNotiResult);
@@ -977,7 +954,7 @@ export class UserService {
             receiver_id: userId,
             sender_id: userId,
           };
-          await this.notificationClient.sendNotification(notificationDto);
+          await this.notificationService.createNotification(notificationDto);
         }
       } catch (error) {
         // Silently fail notification - không ảnh hưởng đến việc approve author
@@ -1047,7 +1024,7 @@ export class UserService {
             receiver_id: userId,
             sender_id: userId,
           };
-          await this.notificationClient.sendNotification(notificationDto);
+          await this.notificationService.sendNotification(notificationDto);
         }
       } catch (error) {
         // Silently fail notification - không ảnh hưởng đến việc approve author

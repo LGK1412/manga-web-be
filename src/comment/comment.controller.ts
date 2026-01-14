@@ -1,75 +1,89 @@
-import { Body, Controller, Get, Param, Post, Req, Patch, UseGuards } from '@nestjs/common';
-import { CommentService } from './comment.service';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
-import { JwtService } from "@nestjs/jwt";
+
+import { CommentService } from './comment.service';
 import { CreateCommentDTO } from './dto/createComment.dto';
-import { AccessTokenGuard } from 'Guards/access-token.guard';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
+
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('/api/comment')
 export class CommentController {
-  constructor(
-    private readonly commentService: CommentService,
-    private jwtService: JwtService
-  ) {}
+  constructor(private readonly commentService: CommentService) {}
 
   // ===== USER =====
 
-  @Post("/create-comment")
+  @Post('/create-comment')
   @UseGuards(AccessTokenGuard)
   async createCommentChapter(
     @Body() createCommentDto: CreateCommentDTO,
-    @Req() req: Request
+    @Req() req: Request,
   ) {
-    const payload = (req as any).user;
-    return await this.commentService.createCommentChapter(createCommentDto, payload);
+    const payload = (req as any).user as JwtPayload;
+    return this.commentService.createCommentChapter(createCommentDto, payload);
   }
 
-  @Post("/upvote")
+  @Post('/upvote')
   @UseGuards(AccessTokenGuard)
   async upVote(@Body() body: any, @Req() req: Request) {
-    const payload = (req as any).user;
-    return await this.commentService.upVote(body.comment_id, payload);
+    const payload = (req as any).user as JwtPayload;
+    return this.commentService.upVote(body.comment_id, payload);
   }
 
-  @Post("/downvote")
+  @Post('/downvote')
   @UseGuards(AccessTokenGuard)
   async downVote(@Body() body: any, @Req() req: Request) {
-    const payload = (req as any).user;
-    return await this.commentService.downVote(body.comment_id, payload);
+    const payload = (req as any).user as JwtPayload;
+    return this.commentService.downVote(body.comment_id, payload);
   }
 
-  @Get("/all-comment-chapter/:id")
+  /**
+   * Public: xem comment của chapter
+   * Nếu có token hợp lệ => req.user có payload để service biết user đã vote, v.v.
+   */
+  @Get('/all-comment-chapter/:id')
+  @UseGuards(OptionalAccessTokenGuard)
   async getAllCommentForChapter(@Param('id') id: string, @Req() req: Request) {
-    let payload: any = null;
-    const token = req.cookies?.access_token;
-
-    if (token) {
-      try {
-        payload = this.jwtService.verify(token);
-      } catch {
-        payload = null;
-      }
-    }
-
-    return await this.commentService.getAllCommentForChapter(id, payload);
+    const payload = ((req as any).user ?? null) as JwtPayload | null;
+    return this.commentService.getAllCommentForChapter(id, payload);
   }
 
-  // ===== ADMIN =====
+  // ===== ADMIN / MODERATOR =====
 
-  @Get("/all")
+  @Get('/all')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async getAllComments() {
-    return await this.commentService.getAllComments();
+    return this.commentService.getAllComments();
   }
 
-  @Post("/filter")
+  @Post('/filter')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async filterComments(
-    @Body() body: { storyId?: string; chapterId?: string; userId?: string }
+    @Body() body: { storyId?: string; chapterId?: string; userId?: string },
   ) {
-    return await this.commentService.filterComments(body);
+    return this.commentService.filterComments(body);
   }
 
-  @Patch("/toggle/:id")
+  @Patch('/toggle/:id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async toggleComment(@Param('id') id: string) {
-    return await this.commentService.toggleCommentVisibility(id);
+    return this.commentService.toggleCommentVisibility(id);
   }
 }

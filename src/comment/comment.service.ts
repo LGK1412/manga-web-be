@@ -7,7 +7,7 @@ import { UserService } from 'src/user/user.service';
 import { ChapterServiceOnlyNormalChapterInfor } from 'src/chapter/chapter.service';
 import { MangaService } from 'src/manga/manga.service';
 import { sendNotificationDto } from './dto/sendNoti.dto';
-import { NotificationClient } from 'src/notification-gateway/notification.client';
+import { NotificationService } from 'src/notification/notification.service';
 import { ReplyService } from 'src/reply/reply.service';
 import { VoteComment } from 'src/schemas/VoteComment.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -15,7 +15,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 @Injectable()
 export class CommentService {
   constructor(
-    private readonly notificationClient: NotificationClient,
+    private readonly notificationService: NotificationService,
     @InjectModel(Comment.name) private commentModel: Model<Comment>,
     private userService: UserService,
     private chapterService: ChapterServiceOnlyNormalChapterInfor,
@@ -83,7 +83,7 @@ export class CommentService {
       // Emit event để cập nhật realtime
       this.eventEmitter.emit('comment_count', { userId: payload.user_id });
 
-      const send_noti_result = await this.notificationClient.sendNotification(
+      const send_noti_result = await this.notificationService.createNotification(
         dto,
       );
       await this.userService.removeDeviceId(

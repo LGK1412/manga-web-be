@@ -19,7 +19,6 @@ import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.mo
 import { VnpayModule } from './vnpay/vnpay.module';
 import { TopupModule } from './topup/topup.module';
 import { CommentModule } from './comment/comment.module';
-import { NotificationModule } from './notification-gateway/notification.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
 import { CatchGameModule } from './catch-game/catch-game.module';
 import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
@@ -39,6 +38,7 @@ import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 import { AdminNotificationModule } from './admin-notification/admin-notification.module';
 import { CheckInModule } from './check-in/check-in.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -101,7 +101,6 @@ import { CheckInModule } from './check-in/check-in.module';
     VnpayModule,
     TopupModule,
     CommentModule,
-    NotificationModule,
     WithdrawModule,
     CatchGameModule,
     ChapterPurchaseModule,
@@ -121,6 +120,7 @@ import { CheckInModule } from './check-in/check-in.module';
     AdminNotificationModule,
     ModerationModule,
     CheckInModule,
+    NotificationModule,
   ],
   providers: [],
 })

@@ -9,7 +9,7 @@ import { User, UserSchema } from 'src/schemas/User.schema';
 import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { NotificationModule } from 'src/notification-gateway/notification.module';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [

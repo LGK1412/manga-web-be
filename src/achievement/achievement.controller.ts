@@ -1,27 +1,30 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
-import { AchievementService } from "./achievement.service";
-import { AccessTokenGuard } from "Guards/access-token.guard";
+import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 
-@Controller("api/achievements")
+import { AchievementService } from './achievement.service';
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
+@Controller('api/achievements')
 export class AchievementController {
-  constructor(private readonly achievementService: AchievementService) { }
+  constructor(private readonly achievementService: AchievementService) {}
 
-  @Get("me")
+  @Get('me')
   @UseGuards(AccessTokenGuard)
-  async getAchievementsForStudent(@Req() req) {
-    const payload = (req as any).user;
-    return this.achievementService.getAllWithProgress(payload.user_id);
+  async getAchievementsForStudent(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.achievementService.getAllWithProgress(payload.userId);
   }
 
-  @Post(":id/claim")
+  @Post(':id/claim')
   @UseGuards(AccessTokenGuard)
-  async claimReward(@Req() req, @Param('id') achievementId: string) {
-    const payload = (req as any).user;
-    return this.achievementService.claimReward(payload.user_id, achievementId)
+  async claimReward(@Req() req: Request, @Param('id') achievementId: string) {
+    const payload = (req as any).user as JwtPayload;
+    return this.achievementService.claimReward(payload.userId, achievementId);
   }
 
-  @Post("sync")
+  @Post('sync')
   async syncAchievement() {
-    return this.achievementService.syncAchievements()
+    return this.achievementService.syncAchievements();
   }
 }

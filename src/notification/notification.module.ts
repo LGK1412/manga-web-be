@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
@@ -7,6 +7,7 @@ import { Notification, NotificationSchema } from 'src/schemas/notification.schem
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { User, UserSchema } from 'src/schemas/User.schema';
+import { firebaseAdminProvider } from './firebase-admin.provider';
 
 @Module({
     imports: [
@@ -20,7 +21,7 @@ import { User, UserSchema } from 'src/schemas/User.schema';
                 schema: UserSchema
             }
         ]),
-        UserModule,
+        forwardRef(() => UserModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],
             inject: [ConfigService],
@@ -30,7 +31,9 @@ import { User, UserSchema } from 'src/schemas/User.schema';
             }),
         }),
     ],
-    providers: [NotificationService],
-    controllers: [NotificationController]
+    providers: [NotificationService, firebaseAdminProvider],
+    controllers: [NotificationController],
+    exports: [NotificationService]
 })
 export class NotificationModule { }
+

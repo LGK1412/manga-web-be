@@ -1,11 +1,11 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { User, UserSchema } from "src/schemas/User.schema";
 import { UserService } from "./user.service";
 import { UserController } from "./user.controller";
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { NotificationModule } from "src/notification-gateway/notification.module";
+import { NotificationModule } from "src/notification/notification.module";
 import { AchievementEventModule } from "src/achievement/achievement.event.module";
 import { Emoji, EmojiSchema } from "src/schemas/Emoji.schema";
 import { Manga, MangaSchema } from "src/schemas/Manga.schema";
@@ -15,7 +15,7 @@ import { AuthorApprovalEventListener } from "./author-approval.event.listener";
 
 @Module({
     imports: [
-        NotificationModule,
+         forwardRef(() => NotificationModule),
         MongooseModule.forFeature([
             {
                 name: User.name,
