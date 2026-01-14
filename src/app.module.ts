@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { JwtModule } from '@nestjs/jwt';
 
 // === Core modules ===
 import { UserModule } from './user/user.module';
@@ -32,7 +33,7 @@ import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
 import { ModerationModule } from './moderation/moderation.module';
 
-// === Optional / Advanced Modules (giữ nếu có) ===
+// === Optional / Advanced Modules ===
 import { DonationModule } from './donation/donation.module';
 import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
@@ -45,6 +46,16 @@ import { NotificationModule } from './notification/notification.module';
     // ===== Global Config =====
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+
+    // ✅ JWT Global (fix lỗi JwtService injection trong Guard)
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '10m' },
+      }),
+      global: true, // ✅ để JwtService available ở mọi module context
     }),
 
     // ===== MongoDB =====
@@ -84,7 +95,7 @@ import { NotificationModule } from './notification/notification.module';
       }),
     }),
 
-    // ===== Event Emitter (for Comment/Notification) =====
+    // ===== Event Emitter =====
     EventEmitterModule.forRoot(),
 
     // ===== Core Modules =====
@@ -113,7 +124,7 @@ import { NotificationModule } from './notification/notification.module';
     PoliciesModule,
     ReportModule,
 
-    // ===== Optional Advanced Features (uncomment if available) =====
+    // ===== Optional Advanced Features =====
     DonationModule,
     AchievementModule,
     SpellCheckModule,

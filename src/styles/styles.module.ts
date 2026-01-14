@@ -1,14 +1,16 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+
 import { StylesService } from './styles.service';
 import { StylesController } from './styles.controller';
 import { Styles, StylesSchema } from '../schemas/Styles.schema';
 
+import { CommonModule } from 'src/common/common.module';
+
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: Styles.name, schema: StylesSchema }
-    ])
+    CommonModule,
+    MongooseModule.forFeature([{ name: Styles.name, schema: StylesSchema }]),
   ],
   controllers: [StylesController],
   providers: [StylesService],
