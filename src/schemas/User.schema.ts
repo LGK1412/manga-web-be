@@ -1,119 +1,114 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Types } from 'mongoose'
-
-export enum UserRole {
-    ADMIN = 'admin',
-    USER = 'user',
-    AUTHOR = 'author',
-}
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Types } from 'mongoose';
+import { Role } from 'src/common/enums/role.enum';
 
 export enum UserStatus {
-    BAN = 'ban',
-    NORMAL = 'normal',
-    MUTE = 'mute',
+  BAN = 'ban',
+  NORMAL = 'normal',
+  MUTE = 'mute',
 }
 
 export enum AuthorRequestStatus {
-    NONE = 'none',
-    PENDING = 'pending',
-    APPROVED = 'approved',
+  NONE = 'none',
+  PENDING = 'pending',
+  APPROVED = 'approved',
 }
 
 export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
 export class User {
-    @Prop({ required: true })
-    username: string
+  @Prop({ required: true })
+  username: string;
 
-    @Prop({ unique: true, required: true })
-    email: string
+  @Prop({ unique: true, required: true })
+  email: string;
 
-    @Prop({ required: false, select: false })
-    password: string
+  @Prop({ required: false, select: false })
+  password: string;
 
-    @Prop({ require: false, select: false })
-    google_id: string
+  @Prop({ require: false, select: false })
+  google_id: string;
 
-    @Prop({ require: false })
-    date_of_birth: string
+  @Prop({ require: false })
+  date_of_birth: string;
 
-    @Prop({
-        type: String,
-        enum: UserRole,
-        default: UserRole.USER
-    })
-    role: UserRole
+  // ✅ role mới theo enum Role
+  @Prop({
+    type: String,
+    enum: Object.values(Role),
+    default: Role.USER,
+  })
+  role: Role;
 
-    @Prop({
-        type: String,
-        enum: UserStatus,
-        default: UserStatus.NORMAL
-    })
-    status: UserStatus
+  @Prop({
+    type: String,
+    enum: UserStatus,
+    default: UserStatus.NORMAL,
+  })
+  status: UserStatus;
 
-    @Prop({ default: false })
-    verified: boolean
+  @Prop({ default: false })
+  verified: boolean;
 
-    @Prop({ required: false })
-    verify_email_code: string
+  @Prop({ required: false })
+  verify_email_code: string;
 
-    @Prop({ required: false })
-    verify_forgot_password_code: string
+  @Prop({ required: false })
+  verify_forgot_password_code: string;
 
-    @Prop({ required: false, default: 'avatar-default.webp' })
-    avatar: string
+  @Prop({ required: false, default: 'avatar-default.webp' })
+  avatar: string;
 
-    @Prop({ type: String, required: false, default: "" })
-    bio: string
+  @Prop({ type: String, required: false, default: '' })
+  bio: string;
 
-    @Prop({ type: [{ type: Types.ObjectId, ref: "Manga" }], default: [] })
-    favourites: Types.ObjectId[];
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Manga' }], default: [] })
+  favourites: Types.ObjectId[];
 
-    @Prop({ type: [{ type: Types.ObjectId, ref: "User"}], default: []})
-    following_authors: Types.ObjectId[];
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+  following_authors: Types.ObjectId[];
 
-    @Prop({ required: false, default: 0 })
-    point: number;
+  @Prop({ required: false, default: 0 })
+  point: number;
 
-    @Prop({ required: false, default: 0 })
-    author_point: number;
+  @Prop({ required: false, default: 0 })
+  author_point: number;
 
-    @Prop({ required: false, default: 0 })
-    game_point: number;
+  @Prop({ required: false, default: 0 })
+  game_point: number;
 
-    @Prop({
-        required: false,
-        default: () => {
-            const d = new Date();
-            d.setMonth(d.getMonth() - 1); // lùi 1 tháng
-            return d;
-        }
-    })
-    lastBonus: Date;
+  @Prop({
+    required: false,
+    default: () => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return d;
+    },
+  })
+  lastBonus: Date;
 
-    @Prop({ type: [String], required: false })
-    device_id: string[]
+  @Prop({ type: [String], required: false })
+  device_id: string[];
 
-    @Prop({type: [Types.ObjectId], ref: 'EmojiPack', required: false})
-    emoji_packs: Types.ObjectId[]
+  @Prop({ type: [Types.ObjectId], ref: 'EmojiPack', required: false })
+  emoji_packs: Types.ObjectId[];
 
-    @Prop({
-        type: String,
-        enum: AuthorRequestStatus,
-        default: AuthorRequestStatus.NONE
-    })
-    authorRequestStatus: AuthorRequestStatus
+  @Prop({
+    type: String,
+    enum: AuthorRequestStatus,
+    default: AuthorRequestStatus.NONE,
+  })
+  authorRequestStatus: AuthorRequestStatus;
 
-    @Prop({ required: false })
-    authorRequestedAt: Date
+  @Prop({ required: false })
+  authorRequestedAt: Date;
 
-    @Prop({ required: false })
-    authorApprovedAt: Date
+  @Prop({ required: false })
+  authorApprovedAt: Date;
 
-    @Prop({ required: false, default: false })
-    authorAutoApproved: boolean
+  @Prop({ required: false, default: false })
+  authorAutoApproved: boolean;
 }
 
-export const UserSchema = SchemaFactory.createForClass(User)
-
+export const UserSchema = SchemaFactory.createForClass(User);

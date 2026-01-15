@@ -8,9 +8,9 @@ import {
   BadRequestException,
   UseInterceptors,
   UploadedFile,
-  Param,
-  Delete,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -24,6 +24,7 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { AdminSetRoleDto } from './dto/admin-set-role.dto';
 
 @Controller('api/user')
 export class UserController {
@@ -38,10 +39,11 @@ export class UserController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async getAllUsers(@Req() req: Request) {
-    const token =
-      req.cookies?.access_token ||
-      req.headers['authorization']?.replace('Bearer ', '');
-    return this.userService.getAllUsers(token);
+    // const token =
+    //   req.cookies?.access_token ||
+    //   req.headers['authorization']?.replace('Bearer ', '');
+    // ✅ guard đã check admin rồi -> không cần truyền token
+   return this.userService.getAllUsers();
   }
 
   @Post('/update-status')
@@ -52,10 +54,21 @@ export class UserController {
     @Body('status') status: string,
     @Req() req: Request,
   ) {
-    const token =
-      req.cookies?.access_token ||
-      req.headers['authorization']?.replace('Bearer ', '');
-    return this.userService.updateStatus(userId, status, token);
+    // const token =
+    //   req.cookies?.access_token ||
+    //   req.headers['authorization']?.replace('Bearer ', '');
+    // ✅ guard đã check admin rồi -> không cần token
+    return this.userService.updateStatus(userId, status);
+  }
+
+  // ✅ Admin set role cho user
+  @Patch('/admin/set-role')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async adminSetRole(@Body() dto: AdminSetRoleDto, @Req() req: Request) {
+    const admin = (req as any).user; // JwtPayload
+    return this.userService.adminSetRole(admin.userId, dto.userId, dto.role);
   }
 
   @Get('/admin/summary')
@@ -86,7 +99,7 @@ export class UserController {
   @Post('/update-role')
   @UseGuards(AccessTokenGuard)
   async updateRole(@Body('role') role: string, @Req() req: Request) {
-    const user = req['user'];
+    const user = (req as any).user;
     const userId = user.userId;
 
     const userNormalInfo = req.cookies?.user_normal_info;
@@ -94,7 +107,7 @@ export class UserController {
       throw new BadRequestException('Thiếu thông tin user_normal_info');
     }
 
-    let userInfo;
+    let userInfo: any;
     try {
       userInfo = JSON.parse(userNormalInfo);
     } catch {
@@ -103,6 +116,7 @@ export class UserController {
 
     return this.userService.updateRoleWithValidation(role, userId, userInfo);
   }
+
 
   @Get('/favourites')
   @UseGuards(AccessTokenGuard)

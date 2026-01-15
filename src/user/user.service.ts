@@ -13,6 +13,7 @@ import { Chapter, ChapterDocument } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressDocument } from "src/schemas/UserChapterProgress.schema";
 import { AuthorRequestStatusResponse, EligibilityCriteria } from "./dto/author-request.dto";
 import { NotificationService } from "src/notification/notification.service";
+import { Role } from 'src/common/enums/role.enum';
 
 
 @Injectable()
@@ -203,60 +204,60 @@ export class UserService {
 
     return { success: true, message: 'Role updated successfully' };
   }
-  // Get all users (admin only)
-  async getAllUsers(token: string) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      throw new BadRequestException("Token is invalid or has expired");
-    }
-
-    if (payload.role !== "admin") {
-      throw new BadRequestException(
-        "Only admin is allowed to retrieve the user list"
-      );
-    }
-
-    // Return all users without password and google_id
-    return await this.userModel.find().select("-password -google_id");
+  // ✅ admin: lấy tất cả users (không cần token nữa)
+  async getAllUsers() {
+    return this.userModel.find().select('-password -google_id');
   }
 
-  // Cập nhật status user
-  async updateStatus(userId: string, status: string, token: string) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      throw new BadRequestException("Token is invalid or has expired");
-    }
-
-    if (payload.role !== "admin") {
-      throw new BadRequestException(
-        "Only admin is allowed to update user status"
-      );
-    }
-
-    // Validate status
+  // ✅ admin: update status (không cần token nữa)
+  async updateStatus(userId: string, status: string) {
     if (!Object.values(UserStatus).includes(status as UserStatus)) {
-      throw new BadRequestException("Invalid status");
+      throw new BadRequestException('Invalid status');
     }
 
     const existingUser = await this.userModel.findById(userId);
-    if (!existingUser) {
-      throw new BadRequestException("User does not exist");
-    }
+    if (!existingUser) throw new NotFoundException('User does not exist');
 
     const result = await this.userModel.updateOne(
       { _id: userId },
-      { $set: { status } }
+      { $set: { status } },
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException("Unable to update user status");
+      throw new BadRequestException('Unable to update user status');
     }
 
-    return { success: true, message: "Status updated successfully" };
+    return { success: true, message: 'Status updated successfully' };
+  }
+
+   /**
+   * ✅ admin: set role cho user
+   * rule gợi ý:
+   * - không cho admin tự remove role admin của chính mình (tránh lock system)
+   * - không cho set role rác (đã validate bằng enum Role)
+   */
+  async adminSetRole(adminId: string, targetUserId: string, role: Role) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    const target = await this.userModel.findById(targetUserId).select('role');
+    if (!target) throw new NotFoundException('User not found');
+
+    // tránh admin tự tước quyền admin của chính mình
+    if (adminId === targetUserId && role !== Role.ADMIN) {
+      throw new BadRequestException('Bạn không thể tự gỡ quyền ADMIN của chính mình');
+    }
+
+    // (tuỳ hệ thống) nếu bạn muốn ngăn đổi AUTHOR -> USER (giống logic cũ) thì bật:
+    if (target.role === Role.AUTHOR && role === Role.USER) {
+      throw new BadRequestException('Cannot downgrade AUTHOR back to USER');
+    }
+
+    target.role = role;
+    await target.save();
+
+    return { success: true, message: 'Role updated successfully', role };
   }
 
   async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
