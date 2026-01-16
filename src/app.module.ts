@@ -39,6 +39,7 @@ import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 import { AdminNotificationModule } from './admin-notification/admin-notification.module';
 import { CheckInModule } from './check-in/check-in.module';
+import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
 import { NotificationModule } from './notification/notification.module';
 
 @Module({
@@ -131,8 +132,9 @@ import { NotificationModule } from './notification/notification.module';
     AdminNotificationModule,
     ModerationModule,
     CheckInModule,
+    TaxSettlementModule,
     NotificationModule,
   ],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }

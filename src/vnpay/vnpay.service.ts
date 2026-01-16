@@ -41,7 +41,7 @@ export class VnpayService {
         const date = new Date();
         const createDate = date.toISOString().replace(/\D/g, '').slice(0, 14);
 
-        // 🔑 txnRef tối đa 32 ký tự => dùng hash ngắn + timestamp
+        // txnRef tối đa 32 ký tự => dùng hash ngắn + timestamp
         const shortUserHash = crypto
             .createHash('md5')
             .update(userId)
@@ -108,7 +108,7 @@ export class VnpayService {
 
         const isValid = secureHash === checkHash;
 
-        // 🔍 Lấy trạng thái giao dịch
+        // Lấy trạng thái giao dịch
         const responseCode = vnpParams['vnp_ResponseCode'];
         const transactionStatus = vnpParams['vnp_TransactionStatus'];
 
