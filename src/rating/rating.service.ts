@@ -23,13 +23,13 @@ export class RatingService {
   private async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     return existingUser;
   }

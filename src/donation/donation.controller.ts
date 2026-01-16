@@ -15,6 +15,9 @@ import { Types } from 'mongoose';
 import { DonationService } from './donation.service';
 
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/donation')
@@ -43,7 +46,8 @@ export class DonationController {
    * NOTE: KHÔNG nhận senderId từ body (tránh giả mạo).
    */
   @Post('send')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async sendGift(
     @Req() req: Request,
     @Body()
@@ -58,23 +62,23 @@ export class DonationController {
     const senderId = payload.userId;
 
     if (!Types.ObjectId.isValid(senderId)) {
-      throw new BadRequestException('senderId không hợp lệ');
+      throw new BadRequestException('Invalid senderId');
     }
     if (!Types.ObjectId.isValid(body.receiverId)) {
-      throw new BadRequestException('receiverId không hợp lệ');
+      throw new BadRequestException('Invalid receiverId');
     }
     if (!Types.ObjectId.isValid(body.itemId)) {
-      throw new BadRequestException('itemId không hợp lệ');
+      throw new BadRequestException('Invalid itemId');
     }
     if (!body.quantity || body.quantity <= 0) {
-      throw new BadRequestException('quantity không hợp lệ');
+      throw new BadRequestException('Invalid quantity');
     }
 
     const { receiverId, itemId, quantity, message } = body;
 
-    // check item tồn tại
+    // check item exists
     const item = await this.donationService.getItemById(itemId);
-    if (!item) throw new BadRequestException('Không tìm thấy vật phẩm');
+    if (!item) throw new BadRequestException('Item not found');
 
     return this.donationService.donate(
       senderId,
@@ -86,21 +90,24 @@ export class DonationController {
   }
 
   @Get('received')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getReceivedGifts(@Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     return this.donationService.getReceivedGifts(payload.userId);
   }
 
   @Get('sent')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getSentGifts(@Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     return this.donationService.getSentGifts(payload.userId);
   }
 
   @Patch('mark-read')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async markAsRead(
     @Req() req: Request,
     @Body() body: { donationIds?: string[]; id?: string },
@@ -112,7 +119,7 @@ export class DonationController {
 
     // optional: validate ids format
     const invalid = ids.find((x) => !Types.ObjectId.isValid(x));
-    if (invalid) throw new BadRequestException('donationId không hợp lệ');
+    if (invalid) throw new BadRequestException('Invalid donationId');
 
     return this.donationService.markAsRead(payload.userId, ids);
   }

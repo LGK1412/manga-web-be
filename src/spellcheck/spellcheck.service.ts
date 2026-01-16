@@ -15,7 +15,7 @@ export class SpellCheckService implements OnModuleInit {
       // dict là object {aff: Uint8Array, dic: Uint8Array}
       this.spell = nspell(dict);
     } catch (error) {
-      console.error('Lỗi import dictionary:', error);
+      console.error('Error importing dictionary:', error);
       throw error;
     }
   }
@@ -165,7 +165,7 @@ export class SpellCheckService implements OnModuleInit {
 
   async checkText(dto: CheckSpellDto): Promise<{ original: string; errors: SpellError[] }> {
     if (!this.spell) {
-      throw new Error('Dictionary chưa được load');
+      throw new Error('Dictionary has not been loaded');
     }
 
     const { text } = dto;

@@ -14,11 +14,11 @@ export class EmojiPackService {
     async checkAdmin(payload: any) {
         const existingUser = await this.userService.findUserById(payload.user_id)
         if (!existingUser) {
-            throw new BadRequestException("Người dùng không tồn tại")
+            throw new BadRequestException("User does not exist")
         }
 
         if (existingUser.role !== "admin") {
-            throw new BadRequestException("Bạn Không có quyền thêm Emoji")
+            throw new BadRequestException("You do not have permission to add Emoji")
         }
 
         return existingUser
@@ -28,7 +28,7 @@ export class EmojiPackService {
         await this.checkAdmin(payload)
         // kiểm tra tên pack đã tồn tại chưa
         const exist = await this.emojiPackModel.findOne({ name });
-        if (exist) throw new BadRequestException(`Emoji pack "${name}" đã tồn tại`);
+        if (exist) throw new BadRequestException(`Emoji pack "${name}" already exists`);
 
         // lấy ObjectId từ data emoji
         const emojiIds: Types.ObjectId[] = data.map(emoji => {
@@ -63,7 +63,7 @@ export class EmojiPackService {
         deletedEmoji: any[] = []
     ) {
         const pack = await this.emojiPackModel.findById(id);
-        if (!pack) throw new BadRequestException("Pack không tồn tại");
+        if (!pack) throw new BadRequestException("Pack does not exist");
 
         // Update tên và giá
         pack.name = name;
@@ -91,7 +91,7 @@ export class EmojiPackService {
         await this.checkAdmin(payload)
         // Lấy pack hiện tại
         const pack = await this.emojiPackModel.findById(id);
-        if (!pack) throw new BadRequestException("Pack không tồn tại");
+        if (!pack) throw new BadRequestException("Pack does not exist");
 
         // Toggle is_hide
         pack.is_hide = !pack.is_hide;

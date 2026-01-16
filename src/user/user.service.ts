@@ -244,9 +244,9 @@ export class UserService {
     const target = await this.userModel.findById(targetUserId).select('role');
     if (!target) throw new NotFoundException('User not found');
 
-    // tránh admin tự tước quyền admin của chính mình
+    // Prevent admin from removing their own admin role
     if (adminId === targetUserId && role !== Role.ADMIN) {
-      throw new BadRequestException('Bạn không thể tự gỡ quyền ADMIN của chính mình');
+      throw new BadRequestException('You cannot remove your own ADMIN role');
     }
 
     // (tuỳ hệ thống) nếu bạn muốn ngăn đổi AUTHOR -> USER (giống logic cũ) thì bật:
@@ -300,7 +300,7 @@ export class UserService {
   async updateProfile(userPayload: any, payload: any) {
     try {
       if (!userPayload || !userPayload.user_id) {
-        throw new BadRequestException('Thông tin người dùng không hợp lệ');
+        throw new BadRequestException('Invalid user information');
       }
 
       const userId = userPayload.user_id;
@@ -347,14 +347,14 @@ export class UserService {
 
   async getFavourites(token: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
     const user = await this.userModel
       .findById(decoded.user_id)
@@ -368,7 +368,7 @@ export class UserService {
       });
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     return { favourites: user.favourites || [] };
@@ -376,14 +376,14 @@ export class UserService {
 
   async toggleFavourite(token: string, mangaId: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
 
     const mangaObjectId = new Types.ObjectId(mangaId);
@@ -394,7 +394,7 @@ export class UserService {
       .populate('favourites');
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     let updatedFavourites: Types.ObjectId[];
@@ -527,7 +527,7 @@ export class UserService {
         remainingTokens: result.device_id,
       };
     } catch (error) {
-      console.error("❌ Lỗi khi xoá token fail:", error);
+      console.error("❌ Error removing failed token:", error);
       return { success: false, error };
     }
   }
@@ -602,21 +602,21 @@ export class UserService {
 
         if (follower && author) {
           const notificationDto: sendNotificationDto = {
-            title: "Bạn có người theo dõi mới",
-            body: `${follower.username} đã theo dõi bạn`,
+            title: "You have a new follower",
+            body: `${follower.username} is now following you`,
             deviceId: author.device_id ?? [],
             receiver_id: authorId,
             sender_id: decoded.user_id
           };
 
-          // Gửi notification
+          // Send notification
           const sendNotiResult = await this.notificationService.sendNotification(notificationDto);
 
-          // Xóa các device token lỗi
+          // Remove failed device tokens
           await this.removeDeviceId(authorId, sendNotiResult);
         }
       } catch (error) {
-        console.error('Lỗi gửi notification follow:', error);
+        console.error('Error sending follow notification:', error);
       }
       // Emit
       this.eventEmitter.emit("follow_count_increase", { userId: user._id.toString() });
@@ -631,14 +631,14 @@ export class UserService {
 
   async getFollowStats(token: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
 
     const user = await this.userModel
@@ -646,7 +646,7 @@ export class UserService {
       .select('following_authors');
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     const followingCount = Array.isArray((user as any).following_authors)
@@ -777,7 +777,7 @@ export class UserService {
   async buyEmojiPack(user_id: string, pack_id: string, price: string) {
     const existingUser = await this.checkUser(user_id)
     if (existingUser.emoji_packs.includes(new Types.ObjectId(pack_id))) {
-      throw new BadRequestException("Đã mua Emoji Pack này rồi")
+      throw new BadRequestException("You have already purchased this Emoji Pack")
     }
     existingUser.emoji_packs.push(new Types.ObjectId(pack_id))
     existingUser.point -= Number(price);
@@ -815,21 +815,21 @@ export class UserService {
     const criteria: EligibilityCriteria[] = [
       {
         id: 'email_verified',
-        label: 'Email đã được xác minh',
+        label: 'Email verified',
         required: 1,
         actual: isEmailVerified ? 1 : 0,
         met: isEmailVerified,
       },
       {
         id: 'followers',
-        label: 'Số người theo dõi',
+        label: 'Number of followers',
         required: 5,
         actual: followersCount,
         met: followersCount >= 5,
       },
       {
         id: 'chapters_read',
-        label: 'Số chương đã đọc',
+        label: 'Chapters read',
         required: 20,
         actual: chaptersReadCount,
         met: chaptersReadCount >= 20,
@@ -847,10 +847,10 @@ export class UserService {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus authorRequestedAt authorApprovedAt authorAutoApproved');
     
     if (!user) {
-      throw new NotFoundException('Người dùng không tồn tại');
+      throw new NotFoundException('User does not exist');
     }
 
-    // Nếu đã là author, trả về approved
+    // If already an author, return approved
     if (user.role === 'author') {
       const criteria = await this.evaluateAuthorEligibility(userId);
       return {
@@ -859,27 +859,27 @@ export class UserService {
         autoApproved: user.authorAutoApproved,
         criteria,
         canRequest: false,
-        message: 'Bạn đã là tác giả',
+        message: 'You are already an author',
       };
     }
 
-    // Đánh giá điều kiện
+    // Evaluate eligibility
     const criteria = await this.evaluateAuthorEligibility(userId);
     const allCriteriaMet = criteria.every((c) => c.met);
 
-    // Nếu chưa có request
+    // If no request yet
     if (!user.authorRequestStatus || user.authorRequestStatus === AuthorRequestStatus.NONE) {
       return {
         status: 'none',
         criteria,
         canRequest: true,
         message: allCriteriaMet 
-          ? 'Bạn đã đủ điều kiện để trở thành tác giả' 
-          : 'Bạn chưa đủ điều kiện để trở thành tác giả',
+          ? 'You meet all requirements to become an author' 
+          : 'You do not meet all requirements to become an author',
       };
     }
 
-    // Nếu đang pending
+    // If pending
     if (user.authorRequestStatus === AuthorRequestStatus.PENDING) {
       return {
         status: 'pending',
@@ -887,19 +887,19 @@ export class UserService {
         criteria,
         canRequest: false,
         message: allCriteriaMet 
-          ? 'Yêu cầu của bạn đang được xử lý. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.' 
-          : 'Yêu cầu của bạn đang chờ. Vui lòng cải thiện các tiêu chí còn thiếu.',
+          ? 'Your request is being processed. The system will automatically approve when you meet all requirements.' 
+          : 'Your request is pending. Please improve the missing criteria.',
       };
     }
 
-    // Nếu đã approved (nhưng role chưa được update - trường hợp edge case)
+    // If approved (but role not updated - edge case)
     return {
       status: 'approved',
       approvedAt: user.authorApprovedAt?.toISOString(),
       autoApproved: user.authorAutoApproved,
       criteria,
       canRequest: false,
-      message: 'Bạn đã được phê duyệt',
+      message: 'You have been approved',
     };
   }
 
@@ -911,24 +911,24 @@ export class UserService {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus');
     
     if (!user) {
-      throw new NotFoundException('Người dùng không tồn tại');
+      throw new NotFoundException('User does not exist');
     }
 
-    // Nếu đã là author
+    // If already an author
     if (user.role === 'author') {
-      throw new BadRequestException('Bạn đã là tác giả rồi');
+      throw new BadRequestException('You are already an author');
     }
 
-    // Nếu đã approved
+    // If already approved
     if (user.authorRequestStatus === AuthorRequestStatus.APPROVED) {
-      throw new BadRequestException('Yêu cầu của bạn đã được phê duyệt');
+      throw new BadRequestException('Your request has already been approved');
     }
 
-    // Đánh giá điều kiện
+    // Evaluate eligibility
     const criteria = await this.evaluateAuthorEligibility(userId);
     const allCriteriaMet = criteria.every((c) => c.met);
 
-    // Nếu đủ điều kiện → auto approve
+    // If all criteria met → auto approve
     if (allCriteriaMet) {
       const now = new Date();
       await this.userModel.updateOne(
@@ -944,13 +944,13 @@ export class UserService {
         }
       );
 
-      // Gửi notification
+      // Send notification
       try {
         const userWithDevice = await this.userModel.findById(userId).select('device_id username');
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
-            title: 'Chúc mừng! Bạn đã trở thành tác giả',
-            body: 'Yêu cầu trở thành tác giả của bạn đã được tự động phê duyệt',
+            title: 'Congratulations! You are now an author',
+            body: 'Your request to become an author has been automatically approved',
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
@@ -958,17 +958,17 @@ export class UserService {
           await this.notificationService.createNotification(notificationDto);
         }
       } catch (error) {
-        // Silently fail notification - không ảnh hưởng đến việc approve author
+        // Silently fail notification - does not affect author approval
       }
 
       return {
         success: true,
-        message: 'Chúc mừng! Bạn đã trở thành tác giả',
+        message: 'Congratulations! You are now an author',
         autoApproved: true,
       };
     }
 
-    // Nếu chưa đủ điều kiện → set pending
+    // If criteria not met → set pending
     await this.userModel.updateOne(
       { _id: userId },
       {
@@ -981,7 +981,7 @@ export class UserService {
 
     return {
       success: true,
-      message: 'Yêu cầu của bạn đã được gửi. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.',
+      message: 'Your request has been submitted. The system will automatically approve when you meet all requirements.',
       autoApproved: false,
     };
   }
@@ -1014,13 +1014,13 @@ export class UserService {
         }
       );
 
-      // Gửi notification
+      // Send notification
       try {
         const userWithDevice = await this.userModel.findById(userId).select('device_id username');
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
-            title: 'Chúc mừng! Bạn đã trở thành tác giả',
-            body: 'Yêu cầu trở thành tác giả của bạn đã được tự động phê duyệt',
+            title: 'Congratulations! You are now an author',
+            body: 'Your request to become an author has been automatically approved',
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
@@ -1028,7 +1028,7 @@ export class UserService {
           await this.notificationService.sendNotification(notificationDto);
         }
       } catch (error) {
-        // Silently fail notification - không ảnh hưởng đến việc approve author
+        // Silently fail notification - does not affect author approval
       }
     }
   }

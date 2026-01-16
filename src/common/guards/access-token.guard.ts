@@ -25,7 +25,7 @@ export class AccessTokenGuard implements CanActivate {
         secret: process.env.JWT_SECRET,
       });
 
-      request['user'] = payload; // ⭐ LUÔN GẮN USER
+      request['user'] = payload; //  LUÔN GẮN USER
       return true;
     } catch {
       throw new UnauthorizedException('Token invalid or expired');

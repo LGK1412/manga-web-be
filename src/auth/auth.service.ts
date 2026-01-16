@@ -31,7 +31,7 @@ export class AuthService {
         this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
     }
 
-    // Đăng ký người dùng mới
+    // Register new user
     async register(registerDto: RegisterDto) {
         const existingUserByEmail = await this.userService.findByEmail(registerDto.email);
         const existingUserByUsername = await this.userService.findByUsername(registerDto.username);
@@ -70,7 +70,7 @@ export class AuthService {
         return { "success": true };
     }
 
-    // Đăng nhập
+    // Login
     async login(loginDto: LoginDto) {
         const now = Date.now();
         const rateLimitKey = `${loginDto.email}_${loginDto.password.substring(0, 3)}`;
@@ -153,10 +153,10 @@ export class AuthService {
         return { isLogin: true }
     }
 
-    // Gửi code Verification Email
+    // Send Verification Email code
     async sendVerificationEmail(email: string) {
         if (!email) {
-            throw new BadRequestException('Email không hợp lệ');
+            throw new BadRequestException('Invalid email');
         }
 
         const now = Date.now();
@@ -167,7 +167,7 @@ export class AuthService {
                 if (rateLimitData.count >= 3) {
                     const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
                     throw new BadRequestException(
-                        `Bạn đã gửi quá nhiều email. Vui lòng thử lại sau ${remainingSeconds} giây.`
+                        `Too many emails sent. Please try again in ${remainingSeconds} seconds.`
                     );
                 }
                 rateLimitData.count += 1;
@@ -189,7 +189,7 @@ export class AuthService {
 
             await this.mailerService.sendMail({
                 to: email,
-                subject: 'Xác minh email của bạn',
+                subject: 'Verify your email',
                 template: './verifyEmail',
                 context: { verifyUrl },
             });
@@ -198,17 +198,17 @@ export class AuthService {
                 await this.userService.updateVerifyEmailCode(code, email);
             } catch (err) {
                 throw new InternalServerErrorException(
-                    `Không thể cập nhật verify_email_code cho user: ${err.message}`,
+                    `Unable to update verify_email_code for user: ${err.message}`,
                 );
             }
 
             return {
                 success: true,
-                message: 'Email xác minh đã được gửi thành công',
+                message: 'Verification email sent successfully',
             };
         } catch (error) {
             throw new InternalServerErrorException(
-                `Không gửi được email xác minh: ${error.message}`,
+                `Unable to send verification email: ${error.message}`,
             );
         }
     }
@@ -216,40 +216,40 @@ export class AuthService {
     // verification Email code
     async verificationEmail(token: string) {
         if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
+            throw new BadRequestException('Missing verification token');
         }
 
         let payload: any;
         try {
             payload = this.jwtService.verify(token);
         } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+            throw new BadRequestException('Invalid or expired token');
         }
 
         if (payload.action !== 'verify_email' || !payload.email) {
-            throw new BadRequestException('Token không hợp lệ');
+            throw new BadRequestException('Invalid token');
         }
 
         const existingUser = await this.userService.findByEmail(payload.email);
 
         if (!existingUser || existingUser.status === 'ban') {
-            throw new BadRequestException('Người dùng không tồn tại hoặc đã bị khóa');
+            throw new BadRequestException('User does not exist or has been banned');
         }
 
         if (existingUser.verified) {
-            throw new BadRequestException('Người dùng đã được xác thực');
+            throw new BadRequestException('User has already been verified');
         }
 
         if (existingUser.verify_email_code !== token) {
-            throw new BadRequestException('Code sai vui lòng đăng nhập lại');
+            throw new BadRequestException('Invalid code. Please request a new verification link');
         }
 
         try {
             await this.userService.updateVerify(existingUser._id);
             await this.userService.updateVerifyEmailCode("", payload.email);
-            return { success: true, message: 'Xác minh email thành công' };
+            return { success: true, message: 'Email verified successfully' };
         } catch {
-            throw new BadRequestException('Không thể cập nhật trạng thái xác minh');
+            throw new BadRequestException('Unable to update verification status');
         }
     }
 
@@ -259,13 +259,13 @@ export class AuthService {
             idToken,
             audience: process.env.GOOGLE_CLIENT_ID,
         }).catch(() => {
-            throw new UnauthorizedException('Mã thông báo Google không hợp lệ');
+            throw new UnauthorizedException('Invalid Google token');
         });
 
         const payload = ticket.getPayload();
 
         if (!payload?.email || !payload.email_verified) {
-            throw new UnauthorizedException('Email Google chưa được xác minh');
+            throw new UnauthorizedException('Google email is not verified');
         }
 
         try {
@@ -301,7 +301,7 @@ export class AuthService {
             }
 
             if (!user) {
-                throw new InternalServerErrorException('Không thể tạo hoặc tìm thấy người dùng');
+                throw new InternalServerErrorException('Unable to create or find user');
             }
 
             const tokenPayload = {
@@ -317,14 +317,14 @@ export class AuthService {
 
             return { accessToken, tokenPayload };
         } catch (e) {
-            throw new InternalServerErrorException('Lỗi hệ thống');
+            throw new InternalServerErrorException('System error');
         }
     }
 
     // Gửi code Verification Forgot Password
     async sendVerificationForgotPassword(email: string) {
         if (!email) {
-            throw new BadRequestException('Email không hợp lệ');
+            throw new BadRequestException('Invalid email');
         }
 
         const now = Date.now();
@@ -335,7 +335,7 @@ export class AuthService {
                 if (rateLimitData.count >= 3) {
                     const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
                     throw new BadRequestException(
-                        `Bạn đã gửi quá nhiều email. Vui lòng thử lại sau ${remainingSeconds} giây.`
+                        `Too many emails sent. Please try again in ${remainingSeconds} seconds.`
                     );
                 }
                 rateLimitData.count += 1;
@@ -349,15 +349,15 @@ export class AuthService {
         const existingUser = await this.userService.findByEmail(email)
 
         if (!existingUser || existingUser.status === 'ban') {
-            throw new BadRequestException('Email không hợp lệ hoặc tài khoản không khả dụng');
+            throw new BadRequestException('Invalid email or account is not available');
         }
 
         if (existingUser.google_id) {
-            throw new BadRequestException('Vui lòng đăng nhập bằng tài khoản google');
+            throw new BadRequestException('Please login with Google account');
         }
 
         if (!existingUser.verified) {
-            throw new BadRequestException('Người dùng chưa được xác thực');
+            throw new BadRequestException('User has not been verified');
         }
 
         const code = this.jwtService.sign(
@@ -371,7 +371,7 @@ export class AuthService {
 
             await this.mailerService.sendMail({
                 to: email,
-                subject: 'Xác minh email của bạn',
+                subject: 'Verify your email',
                 template: './verifyForgotPassword',
                 context: { verifyUrl },
             });
@@ -380,17 +380,17 @@ export class AuthService {
                 await this.userService.updateVerifyForgotPasswordCode(code, email);
             } catch (err) {
                 throw new InternalServerErrorException(
-                    `Không thể cập nhật verify_forgot_password_code cho user: ${err.message}`,
+                    `Unable to update verify_forgot_password_code for user: ${err.message}`,
                 );
             }
 
             return {
                 success: true,
-                message: 'Email xác minh đã được gửi thành công',
+                message: 'Verification email sent successfully',
             };
         } catch (error) {
             throw new InternalServerErrorException(
-                `Không gửi được email xác minh: ${error.message}`,
+                `Unable to send verification email: ${error.message}`,
             );
         }
     }
@@ -398,7 +398,7 @@ export class AuthService {
     // verification forgot password code
     async verificationForgotPassword(token: string, password: string) {
         if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
+            throw new BadRequestException('Missing verification token');
         }
 
         let payload: any;
@@ -406,45 +406,45 @@ export class AuthService {
         try {
             payload = this.jwtService.verify(token);
         } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+            throw new BadRequestException('Invalid or expired token');
         }
 
         if (payload.action !== 'verify_forgot_password' || !payload.email) {
-            throw new BadRequestException('Token không hợp lệ');
+            throw new BadRequestException('Invalid token');
         }
 
         const existingUser = await this.userService.findByEmail(payload.email);
 
         if (!existingUser || existingUser.status === 'ban') {
-            throw new BadRequestException('Người dùng không tồn tại hoặc đã bị khóa');
+            throw new BadRequestException('User does not exist or has been banned');
         }
 
         if (existingUser.google_id) {
-            throw new BadRequestException('Vui lòng đăng nhập bằng tài khoản google');
+            throw new BadRequestException('Please login with Google account');
         }
 
         if (!existingUser.verified) {
-            throw new BadRequestException('Người dùng chưa được xác thực');
+            throw new BadRequestException('User has not been verified');
         }
 
         if (existingUser.verify_forgot_password_code !== token) {
-            throw new BadRequestException('Code sai vui lòng gửi lại link');
+            throw new BadRequestException('Invalid code. Please request a new link');
         }
 
         const newPassword = await hashPassword(password);
 
         try {
             await this.userService.changePasswordForgot(newPassword, payload.email)
-            return { success: true, message: 'Cập nhật mật khẩu thành công' };
+            return { success: true, message: 'Password updated successfully' };
         } catch {
-            throw new BadRequestException('Không thể cập nhật trạng thái xác minh');
+            throw new BadRequestException('Unable to update password');
         }
     }
 
     // change password (khi đã đăng nhập thành công)
     async changePassword(password: string, token: string) {
         if (!token) {
-            throw new BadRequestException('Thiếu token xác minh');
+            throw new BadRequestException('Missing verification token');
         }
 
         let payload: any;
@@ -452,21 +452,21 @@ export class AuthService {
         try {
             payload = this.jwtService.verify(token);
         } catch {
-            throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+            throw new BadRequestException('Invalid or expired token');
         }
 
         const existingUser = await this.userService.findByEmail(payload.email);
 
         if (!existingUser || existingUser.status === 'ban') {
-            throw new BadRequestException('Người dùng không tồn tại hoặc đã bị khóa');
+            throw new BadRequestException('User does not exist or has been banned');
         }
 
         if (existingUser.google_id) {
-            throw new BadRequestException('Tài khoản Google không thể đổi mật khẩu');
+            throw new BadRequestException('Google accounts cannot change password');
         }
 
         if (!existingUser.verified) {
-            throw new BadRequestException('Người dùng chưa được xác thực');
+            throw new BadRequestException('User has not been verified');
         }
 
         const isSamePassword = await comparePassword(password, existingUser.password);
@@ -488,7 +488,7 @@ export class AuthService {
         try {
             const userPayload = req.user;
             if (!userPayload || !userPayload.user_id) {
-                throw new UnauthorizedException('Thông tin người dùng không hợp lệ');
+                throw new UnauthorizedException('Invalid user information');
             }
 
             const userId = userPayload.user_id;
@@ -499,7 +499,7 @@ export class AuthService {
                 .lean();
 
             if (!user) {
-                throw new UnauthorizedException('Người dùng không tồn tại');
+                throw new UnauthorizedException('User does not exist');
             }
 
             return {
@@ -517,7 +517,7 @@ export class AuthService {
             if (error instanceof UnauthorizedException) {
                 throw error;
             }
-            throw new InternalServerErrorException('Không thể lấy thông tin người dùng');
+            throw new InternalServerErrorException('Unable to get user information');
         }
     }
 }

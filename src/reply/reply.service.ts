@@ -56,7 +56,7 @@ export class ReplyService {
 
     const savedReplyChapter = await newReplyChapter.save();
     if (!savedReplyChapter._id) {
-      throw new BadRequestException('Lỗi không tạo dược comment');
+      throw new BadRequestException('Failed to create comment');
     }
 
     // ✅ Truyền ObjectId vào getChapterById
@@ -69,7 +69,7 @@ export class ReplyService {
       (chapter as any)?.manga_id?._id ?? (chapter as any)?.manga_id;
     if (!mangaId) {
       throw new InternalServerErrorException(
-        'Chapter không có manga_id hợp lệ',
+        'Chapter does not have a valid manga_id',
       );
     }
 
@@ -83,8 +83,8 @@ export class ReplyService {
     );
 
     const dto: sendNotificationDto = {
-      title: 'Có 1 phản hồi mới',
-      body: `${payload.username} đã phản hồi bình luận tại Chapter ${chapter?.title}, Truyện: ${manga?.title}`,
+      title: 'New reply',
+      body: `${payload.username} replied to a comment in Chapter ${chapter?.title}, Story: ${manga?.title}`,
       deviceId: receiver?.device_id ?? [],
       receiver_id: createReplyChapterDTO.receiver_id,
       sender_id: payload.user_id,
@@ -284,16 +284,16 @@ export class ReplyService {
         is_up: true,
       });
       await newVote.save();
-      return { success: true, message: 'Đã upvote reply' };
+      return { success: true, message: 'Reply upvoted' };
     }
 
     if (existingVote.is_up === true) {
       await existingVote.deleteOne();
-      return { success: true, message: 'Bỏ upvote reply' };
+      return { success: true, message: 'Reply upvote removed' };
     } else {
       existingVote.is_up = true;
       await existingVote.save();
-      return { success: true, message: 'Đã upvote reply' };
+      return { success: true, message: 'Reply upvoted' };
     }
   }
 
@@ -315,16 +315,16 @@ export class ReplyService {
         is_up: false,
       });
       await newVote.save();
-      return { success: true, message: 'Đã downvote reply' };
+      return { success: true, message: 'Reply downvoted' };
     }
 
     if (existingVote.is_up === false) {
       await existingVote.deleteOne();
-      return { success: true, message: 'Bỏ downvote reply' };
+      return { success: true, message: 'Reply downvote removed' };
     } else {
       existingVote.is_up = false;
       await existingVote.save();
-      return { success: true, message: 'Đã downvote reply' };
+      return { success: true, message: 'Reply downvoted' };
     }
   }
 }

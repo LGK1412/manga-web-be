@@ -79,7 +79,8 @@ export class EmojiPackController {
    * Logged-in: lấy pack cho shop (có thể kèm trạng thái đã mua)
    */
   @Get('/get-pack-for-shop')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getPackForShop(
     @Query('page') page = 1,
     @Query('limit') limit = 12,

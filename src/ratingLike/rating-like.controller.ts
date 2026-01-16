@@ -14,6 +14,9 @@ import { Types } from 'mongoose';
 import { RatingLikeService } from './rating-like.service';
 
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/rating-like')
@@ -35,7 +38,8 @@ export class RatingLikeController {
   }
 
   @Post('toggle')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async toggle(@Body('ratingId') ratingIdStr: string, @Req() req: Request) {
     if (!ratingIdStr) throw new BadRequestException('ratingId is required');
     if (!Types.ObjectId.isValid(ratingIdStr)) {
@@ -60,7 +64,8 @@ export class RatingLikeController {
   }
 
   @Get('mine')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async mine(@Query('ratingId') ratingIdStr: string, @Req() req: Request) {
     if (!ratingIdStr) throw new BadRequestException('ratingId is required');
     if (!Types.ObjectId.isValid(ratingIdStr)) {

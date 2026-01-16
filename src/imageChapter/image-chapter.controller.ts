@@ -132,7 +132,7 @@ export class ImageChapterController {
           : undefined,
       };
     } catch {
-      throw new BadRequestException('existing_images phải là JSON hợp lệ');
+      throw new BadRequestException('existing_images must be valid JSON');
     }
 
     const result = await this.imageChapterService.updateChapterWithImages(

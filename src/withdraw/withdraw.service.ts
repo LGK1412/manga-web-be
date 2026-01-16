@@ -33,11 +33,11 @@ export class WithdrawService {
     if (!author) throw new NotFoundException('author not found');
 
     if (withdraw_point <= 0) {
-      throw new BadRequestException('Số điểm rút phải lớn hơn 0');
+      throw new BadRequestException('Withdrawal points must be greater than 0');
     }
 
     if (author.author_point < withdraw_point) {
-      throw new BadRequestException('Không đủ điểm để rút');
+      throw new BadRequestException('Insufficient points to withdraw');
     }
 
     // Tính tổng điểm đang pending
@@ -48,11 +48,11 @@ export class WithdrawService {
 
     const pendingTotal = pendingSum.length > 0 ? pendingSum[0].total : 0;
 
-    // Check số điểm khả dụng
+    // Check available points
     const availablePoints = author.author_point - pendingTotal;
     if (availablePoints < withdraw_point) {
       throw new BadRequestException(
-        `Không đủ điểm khả dụng. Bạn hiện còn ${availablePoints} điểm khả dụng.`
+        `Insufficient available points. You currently have ${availablePoints} available points.`
       );
     }
 
@@ -82,14 +82,14 @@ export class WithdrawService {
     if (!withdraw) throw new NotFoundException('Withdraw request not found');
 
     if (withdraw.status !== 'pending') {
-      throw new BadRequestException('Yêu cầu này đã được xử lý');
+      throw new BadRequestException('This request has already been processed');
     }
 
     const author = await this.userModel.findById(withdraw.authorId._id);
     if (!author) throw new NotFoundException('author not found');
 
     if (author.author_point < withdraw.withdraw_point) {
-      throw new BadRequestException('author không đủ điểm để duyệt rút');
+      throw new BadRequestException('Author does not have enough points to approve withdrawal');
     }
 
     // Trừ điểm
@@ -108,7 +108,7 @@ export class WithdrawService {
       await this.sendWithdrawReceiptEmail(withdraw, taxSettlement)
     } catch (err) {
       throw new BadRequestException(
-        `Không thể gửi mail cho user: ${err.message}`,
+        `Unable to send email to user: ${err.message}`,
       );
     }
 
@@ -123,7 +123,7 @@ export class WithdrawService {
     if (!withdraw) throw new NotFoundException('Withdraw request not found');
 
     if (withdraw.status !== 'pending') {
-      throw new BadRequestException('Yêu cầu này đã được xử lý');
+      throw new BadRequestException('This request has already been processed');
     }
 
     withdraw.status = 'rejected';

@@ -24,13 +24,13 @@ export class DonationService {
   private async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     return existingUser;
   }
@@ -55,7 +55,7 @@ export class DonationService {
       .exec();
 
     if (!items || items.length === 0) {
-      throw new NotFoundException("Không tìm thấy quà tặng nào");
+      throw new NotFoundException("No donation items found");
     }
 
     return items;
@@ -69,22 +69,22 @@ export class DonationService {
     message?: string,
   ) {
     if (senderId === receiverId)
-      throw new BadRequestException('Không thể tự tặng quà cho chính mình');
+      throw new BadRequestException('Cannot send gift to yourself');
 
     const item = await this.donationItemModel.findById(itemId);
     if (!item || !item.isAvailable)
-      throw new NotFoundException('Vật phẩm không khả dụng');
+      throw new NotFoundException('Item is not available');
 
-    if (quantity < 1) throw new BadRequestException('Số lượng không hợp lệ');
+    if (quantity < 1) throw new BadRequestException('Invalid quantity');
 
     const sender = await this.checkUser(senderId);
     const receiver = await this.userModel.findById(receiverId);
-    if (!receiver) throw new NotFoundException('Không tìm thấy người nhận');
+    if (!receiver) throw new NotFoundException('Receiver not found');
 
     const totalPrice = item.price * quantity;
 
     if (sender.point < totalPrice)
-      throw new ForbiddenException('Không đủ xu để tặng quà');
+      throw new ForbiddenException('Insufficient points to send gift');
 
     sender.point -= totalPrice;
     await sender.save();
@@ -111,7 +111,7 @@ export class DonationService {
 
     return {
       success: true,
-      message: `Đã tặng ${quantity}x ${item.name} cho ${receiver.username}. Người nhận nhận được ${receivedAuthorPoint.toLocaleString()} xu.`,
+      message: `Sent ${quantity}x ${item.name} to ${receiver.username}. Receiver received ${receivedAuthorPoint.toLocaleString()} points.`,
       data: donation,
     };
   }
@@ -184,7 +184,7 @@ export class DonationService {
 
     return {
       updated: result.modifiedCount,
-      message: result.modifiedCount > 0 ? 'Đã đánh dấu quà là đã đọc' : 'Không có quà mới để đánh dấu',
+      message: result.modifiedCount > 0 ? 'Gifts marked as read' : 'No new gifts to mark',
     };
   }
 

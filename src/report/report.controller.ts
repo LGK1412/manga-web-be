@@ -26,19 +26,22 @@ export class ReportController {
   // ================= USER / LOGGED-IN =================
 
   @Post()
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   create(@Body() dto: CreateReportDto) {
     return this.reportsService.create(dto);
   }
 
   @Get()
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   findAll() {
     return this.reportsService.findAll();
   }
 
   @Get(':id')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   findOne(@Param('id') id: string) {
     return this.reportsService.findOne(id);
   }

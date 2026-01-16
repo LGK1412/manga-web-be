@@ -28,11 +28,11 @@ export class CommentService {
   // ================== VALIDATION ==================
   private async checkUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
-    if (!existingUser) throw new BadRequestException('Người dùng không tồn tại');
+    if (!existingUser) throw new BadRequestException('User does not exist');
     if (existingUser.status === 'mute')
-      throw new BadRequestException('Người dùng bị cấm');
+      throw new BadRequestException('User is banned');
     if (existingUser.role !== 'user' && existingUser.role !== 'author')
-      throw new BadRequestException('Bạn không có quyền');
+      throw new BadRequestException('You do not have permission');
     return existingUser;
   }
 
@@ -42,7 +42,7 @@ export class CommentService {
 
     // ✅ Validate & ép kiểu chapter_id
     if (!Types.ObjectId.isValid(createCommentDto.chapter_id)) {
-      throw new BadRequestException('chapter_id không hợp lệ');
+      throw new BadRequestException('Invalid chapter_id');
     }
     const chapterId = new Types.ObjectId(createCommentDto.chapter_id);
 
@@ -54,11 +54,11 @@ export class CommentService {
 
     const savedComment = await newComment.save();
     if (!savedComment?._id)
-      throw new BadRequestException('Lỗi không tạo được comment');
+      throw new BadRequestException('Failed to create comment');
 
-    // ✅ Lấy thông tin chapter + manga + author
+    // ✅ Get chapter + manga + author info
     const chapter = await this.chapterService.getChapterById(chapterId);
-    if (!chapter) throw new BadRequestException('Chapter không tồn tại');
+    if (!chapter) throw new BadRequestException('Chapter does not exist');
 
     const manga = await this.mangaService.getAuthorByMangaIdForCommentChapter(
       (chapter as any)?.manga_id?._id?.toString?.() ??
@@ -71,8 +71,8 @@ export class CommentService {
     // ✅ Gửi notification
     if (author) {
       const dto: sendNotificationDto = {
-        title: 'Có 1 comment mới',
-        body: `${payload.username} đã comment vào Chapter ${chapter?.title} của Truyện: ${manga?.title}`,
+        title: 'New comment',
+        body: `${payload.username} commented on Chapter ${chapter?.title} of Story: ${manga?.title}`,
         deviceId: author?.device_id ?? [],
         receiver_id:
           (manga?.authorId as any)?._id?.toString?.() ??
@@ -255,16 +255,16 @@ export class CommentService {
         is_up: true,
       });
       await newVote.save();
-      return { success: true, message: 'Đã upvote' };
+      return { success: true, message: 'Upvoted' };
     }
 
     if (existingVote.is_up === true) {
       await existingVote.deleteOne();
-      return { success: true, message: 'Bỏ upvote' };
+      return { success: true, message: 'Upvote removed' };
     } else {
       existingVote.is_up = true;
       await existingVote.save();
-      return { success: true, message: 'Đã upvote' };
+      return { success: true, message: 'Upvoted' };
     }
   }
 
@@ -286,16 +286,16 @@ export class CommentService {
         is_up: false,
       });
       await newVote.save();
-      return { success: true, message: 'Đã downvote' };
+      return { success: true, message: 'Downvoted' };
     }
 
     if (existingVote.is_up === false) {
       await existingVote.deleteOne();
-      return { success: true, message: 'Bỏ downvote' };
+      return { success: true, message: 'Downvote removed' };
     } else {
       existingVote.is_up = false;
       await existingVote.save();
-      return { success: true, message: 'Đã downvote' };
+      return { success: true, message: 'Downvoted' };
     }
   }
 
@@ -344,7 +344,7 @@ export class CommentService {
 
   async toggleCommentVisibility(id: string) {
     const comment = await this.commentModel.findById(id);
-    if (!comment) throw new BadRequestException('Comment không tồn tại');
+    if (!comment) throw new BadRequestException('Comment does not exist');
 
     comment.is_delete = !comment.is_delete;
     await comment.save();
@@ -352,7 +352,7 @@ export class CommentService {
     return {
       success: true,
       message: `Comment ${
-        comment.is_delete ? 'đã bị ẩn' : 'đã hiển thị lại'
+        comment.is_delete ? 'has been hidden' : 'has been restored'
       }`,
     };
   }

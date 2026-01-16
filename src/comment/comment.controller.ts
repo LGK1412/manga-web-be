@@ -28,7 +28,8 @@ export class CommentController {
   // ===== USER =====
 
   @Post('/create-comment')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async createCommentChapter(
     @Body() createCommentDto: CreateCommentDTO,
     @Req() req: Request,
@@ -38,14 +39,16 @@ export class CommentController {
   }
 
   @Post('/upvote')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async upVote(@Body() body: any, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     return this.commentService.upVote(body.comment_id, payload);
   }
 
   @Post('/downvote')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async downVote(@Body() body: any, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     return this.commentService.downVote(body.comment_id, payload);

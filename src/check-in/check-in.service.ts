@@ -16,13 +16,13 @@ export class CheckinService {
   private async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     return existingUser;
   }
@@ -51,7 +51,7 @@ export class CheckinService {
     const record = await this.getOrCreateRecord(userId);
 
     if (record.checkins[todayIndex]) {
-      throw new BadRequestException("Hôm nay đã điểm danh rồi!");
+      throw new BadRequestException("Already checked in today!");
     }
 
     // Đánh dấu điểm danh
@@ -71,7 +71,7 @@ export class CheckinService {
     await Promise.all([record.save(), user.save()]);
 
     return {
-      message: "Điểm danh và nhận quà thành công!",
+      message: "Check-in and reward received successfully!",
       checkins: record.checkins,
       reward,
       userPoints: role === "user" ? user.point : user.author_point,

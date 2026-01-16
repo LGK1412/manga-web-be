@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
@@ -107,6 +107,19 @@ export class ChapterService {
       is_completed,
     } = dto;
 
+    // 0) Check if chapter number already exists for this manga
+    const chapterOrder = order ?? 1;
+    const existingChapter = await this.chapterModel.findOne({
+      manga_id: new Types.ObjectId(manga_id),
+      order: chapterOrder,
+    });
+
+    if (existingChapter) {
+      throw new BadRequestException(
+        `Chapter number ${chapterOrder} already exists for this story`,
+      );
+    }
+
     // 1) Tạo Chapter + khởi tạo cờ AI
     const chapter = await this.chapterModel.create({
       title,
@@ -145,7 +158,7 @@ export class ChapterService {
         });
       }
     } else {
-      console.warn('Không tìm thấy authorId cho manga:', manga_id);
+      console.warn('Could not find authorId for manga:', manga_id);
     }
 
     // 4) Phát event nội dung đổi (cho ModerationModule / AI)
@@ -168,7 +181,25 @@ export class ChapterService {
 
     // 1) Lấy chapter cũ để check publish transition
     const oldChapter = await this.chapterModel.findById(id).lean();
+    if (!oldChapter) {
+      throw new BadRequestException('Chapter not found');
+    }
     const wasPublished = oldChapter?.is_published || false;
+
+    // 1.5) Check if new order conflicts with existing chapter (if order is being updated)
+    if (order !== undefined && order !== oldChapter.order) {
+      const existingChapter = await this.chapterModel.findOne({
+        manga_id: oldChapter.manga_id,
+        order: order,
+        _id: { $ne: id }, // Exclude current chapter
+      });
+
+      if (existingChapter) {
+        throw new BadRequestException(
+          `Chapter number ${order} already exists for this story`,
+        );
+      }
+    }
 
     // 2) Check xem nội dung có thay đổi không (để invalidate AI)
     const contentChanged = content !== undefined || title !== undefined;
@@ -240,7 +271,7 @@ export class ChapterService {
         .lean();
       if (!cur?.ai_checked || cur?.ai_verdict === 'BLOCK') {
         throw new Error(
-          'Chương chưa vượt kiểm duyệt tự động hoặc bị BLOCK — không thể đăng.',
+          'Chapter has not passed automatic moderation or is BLOCKED — cannot publish.',
         );
       }
     }
