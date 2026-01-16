@@ -1,0 +1,100 @@
+<div style="font-family: Arial, Helvetica, sans-serif; background-color: #f6f7fb; padding: 24px;">
+    <div
+        style="max-width: 680px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+
+        <!-- Header -->
+        <div style="background-color: #1f2937; padding: 20px;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 20px;">
+                Withdrawal Receipt
+            </h1>
+            <p style="margin: 4px 0 0; color: #d1d5db; font-size: 13px;">
+                {{PlatformName}}
+            </p>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 24px; color: #111827; font-size: 14px; line-height: 1.6;">
+            <p>Hello <b>{{authorName}}</b>,</p>
+
+            <p>
+                Your withdrawal request has been <b style="color: #16a34a;">approved</b>.
+                Below is the detailed payment statement for your records.
+            </p>
+
+            <!-- Transaction Info -->
+            <h3 style="margin-top: 28px; font-size: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;">
+                Transaction Information
+            </h3>
+
+            <table width="100%" cellpadding="6" cellspacing="0">
+                <tr>
+                    <td width="40%" style="color: #6b7280;">Transaction ID</td>
+                    <td><b>{{withdrawId}}</b></td>
+                </tr>
+                <tr>
+                    <td style="color: #6b7280;">Date</td>
+                    <td>{{date}}</td>
+                </tr>
+            </table>
+
+            <!-- Payment Details -->
+            <h3 style="margin-top: 28px; font-size: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;">
+                Payment Details
+            </h3>
+
+            <table width="100%" cellpadding="10" cellspacing="0" style="border-collapse: collapse; margin-top: 8px;">
+                <tr style="background-color: #f9fafb;">
+                    <td>Total Points</td>
+                    <td align="right">{{points}}</td>
+                </tr>
+                <tr>
+                    <td>Exchange Rate</td>
+                    <td align="right">150 VND / point</td>
+                </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td>Gross Amount</td>
+                    <td align="right">{{gross}} VND</td>
+                </tr>
+                <tr>
+                    <td>Personal Income Tax (1.5%)</td>
+                    <td align="right" style="color: #dc2626;">- {{tax}} VND</td>
+                </tr>
+                <tr style="background-color: #ecfeff; font-weight: bold;">
+                    <td>Net Amount</td>
+                    <td align="right" style="color: #0f766e;">{{net}} VND</td>
+                </tr>
+            </table>
+
+            <!-- Bank Info -->
+            <h3 style="margin-top: 28px; font-size: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;">
+                Bank Information
+            </h3>
+
+            <table width="100%" cellpadding="6" cellspacing="0">
+                <tr>
+                    <td width="40%" style="color: #6b7280;">Bank</td>
+                    <td>{{bankCode}}</td>
+                </tr>
+                <tr>
+                    <td style="color: #6b7280;">Account Number</td>
+                    <td>****{{last4Digits}}</td>
+                </tr>
+                <tr>
+                    <td style="color: #6b7280;">Account Holder</td>
+                    <td>{{accountHolder}}</td>
+                </tr>
+            </table>
+
+            <!-- Footer note -->
+            <p style="margin-top: 32px; font-size: 13px; color: #6b7280;">
+                This receipt is generated automatically by the system and does not require a signature.
+                If you have any questions, please contact our support team.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f3f4f6; padding: 14px; text-align: center; font-size: 12px; color: #6b7280;">
+            © {{PlatformName}} — All rights reserved
+        </div>
+    </div>
+</div>

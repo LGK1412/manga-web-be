@@ -9,7 +9,7 @@ export class ChapterPurchase {
   @Prop({ type: Types.ObjectId, ref: 'Chapter', required: true })
   chapterId: Types.ObjectId;
 
-  @Prop({ type: Number, required: true })
+  @Prop({ type: Number, required: true }) // điểm
   price: number; // lưu lại giá tại thời điểm mua
 }
 
