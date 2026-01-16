@@ -1,44 +1,82 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req } from '@nestjs/common'
-import { RatingService } from './rating.service'
-import { JwtService } from '@nestjs/jwt'
-import { Types } from 'mongoose'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { Types } from 'mongoose';
+
+import { RatingService } from './rating.service';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/rating')
 export class RatingController {
-  constructor(
-    private readonly ratingService: RatingService,
-    private readonly jwtService: JwtService,
-  ) {}
+  constructor(private readonly ratingService: RatingService) {}
 
-  private getUserIdFromCookie(req: any) {
-    const token = req.cookies?.access_token
-    if (!token) throw new BadRequestException('Authentication required')
-    const decoded = this.jwtService.verify(token)
-    return new Types.ObjectId(decoded.user_id)
+  private getUserObjectId(req: Request): Types.ObjectId {
+    const payload = (req as any).user as JwtPayload | undefined;
+
+    if (!payload?.userId) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    if (!Types.ObjectId.isValid(payload.userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    return new Types.ObjectId(payload.userId);
   }
 
   @Post('upsert')
+  @UseGuards(AccessTokenGuard)
   async upsert(
     @Body('mangaId') mangaIdStr: string,
     @Body('rating') rating: number,
     @Body('comment') comment: string,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
-    const userId = this.getUserIdFromCookie(req)
-    if (!mangaIdStr) throw new BadRequestException('mangaId is required')
-    if (!comment) throw new BadRequestException('comment is required')
-    const mangaId = new Types.ObjectId(mangaIdStr)
-    const doc = await this.ratingService.upsertRating({ userId, mangaId, rating, comment })
-    return { success: true, rating: doc }
+    if (!mangaIdStr) throw new BadRequestException('mangaId is required');
+    if (!Types.ObjectId.isValid(mangaIdStr)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+    if (rating === undefined || rating === null) {
+      throw new BadRequestException('rating is required');
+    }
+    if (!comment) throw new BadRequestException('comment is required');
+
+    const userId = this.getUserObjectId(req);
+    const mangaId = new Types.ObjectId(mangaIdStr);
+
+    const doc = await this.ratingService.upsertRating({
+      userId,
+      mangaId,
+      rating,
+      comment,
+    });
+
+    return { success: true, rating: doc };
   }
 
   @Get('mine')
-  async mine(@Query('mangaId') mangaIdStr: string, @Req() req: any) {
-    const userId = this.getUserIdFromCookie(req)
-    if (!mangaIdStr) throw new BadRequestException('mangaId is required')
-    const mangaId = new Types.ObjectId(mangaIdStr)
-    const doc = await this.ratingService.getMyRating(userId, mangaId)
-    return { rating: doc }
+  @UseGuards(AccessTokenGuard)
+  async mine(@Query('mangaId') mangaIdStr: string, @Req() req: Request) {
+    if (!mangaIdStr) throw new BadRequestException('mangaId is required');
+    if (!Types.ObjectId.isValid(mangaIdStr)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const userId = this.getUserObjectId(req);
+    const mangaId = new Types.ObjectId(mangaIdStr);
+
+    const doc = await this.ratingService.getMyRating(userId, mangaId);
+    return { rating: doc };
   }
 
   @Get('list')
@@ -47,21 +85,29 @@ export class RatingController {
     @Query('page') pageStr = '1',
     @Query('limit') limitStr = '6',
   ) {
-    if (!mangaIdStr) throw new BadRequestException('mangaId is required')
-    const mangaId = new Types.ObjectId(mangaIdStr)
-    const page = Math.max(1, parseInt(pageStr as string, 10) || 1)
-    const limit = Math.min(50, Math.max(1, parseInt(limitStr as string, 10) || 10))
-    return this.ratingService.listByManga(mangaId, page, limit)
+    if (!mangaIdStr) throw new BadRequestException('mangaId is required');
+    if (!Types.ObjectId.isValid(mangaIdStr)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const mangaId = new Types.ObjectId(mangaIdStr);
+    const page = Math.max(1, parseInt(pageStr as string, 10) || 1);
+    const limit = Math.min(
+      50,
+      Math.max(1, parseInt(limitStr as string, 10) || 10),
+    );
+
+    return this.ratingService.listByManga(mangaId, page, limit);
   }
 
   @Get('all')
   async all(@Query('mangaId') mangaIdStr: string) {
-    if (!mangaIdStr) throw new BadRequestException('mangaId is required')
-    const mangaId = new Types.ObjectId(mangaIdStr)
-    return this.ratingService.listAllByManga(mangaId)
+    if (!mangaIdStr) throw new BadRequestException('mangaId is required');
+    if (!Types.ObjectId.isValid(mangaIdStr)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const mangaId = new Types.ObjectId(mangaIdStr);
+    return this.ratingService.listAllByManga(mangaId);
   }
-
-  
 }
-
-

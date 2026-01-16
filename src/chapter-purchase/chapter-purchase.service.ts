@@ -13,6 +13,20 @@ export class ChapterPurchaseService {
     @InjectModel(ChapterPurchase.name) private purchaseModel: Model<ChapterPurchase>,
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   async buyChapter(userId: string, chapterId: string) {
     // Lấy thông tin chapter kèm manga & author
     const chapter = await this.chapterModel
@@ -28,8 +42,7 @@ export class ChapterPurchaseService {
       throw new BadRequestException('Chapter này miễn phí');
     }
 
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+    const user = await this.checkUser(userId);
 
     // Kiểm tra đã mua chưa
     const existed = await this.purchaseModel.findOne({ user: userId, chapter: chapterId });

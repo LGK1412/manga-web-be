@@ -1,31 +1,37 @@
-// src/game/catch-game.controller.ts
-import { Controller, Post, Body, Req, Get, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Req,
+  Get,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+
 import { CatchGameService } from './catch-game.service';
-import { JwtService } from '@nestjs/jwt';
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/catch-game')
 export class CatchGameController {
-  constructor(
-    private readonly gameService: CatchGameService,
-    private readonly jwtService: JwtService,
-  ) { }
+  constructor(private readonly gameService: CatchGameService) {}
 
   @Post('submit-score')
-  async submitScore(@Req() req, @Body() body) {
+  @UseGuards(AccessTokenGuard)
+  async submitScore(@Req() req: Request, @Body() body: { score: number }) {
     const { score } = body;
-    const token = req.cookies['access_token'];
-    if (!token) throw new BadRequestException('Thiếu token');
+    const payload = (req as any).user as JwtPayload;
 
-    const payload: any = this.jwtService.verify(token);
-    await this.gameService.saveScore(payload.user_id, score);
+    await this.gameService.saveScore(payload.userId, score);
     return { message: 'Lưu điểm thành công', score };
   }
 
   @Get('history')
-  async getHistory(@Req() req) {
-    const token = req.cookies['access_token'];
-    const payload: any = this.jwtService.verify(token);
-    return this.gameService.getHistory(payload.user_id);
+  @UseGuards(AccessTokenGuard)
+  async getHistory(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.gameService.getHistory(payload.userId);
   }
 
   @Get('leaderboard')
@@ -35,17 +41,18 @@ export class CatchGameController {
   }
 
   @Post('transfer-point')
-  async transferPoint(@Req() req, @Body() body) {
+  @UseGuards(AccessTokenGuard)
+  async transferPoint(
+    @Req() req: Request,
+    @Body() body: { transferGamePoint: number },
+  ) {
     const { transferGamePoint } = body;
+
     if (!transferGamePoint || transferGamePoint % 1000 !== 0) {
       throw new BadRequestException('Số điểm phải chia hết cho 1000');
     }
 
-    const token = req.cookies['access_token'];
-    const payload: any = this.jwtService.verify(token);
-
-    return this.gameService.transferPoint(payload.user_id, transferGamePoint);
+    const payload = (req as any).user as JwtPayload;
+    return this.gameService.transferPoint(payload.userId, transferGamePoint);
   }
-
-
 }

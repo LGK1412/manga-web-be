@@ -44,7 +44,7 @@ export class EmojiPackService {
         });
 
         const savedPack = await newPack.save();
-        return savedPack;
+        return { success: true, savedPack };
     }
 
     async getAllPack() {
@@ -102,7 +102,8 @@ export class EmojiPackService {
     }
 
     async getPackForShop(page: number, limit: number, payload: any) {
-        // Lấy danh sách pack user đã sở hữu
+        await this.userService.checkUser(payload.user_id);
+        
         const userOwnEmojiPack = await this.userService.getEmojiPackOwn(payload.user_id);
 
         // Lấy danh sách _id pack user đã có (convert sang string để so sánh dễ)

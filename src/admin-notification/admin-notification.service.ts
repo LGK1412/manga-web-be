@@ -1,32 +1,51 @@
 // src/admin-notification/admin-notification.service.ts
-import { Injectable } from "@nestjs/common";
-import { NotificationClient } from "src/notification-gateway/notification.client";
+import { Injectable, Inject, forwardRef } from "@nestjs/common";
+import { NotificationService } from "src/notification/notification.service";
 import { UserService } from "src/user/user.service";
 
-type SendArgs = { title: string; body: string; receiver_id: string; sender_id: string };
+type SendArgs = {
+  title: string;
+  body: string;
+  receiver_id: string;
+  sender_id: string;
+};
 
 @Injectable()
 export class AdminNotificationService {
   constructor(
-    private readonly noti: NotificationClient,
+    // ⚠️ BẮT BUỘC forwardRef vì circular
+    @Inject(forwardRef(() => NotificationService))
+    private readonly noti: NotificationService,
+
     private readonly users: UserService
   ) {}
 
+  // ================= SEND =================
   async sendToUser({ title, body, receiver_id, sender_id }: SendArgs) {
-    const dto = { title, body, deviceId: [], receiver_id, sender_id };
-    const result = await this.noti.sendNotification(dto);
-    await this.users.removeDeviceId(receiver_id, result);
+    const dto = {
+      title,
+      body,
+      receiver_id,
+      sender_id,
+      deviceId: [],
+    };
+
+    const result = await this.noti.createNotification(dto);
+
+    // xoá token lỗi (firebase)
+    if (result?.failedTokens?.length) {
+      await this.users.removeDeviceId(receiver_id, result.failedTokens);
+    }
+
     return { success: true };
   }
 
-  // ✅ Lấy tất cả thông báo mà admin (sender) đã gửi
+  // ================= GET =================
   async getSentByAdmin(sender_id: string) {
-    const rows = await this.noti.sendGetNotiForSender(sender_id);
-    // Đảm bảo trả về mảng
+    const rows = await this.noti.getNotiForSender(sender_id);
     return Array.isArray(rows) ? rows : [];
   }
 
-  // ✅ Thống kê nhanh
   async getSentStats(sender_id: string) {
     const rows = await this.getSentByAdmin(sender_id);
     const total = rows.length;
@@ -35,18 +54,16 @@ export class AdminNotificationService {
     return { total, read, unread };
   }
 
-  // ✅ Mark-as-read thay mặt user (dùng cho QA/moderation)
+  // ================= ADMIN ACTIONS =================
   async markAsReadForReceiver(noti_id: string, receiver_id: string) {
-    return this.noti.sendMarkAsRead(noti_id, receiver_id);
+    return this.noti.markAsReadByAdmin(noti_id, receiver_id);
   }
 
-  // ✅ Delete noti thay mặt user (cần receiver_id để xác thực microservice)
   async deleteForReceiver(noti_id: string, receiver_id: string) {
-    return this.noti.deleteNoti(noti_id, receiver_id);
+    return this.noti.deleteByAdmin(noti_id, receiver_id);
   }
 
-  // ✅ Save/Unsave noti thay mặt user (cần receiver_id)
   async saveToggleForReceiver(noti_id: string, receiver_id: string) {
-    return this.noti.sendSaveNoti(noti_id, receiver_id);
+    return this.noti.saveToggleByAdmin(noti_id, receiver_id);
   }
 }

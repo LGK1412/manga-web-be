@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common"
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 import { InjectModel } from "@nestjs/mongoose"
 import { type Model, Types } from "mongoose"
 import { ImageChapter, type ImageChapterDocument } from "src/schemas/Image-chapter"
@@ -82,11 +82,30 @@ export class ImageChapterService {
     dto: CreateImageChapterDto,
     files: Express.Multer.File[],
   ): Promise<{ chapter: ChapterDocument; imageChapter: ImageChapterDocument }> {
-    const { v4: uuidv4 } = await import("uuid")
+    console.log('================ CREATE IMAGE CHAPTER ================')
+    console.log('[START] DTO:', dto)
+    console.log('[FILES COUNT]:', files?.length || 0)
+
+    const { v4: uuidv4 } = await import('uuid')
     const { title, manga_id, price, order, is_published, is_completed } = dto
 
+    /* -------------------------------------------------- */
+    /* 1. PREPARE CHAPTER DATA                            */
+    /* -------------------------------------------------- */
     const chapterOrder = order && order > 0 ? order : 1
 
+    console.log('[1] Create chapter with:')
+    console.log({
+      title,
+      manga_id,
+      price: price ?? 0,
+      order: chapterOrder,
+      is_published: is_published ?? false,
+    })
+
+    /* -------------------------------------------------- */
+    /* 2. CREATE CHAPTER                                  */
+    /* -------------------------------------------------- */
     const chapter = await this.chapterModel.create({
       title,
       manga_id: new Types.ObjectId(manga_id),
@@ -95,73 +114,177 @@ export class ImageChapterService {
       is_published: is_published ?? false,
     })
 
-    const baseDir = path.join(process.cwd(), "public", "uploads", "image-chapters")
-    const chapterDir = path.join(baseDir, chapter._id.toString())
-    if (!fs.existsSync(chapterDir)) fs.mkdirSync(chapterDir, { recursive: true })
+    console.log('[2] Chapter created:', chapter._id.toString())
 
+    /* -------------------------------------------------- */
+    /* 3. PREPARE IMAGE DIRECTORY                         */
+    /* -------------------------------------------------- */
+    const baseDir = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'image-chapters',
+    )
+    const chapterDir = path.join(baseDir, chapter._id.toString())
+
+    if (!fs.existsSync(chapterDir)) {
+      fs.mkdirSync(chapterDir, { recursive: true })
+      console.log('[3] Created directory:', chapterDir)
+    } else {
+      console.log('[3] Directory already exists:', chapterDir)
+    }
+
+    /* -------------------------------------------------- */
+    /* 4. PROCESS UPLOADED IMAGES                         */
+    /* -------------------------------------------------- */
     const savedImages: string[] = []
 
-    for (const file of files) {
-      try {
-        if (!file.buffer) {
-          console.warn("File buffer không tồn tại:", file.originalname)
-          continue
-        }
+    if (!files || files.length === 0) {
+      console.log('[4] No images uploaded')
+    }
 
+    for (const file of files || []) {
+      if (!file.buffer) {
+        console.warn('[4] File buffer missing:', file.originalname)
+        continue
+      }
+
+      try {
         const now = new Date()
-        const hhmmss = now.toLocaleTimeString("en-GB", { hour12: false }).replace(/:/g, "")
+        const hhmmss = now
+          .toLocaleTimeString('en-GB', { hour12: false })
+          .replace(/:/g, '')
         const filename = `${hhmmss}-${uuidv4()}.webp`
         const filepath = path.join(chapterDir, filename)
 
-        await sharp(file.buffer).rotate().webp({ quality: 80 }).toFile(filepath)
+        console.log(
+          '[4] Convert image:',
+          file.originalname,
+          '→',
+          filename,
+        )
+
+        await sharp(file.buffer)
+          .rotate()
+          .webp({ quality: 80 })
+          .toFile(filepath)
+
         savedImages.push(filename)
       } catch (err) {
-        console.error("Lỗi convert ảnh:", file.originalname, err)
+        console.error('[4] Convert image failed:', file.originalname, err)
       }
     }
 
-    let imageChapter = await this.imageChapterModel.findOne({ chapter_id: chapter._id })
+    console.log('[4] Saved images:', savedImages)
+
+    /* -------------------------------------------------- */
+    /* 5. CREATE / UPDATE IMAGE CHAPTER                   */
+    /* -------------------------------------------------- */
+    let imageChapter = await this.imageChapterModel.findOne({
+      chapter_id: chapter._id,
+    })
+
     if (imageChapter) {
+      console.log('[5] ImageChapter exists → append images')
+
       imageChapter.images.push(...savedImages)
       imageChapter.is_completed = is_completed ?? false
       await imageChapter.save()
     } else {
+      console.log('[5] ImageChapter not found → create new')
+
       imageChapter = await this.imageChapterModel.create({
         chapter_id: chapter._id,
         images: savedImages,
         is_completed: is_completed ?? false,
       })
 
-      // Emit
-      const manga = await this.mangaModel.findById(manga_id).select("authorId");
+      /* -------------------------------------------------- */
+      /* 6. EMIT EVENT (CHAPTER CREATE COUNT)               */
+      /* -------------------------------------------------- */
+      const manga = await this.mangaModel
+        .findById(manga_id)
+        .select('authorId')
+
       if (manga && manga.authorId) {
-        this.eventEmitter.emit("chapter_create_count", { userId: manga.authorId.toString() });
+        console.log(
+          '[6] Emit chapter_create_count → authorId:',
+          manga.authorId.toString(),
+        )
+
+        this.eventEmitter.emit('chapter_create_count', {
+          userId: manga.authorId.toString(),
+        })
       } else {
-        console.warn("Không tìm thấy authorId cho manga:", manga_id);
+        console.warn(
+          '[6] authorId not found for manga:',
+          manga_id,
+        )
       }
     }
+
+    /* -------------------------------------------------- */
+    /* 7. DONE                                            */
+    /* -------------------------------------------------- */
+    console.log('[DONE] Create chapter success')
+    console.log('Chapter ID:', chapter._id.toString())
+    console.log('Total images:', imageChapter.images.length)
+    console.log('================ END CREATE IMAGE CHAPTER ================')
 
     return { chapter, imageChapter }
   }
 
+
   async updateChapterWithImages(
     chapterId: string,
-    dto: Partial<CreateImageChapterDto> & { existing_images?: Array<{ url: string; order: number }> },
+    dto: Partial<CreateImageChapterDto> & {
+      existing_images?: Array<{ url: string; order: number }>
+      new_images_meta?: string | Array<{ originalname: string; order: number }>
+    },
     files: Express.Multer.File[],
   ): Promise<{ chapter: ChapterDocument; imageChapter: ImageChapterDocument }> {
-    const { v4: uuidv4 } = await import("uuid")
-    const { title, price, order, is_published, is_completed, existing_images } = dto
+    console.log('================ UPDATE IMAGE CHAPTER ================')
+    console.log('[START] chapterId:', chapterId)
+    console.log('[DTO]', dto)
+    console.log('[FILES COUNT]', files?.length || 0)
 
+    const { v4: uuidv4 } = await import('uuid')
+
+    /* ---------------- PARSE META ---------------- */
+    let newImagesMeta: Array<{ originalname: string; order: number }> = []
+
+    if (dto.new_images_meta) {
+      try {
+        newImagesMeta = Array.isArray(dto.new_images_meta)
+          ? dto.new_images_meta
+          : JSON.parse(dto.new_images_meta)
+      } catch {
+        throw new BadRequestException('new_images_meta invalid JSON')
+      }
+    }
+
+    console.log('[META] new_images_meta parsed:', newImagesMeta)
+
+    /* ---------------- UPDATE CHAPTER ---------------- */
     const updateData: any = {}
-    if (title !== undefined) updateData.title = title
-    if (price !== undefined) updateData.price = price
-    if (order !== undefined && order > 0) updateData.order = order
-    if (is_published !== undefined) updateData.is_published = is_published
+    if (dto.title !== undefined) updateData.title = dto.title
+    if (dto.price !== undefined) updateData.price = dto.price
+    if (dto.order !== undefined && dto.order > 0) updateData.order = dto.order
+    if (dto.is_published !== undefined)
+      updateData.is_published = dto.is_published
 
-    const chapter = await this.chapterModel.findByIdAndUpdate(chapterId, updateData, { new: true })
-    if (!chapter) throw new NotFoundException("Chapter not found")
+    const chapter = await this.chapterModel.findByIdAndUpdate(
+      chapterId,
+      updateData,
+      { new: true },
+    )
+    if (!chapter) throw new NotFoundException('Chapter not found')
 
-    let imageChapter = await this.imageChapterModel.findOne({ chapter_id: chapter._id })
+    /* ---------------- IMAGE CHAPTER ---------------- */
+    let imageChapter = await this.imageChapterModel.findOne({
+      chapter_id: chapter._id,
+    })
+
     if (!imageChapter) {
       imageChapter = new this.imageChapterModel({
         chapter_id: chapter._id,
@@ -171,79 +294,102 @@ export class ImageChapterService {
     }
 
     const oldImages = imageChapter.images || []
-    const newImages: string[] = []
+    console.log('[DB] Old images:', oldImages)
 
-    if (files && files.length > 0) {
-      const baseDir = path.join(process.cwd(), "public", "uploads", "image-chapters")
-      const chapterDir = path.join(baseDir, chapter._id.toString())
-      if (!fs.existsSync(chapterDir)) fs.mkdirSync(chapterDir, { recursive: true })
+    /* ---------------- PROCESS NEW FILES ---------------- */
+    const newImagesWithOrder: { filename: string; order: number }[] = []
+
+    if (files?.length) {
+      const chapterDir = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'image-chapters',
+        chapter._id.toString(),
+      )
+      fs.mkdirSync(chapterDir, { recursive: true })
 
       for (const file of files) {
-        if (!file.buffer) continue
-        try {
-          const now = new Date()
-          const hhmmss = now.toLocaleTimeString("en-GB", { hour12: false }).replace(/:/g, "")
-          const filename = `${hhmmss}-${uuidv4()}.webp`
-          const filepath = path.join(chapterDir, filename)
+        const meta = newImagesMeta.find(
+          (m) => m.originalname === file.originalname,
+        )
 
-          await sharp(file.buffer).rotate().webp({ quality: 80 }).toFile(filepath)
-          newImages.push(filename)
-        } catch (err) {
-          console.error("Lỗi convert ảnh:", file.originalname, err)
+        if (!meta) {
+          console.warn(
+            '[WARN] No meta for file:',
+            file.originalname,
+            '→ skip',
+          )
+          continue
         }
+
+        const filename = `${Date.now()}-${uuidv4()}.webp`
+        const filepath = path.join(chapterDir, filename)
+
+        console.log(
+          `[NEW] ${file.originalname} → ${filename} | order=${meta.order}`,
+        )
+
+        await sharp(file.buffer)
+          .rotate()
+          .webp({ quality: 80 })
+          .toFile(filepath)
+
+        newImagesWithOrder.push({
+          filename,
+          order: meta.order,
+        })
       }
     }
 
-    let finalImages: string[] = []
+    console.log('[NEW] New images with order:', newImagesWithOrder)
 
-    if (Array.isArray(existing_images) && existing_images.length > 0) {
-      const sortedExistingImages = existing_images
-        .sort((a, b) => a.order - b.order)
-        .map((item) => {
-          const urlParts = item.url.split("/")
-          return urlParts[urlParts.length - 1]
-        })
+    /* ---------------- MERGE + SORT ---------------- */
+    const existing = (dto.existing_images ?? []).map((i) => ({
+      filename: i.url.split('/').pop()!,
+      order: i.order,
+    }))
 
-      finalImages.push(...sortedExistingImages)
-      finalImages.push(...newImages)
-    } else {
-      finalImages = [...newImages]
-    }
+    console.log('[EXISTING] BEFORE SORT:', existing)
 
-    const imagesToKeep = finalImages.filter((img) => oldImages.includes(img))
-    const imagesToDelete = oldImages.filter((img) => !finalImages.includes(img))
+    const merged = [...existing, ...newImagesWithOrder]
+      .sort((a, b) => a.order - b.order)
+      .map((i) => i.filename)
+
+    console.log('[FINAL] ORDERED:')
+    merged.forEach((img, idx) => {
+      console.log(
+        `  index ${idx}: ${img} ${newImagesWithOrder.some((n) => n.filename === img)
+          ? '[NEW]'
+          : '[OLD]'
+        }`,
+      )
+    })
+
+    /* ---------------- DELETE REMOVED ---------------- */
+    const imagesToDelete = oldImages.filter((img) => !merged.includes(img))
+    console.log('[DELETE]', imagesToDelete)
 
     for (const filename of imagesToDelete) {
-      try {
-        const filePath = path.join(
-          process.cwd(),
-          "public",
-          "uploads",
-          "image-chapters",
-          chapter._id.toString(),
-          filename,
-        )
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath)
-          console.log(`Đã xóa file: ${filePath}`)
-        }
-      } catch (err) {
-        console.warn(`Không xóa được file ${filename}:`, err)
-      }
+      const p = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'image-chapters',
+        chapter._id.toString(),
+        filename,
+      )
+      if (fs.existsSync(p)) fs.unlinkSync(p)
     }
 
-    imageChapter.images = finalImages
-    if (is_completed !== undefined) imageChapter.is_completed = is_completed
+    /* ---------------- SAVE ---------------- */
+    imageChapter.images = merged
+    if (dto.is_completed !== undefined)
+      imageChapter.is_completed = dto.is_completed
 
     await imageChapter.save()
 
-    console.log(`Updated chapter ${chapterId}:`)
-    console.log(`- Old images: ${oldImages.length}`)
-    console.log(`- New images: ${newImages.length}`)
-    console.log(`- Final images: ${finalImages.length}`)
-    console.log(`- Kept images: ${imagesToKeep.length}`)
-    console.log(`- Deleted images: ${imagesToDelete.length}`)
-
+    console.log('================ END UPDATE IMAGE CHAPTER ================')
     return { chapter, imageChapter }
   }
 

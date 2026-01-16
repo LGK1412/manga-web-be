@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { Rating, RatingDocument } from '../schemas/Rating.schema'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { User, UserDocument } from 'src/schemas/User.schema'
 
 interface UpsertRatingInput {
   userId: Types.ObjectId
@@ -15,11 +16,28 @@ interface UpsertRatingInput {
 export class RatingService {
   constructor(
     @InjectModel(Rating.name) private readonly ratingModel: Model<RatingDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private eventEmitter: EventEmitter2
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   async upsertRating(input: UpsertRatingInput) {
     const { userId, mangaId, rating, comment } = input
+    await this.checkUser(userId.toString());
+    
     if (rating < 1 || rating > 5) {
       throw new BadRequestException('Rating must be between 1 and 5')
     }
@@ -35,6 +53,7 @@ export class RatingService {
   }
 
   async getMyRating(userId: Types.ObjectId, mangaId: Types.ObjectId) {
+    await this.checkUser(userId.toString());
     return this.ratingModel.findOne({ userId, mangaId })
   }
 

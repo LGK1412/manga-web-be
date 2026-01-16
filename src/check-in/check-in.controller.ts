@@ -1,35 +1,52 @@
-import { Controller, Get, Post, Param, Req, UnauthorizedException } from "@nestjs/common";
-import { CheckinService } from "./check-in.service";
-import { JwtService } from "@nestjs/jwt";
+import {
+  Controller,
+  Get,
+  Post,
+  Req,
+  UseGuards,
+  BadRequestException,
+} from '@nestjs/common';
+import type { Request } from 'express';
 
-@Controller("api/checkin")
+import { CheckinService } from './check-in.service';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+import { Role } from 'src/common/enums/role.enum';
+
+@Controller('api/checkin')
 export class CheckinController {
-  constructor(
-    private readonly checkinService: CheckinService,
-    private readonly jwtService: JwtService
-  ) { }
+  constructor(private readonly checkinService: CheckinService) {}
 
-  private extractUser(req: any) {
-    const token = req.cookies["access_token"];
-    if (!token) throw new UnauthorizedException("Authentication required");
+  private toCheckinRole(role: Role): 'user' | 'author' {
+    // Nếu là AUTHOR => author, còn lại coi như user
+    // (ADMIN / MODERATOR / MANAGER vẫn check-in như user)
+    return role === Role.AUTHOR ? 'author' : 'user';
+  }
 
-    try {
-      const payload: any = this.jwtService.verify(token);
-      return { userId: payload.user_id, role: payload.role };
-    } catch {
-      throw new UnauthorizedException("Invalid or expired token");
+  @Post('today')
+  @UseGuards(AccessTokenGuard)
+  async checkinToday(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+
+    if (!payload?.userId) {
+      throw new BadRequestException('Authentication required');
     }
+
+    const checkinRole = this.toCheckinRole(payload.role);
+
+    return this.checkinService.checkinToday(payload.userId, checkinRole);
   }
 
-  @Post("today")
-  async checkinToday(@Req() req) {
-    const { userId, role } = this.extractUser(req);
-    return this.checkinService.checkinToday(userId, role);
-  }
+  @Get('status')
+  @UseGuards(AccessTokenGuard)
+  async getStatus(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
 
-  @Get("status")
-  async getStatus(@Req() req) {
-    const { userId } = this.extractUser(req);
-    return this.checkinService.getCheckinStatus(userId);
+    if (!payload?.userId) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    return this.checkinService.getCheckinStatus(payload.userId);
   }
 }

@@ -1,11 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { User, UserDocument, UserStatus, AuthorRequestStatus } from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
 import { JwtService } from '@nestjs/jwt'
-import { NotificationClient } from "src/notification-gateway/notification.client";
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Emoji } from "src/schemas/Emoji.schema";
@@ -13,12 +12,14 @@ import { Manga, MangaDocument } from "src/schemas/Manga.schema";
 import { Chapter, ChapterDocument } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressDocument } from "src/schemas/UserChapterProgress.schema";
 import { AuthorRequestStatusResponse, EligibilityCriteria } from "./dto/author-request.dto";
+import { NotificationService } from "src/notification/notification.service";
+import { Role } from 'src/common/enums/role.enum';
 
 
 @Injectable()
 export class UserService {
   constructor(
-    private readonly notificationClient: NotificationClient,
+    private readonly notificationService: NotificationService,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
@@ -26,20 +27,20 @@ export class UserService {
     private jwtService: JwtService,
     private readonly eventEmitter: EventEmitter2,
   ) { }
-  // ---------------- Của auth -------------------- //
+  // ---------------- Auth-related helpers -------------------- //
 
-  async checkUserLegit(id: string) {
+  async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
 
     if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
 
     return existingUser
@@ -50,8 +51,14 @@ export class UserService {
       const newUser = new this.userModel(createUserGoogleDto);
       return await newUser.save();
     } catch (error) {
-      if (error.code === 11000 && error.keyPattern?.email) {
-        throw new Error("Email đã tồn tại");
+      if (error.code === 11000) {
+        if (error.keyPattern?.email) {
+          throw new BadRequestException("Email already exists");
+        }
+        if (error.keyPattern?.username) {
+          throw new BadRequestException("Username already exists");
+        }
+        throw new BadRequestException("Data already exists");
       }
       throw error;
     }
@@ -62,8 +69,14 @@ export class UserService {
       const newUser = new this.userModel(registerDto);
       return await newUser.save();
     } catch (error) {
-      if (error.code === 11000 && error.keyPattern?.email) {
-        throw new Error("Email đã tồn tại");
+      if (error.code === 11000) {
+        if (error.keyPattern?.email) {
+          throw new BadRequestException("Email already exists");
+        }
+        if (error.keyPattern?.username) {
+          throw new BadRequestException("Username already exists");
+        }
+        throw new BadRequestException("Data already exists");
       }
       throw error;
     }
@@ -72,6 +85,12 @@ export class UserService {
   async findByEmail(email: string) {
     return await this.userModel
       .findOne({ email })
+      .select("+password +google_id");
+  }
+
+  async findByUsername(username: string) {
+    return await this.userModel
+      .findOne({ username })
       .select("+password +google_id");
   }
 
@@ -90,7 +109,7 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException("Không thể cập nhật verified cho user");
+      throw new BadRequestException("Unable to update verified status for user");
     }
 
     return { success: true };
@@ -104,7 +123,7 @@ export class UserService {
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
-        "Không thể cập nhật verify_email_code cho user"
+        "Unable to update verify_email_code for user"
       );
     }
 
@@ -119,7 +138,7 @@ export class UserService {
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
-        "Không thể cập nhật verify_forgot_password_code cho user"
+        "Unable to update verify_forgot_password_code for user"
       );
     }
 
@@ -133,33 +152,45 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException("Không thể cập nhật mật khẩu mới cho user");
+      throw new BadRequestException("Unable to update new password for user");
     }
 
     return { success: true };
   }
-  // ---------------- Của auth -------------------- //
-  // user.service.ts
+
+  async changePassword(newPassword: string, email: string) {
+    const result = await this.userModel.updateOne(
+      { email },
+      { $set: { password: newPassword } }
+    );
+
+    if (result.modifiedCount === 0) {
+      throw new BadRequestException("Unable to update new password for user");
+    }
+
+    return { success: true };
+  }
+  // ---------------- Auth-related role & status APIs -------------------- //
   async updateRole(role: string, token: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let payload: any;
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
 
     const existingUser = await this.userModel.findOne({ email: payload.email });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
-    // Chặn downgrade từ author về user
+    // Prevent downgrade from author to user
     if (existingUser.role === 'author' && role === 'user') {
-      throw new BadRequestException('Không thể chuyển từ tác giả về người dùng thường');
+      throw new BadRequestException('Cannot change role from author back to regular user');
     }
 
     const result = await this.userModel.updateOne(
@@ -168,136 +199,150 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException('Không thể cập nhật role cho user');
+      throw new BadRequestException('Unable to update user role');
     }
 
-    return { success: true, message: 'Cập nhật role thành công' };
+    return { success: true, message: 'Role updated successfully' };
   }
-  // Lấy tất cả user (chỉ admin)
-  async getAllUsers(token: string) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
-    }
-
-    if (payload.role !== "admin") {
-      throw new BadRequestException(
-        "Chỉ admin mới được phép lấy danh sách user"
-      );
-    }
-
-    // Trả về tất cả user, bỏ password và google_id
-    return await this.userModel.find().select("-password -google_id");
+  // ✅ admin: lấy tất cả users (không cần token nữa)
+  async getAllUsers() {
+    return this.userModel.find().select('-password -google_id');
   }
 
-  // Cập nhật status user
-  async updateStatus(userId: string, status: string, token: string) {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
-    }
-
-    if (payload.role !== "admin") {
-      throw new BadRequestException(
-        "Chỉ admin mới được phép cập nhật status user"
-      );
-    }
-
-    // Validate status
+  // ✅ admin: update status (không cần token nữa)
+  async updateStatus(userId: string, status: string) {
     if (!Object.values(UserStatus).includes(status as UserStatus)) {
-      throw new BadRequestException("Status không hợp lệ");
+      throw new BadRequestException('Invalid status');
     }
 
     const existingUser = await this.userModel.findById(userId);
-    if (!existingUser) {
-      throw new BadRequestException("Người dùng không tồn tại");
-    }
+    if (!existingUser) throw new NotFoundException('User does not exist');
 
     const result = await this.userModel.updateOne(
       { _id: userId },
-      { $set: { status } }
+      { $set: { status } },
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException("Không thể cập nhật status cho user");
+      throw new BadRequestException('Unable to update user status');
     }
 
-    return { success: true, message: "Cập nhật status thành công" };
+    return { success: true, message: 'Status updated successfully' };
+  }
+
+   /**
+   * ✅ admin: set role cho user
+   * rule gợi ý:
+   * - không cho admin tự remove role admin của chính mình (tránh lock system)
+   * - không cho set role rác (đã validate bằng enum Role)
+   */
+  async adminSetRole(adminId: string, targetUserId: string, role: Role) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    const target = await this.userModel.findById(targetUserId).select('role');
+    if (!target) throw new NotFoundException('User not found');
+
+    // tránh admin tự tước quyền admin của chính mình
+    if (adminId === targetUserId && role !== Role.ADMIN) {
+      throw new BadRequestException('Bạn không thể tự gỡ quyền ADMIN của chính mình');
+    }
+
+    // (tuỳ hệ thống) nếu bạn muốn ngăn đổi AUTHOR -> USER (giống logic cũ) thì bật:
+    if (target.role === Role.AUTHOR && role === Role.USER) {
+      throw new BadRequestException('Cannot downgrade AUTHOR back to USER');
+    }
+
+    target.role = role;
+    await target.save();
+
+    return { success: true, message: 'Role updated successfully', role };
   }
 
   async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
-    // 1. Lấy thông tin user từ database
+    // 1. Get user info from database
     const user = await this.userModel.findById(userId).select('email username avatar bio role');
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
-    // 2. Chặn downgrade từ author về user
+    // 2. Prevent downgrade from author to user
     if (user.role === 'author' && role === 'user') {
-      throw new BadRequestException('Không thể chuyển từ tác giả về người dùng thường');
+      throw new BadRequestException('Cannot change role from author back to regular user');
     }
 
-    // 3. So sánh thông tin từ cookie với database
+    // 3. Compare info from cookie with database
     const isEmailMatch = user.email === userInfo.email;
     const isUsernameMatch = user.username === userInfo.username;
     const isAvatarMatch = user.avatar === userInfo.avatar;
     const isBioMatch = user.bio === userInfo.bio;
 
-    // 4. Nếu không khớp thì từ chối
+    // 4. If not matched then reject
     if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
-      throw new BadRequestException('Thông tin người dùng không khớp với dữ liệu trong hệ thống. Vui lòng đăng nhập lại.');
+      throw new BadRequestException('User information does not match system data. Please log in again.');
     }
 
-    // 5. Nếu khớp thì cho phép update role
+    // 5. If matched then allow role update
     const result = await this.userModel.updateOne(
       { _id: userId },
       { $set: { role: role } }
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException('Không thể cập nhật role cho user');
+      throw new BadRequestException('Unable to update user role');
     }
 
-    return { success: true, message: 'Cập nhật role thành công' };
+    return { success: true, message: 'Role updated successfully' };
   }
 
-  async updateProfile(token: string, payload: any) {
-    if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
-    }
-
-    let decoded: any
+  async updateProfile(userPayload: any, payload: any) {
     try {
-      decoded = this.jwtService.verify(token)
-    } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
+      if (!userPayload || !userPayload.user_id) {
+        throw new BadRequestException('Thông tin người dùng không hợp lệ');
+      }
+
+      const userId = userPayload.user_id;
+
+      const updates: any = {}
+      if (payload.username !== undefined) updates.username = payload.username
+      if (payload.avatar !== undefined) updates.avatar = payload.avatar
+      if (payload.bio !== undefined) updates.bio = payload.bio
+
+      if (Object.keys(updates).length === 0) {
+        return { success: true, message: 'No changes to update' }
+      }
+
+      // Kiểm tra username trùng nếu có thay đổi username
+      if (updates.username !== undefined) {
+        const existingUser = await this.userModel.findOne({
+          username: updates.username,
+          _id: { $ne: userId }
+        });
+
+        if (existingUser) {
+          throw new BadRequestException('Username already exists');
+        }
+      }
+
+      const user = await this.userModel.findByIdAndUpdate(
+        userId,
+        { $set: updates },
+        { new: true, runValidators: true, select: "-password -google_id" }
+      );
+
+      if (!user) {
+        throw new BadRequestException('Unable to update user profile');
+      }
+
+      return { success: true, user };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Unable to update user profile');
     }
-
-    const updates: any = {}
-    if (payload.username !== undefined) updates.username = payload.username
-    if (payload.avatar !== undefined) updates.avatar = payload.avatar
-    if (payload.bio !== undefined) updates.bio = payload.bio
-
-    if (Object.keys(updates).length === 0) {
-      return { success: true, message: 'Không có thay đổi' }
-    }
-
-    const user = await this.userModel.findByIdAndUpdate(
-      decoded.user_id,
-      { $set: updates },
-      { new: true, runValidators: true, select: "-password -google_id" }
-    );
-
-    if (!user) {
-      throw new BadRequestException('Không thể cập nhật hồ sơ người dùng');
-    }
-
-    return { success: true, user };
   }
 
   async getFavourites(token: string) {
@@ -383,47 +428,70 @@ export class UserService {
   }
 
   async getPublicUserById(userId: string): Promise<any> {
-    if (!Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User not found');
+      if (!userId || !Types.ObjectId.isValid(userId)) {
+        throw new NotFoundException('User does not exist');
     }
-    const user = await this.userModel
-      .findById(userId)
-      .select('username avatar bio role')
-      .lean();
-    if (!user) throw new NotFoundException('User not found');
-    return user;
+    
+    try {
+      const user = await this.userModel
+        .findById(userId)
+        .select('username avatar bio role')
+        .lean();
+      
+      if (!user) {
+        throw new NotFoundException('User does not exist');
+      }
+      
+      return user;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('Unable to get user information');
+    }
   }
 
   async getPublicFollowStats(userId: string) {
-    if (!Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User not found');
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User does not exist');
     }
-    const user = await this.userModel
-      .findById(userId)
-      .select('following_authors')
-      .lean();
-    if (!user) throw new NotFoundException('User not found');
+    
+    try {
+      const user = await this.userModel
+        .findById(userId)
+        .select('following_authors')
+        .lean();
+      
+      if (!user) {
+        throw new NotFoundException('User does not exist');
+      }
 
-    const followingCount = Array.isArray((user as any).following_authors)
-      ? (user as any).following_authors.length
-      : 0;
+      const followingCount = Array.isArray((user as any).following_authors)
+        ? (user as any).following_authors.length
+        : 0;
 
-    const followersCount = await this.userModel.countDocuments({
-      following_authors: new Types.ObjectId(userId),
-    });
+      const followersCount = await this.userModel.countDocuments({
+        following_authors: new Types.ObjectId(userId),
+      });
 
-    return { followingCount, followersCount };
+      return { followingCount, followersCount };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('Unable to get follow statistics');
+    }
   }
 
   // Add device_id cho user
   async addDeviceId(userId: string, deviceId: string) {
-    // kiểm tra đầu vào
+    // Validate input
     if (!deviceId) return { success: false };
 
     const result = await this.userModel.findByIdAndUpdate(
       userId,
-      { $addToSet: { device_id: deviceId } }, // $addToSet để tránh thêm trùng
-      { new: true } // trả về user sau khi update
+      { $addToSet: { device_id: deviceId } }, // $addToSet to avoid duplicates
+      { new: true } // return updated user
     );
 
     if (!result) {
@@ -435,14 +503,14 @@ export class UserService {
 
   async removeDeviceId(userId: string, pushResult: any) {
     try {
-      // nếu không có failedTokens hoặc mảng rỗng → bỏ qua
+      // if there are no failedTokens or empty array → skip
       if (!pushResult?.failedTokens?.length) {
         return { success: true, message: "No failed tokens to remove." };
       }
 
-      // Lấy danh sách token fail
+      // Get list of failed tokens
       const failedTokens = pushResult.failedTokens.map((t: any) => t.token);
-      // Xoá toàn bộ token fail trong 1 lần query
+      // Remove all failed tokens in a single query
       const result = await this.userModel.findByIdAndUpdate(
         userId,
         { $pull: { device_id: { $in: pushResult.failedTokens } } },
@@ -468,97 +536,17 @@ export class UserService {
     return await this.userModel.findById(id)
   }
 
-  async getAllNotiForUser(id: string) {
-    return await this.notificationClient.sendGetNotiForUser(id)
-  }
-
-  async markNotiAsRead(id: string, payload: any) {
-    const existingUser = await this.userModel.findById({ _id: payload });
-
-    if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
-    }
-
-    if (existingUser.status === 'ban') {
-      throw new BadRequestException('Người dùng bị ban');
-    }
-
-    if (existingUser.role !== "user" && existingUser.role !== "author") {
-      throw new BadRequestException("Bạn Không có quyền comment")
-    }
-
-    // Truyền user_id đúng cú pháp
-    return await this.notificationClient.sendMarkAsRead(id, existingUser._id.toString());
-  }
-
-  async markAllNotiAsRead(payload: any) {
-    const existingUser = await this.userModel.findById({ _id: payload });
-
-    if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
-    }
-
-    if (existingUser.status === 'ban') {
-      throw new BadRequestException('Người dùng bị ban');
-    }
-
-    if (existingUser.role !== "user" && existingUser.role !== "author") {
-      throw new BadRequestException("Bạn Không có quyền comment")
-    }
-
-    // Truyền user_id đúng cú pháp
-    return await this.notificationClient.sendAllMarkAsRead(existingUser._id.toString());
-  }
-
-  async deleteNoti(id: string, payload: any) {
-
-    const existingUser = await this.userModel.findById({ _id: payload });
-
-    if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
-    }
-
-    if (existingUser.status === 'ban') {
-      throw new BadRequestException('Người dùng bị ban');
-    }
-
-    if (existingUser.role !== "user" && existingUser.role !== "author") {
-      throw new BadRequestException("Bạn Không có quyền comment")
-    }
-
-    // Truyền user_id đúng cú pháp
-    return await this.notificationClient.deleteNoti(id, existingUser._id.toString());
-  }
-
-  async saveNoti(id: string, payload: any) {
-    const existingUser = await this.userModel.findById({ _id: payload });
-
-    if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
-    }
-
-    if (existingUser.status === 'ban') {
-      throw new BadRequestException('Người dùng bị ban');
-    }
-
-    if (existingUser.role !== "user" && existingUser.role !== "author") {
-      throw new BadRequestException("Bạn Không có quyền comment")
-    }
-
-    // Truyền user_id đúng cú pháp
-    return await this.notificationClient.sendSaveNoti(id, existingUser._id.toString());
-  }
 
   async getFollowingAuthors(token: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
     const user = await this.userModel
       .findById(decoded.user_id)
@@ -567,7 +555,7 @@ export class UserService {
 
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     return { following: user.following_authors || [] };
@@ -575,14 +563,14 @@ export class UserService {
 
   async toggleFollowAuthor(token: string, authorId: string) {
     if (!token) {
-      throw new BadRequestException('Thiếu token xác minh');
+      throw new BadRequestException('Missing verification token');
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException('Token is invalid or has expired');
     }
 
     const authorObjectId = new Types.ObjectId(authorId);
@@ -593,7 +581,7 @@ export class UserService {
       .populate('following_authors');
 
     if (!user) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
 
     let updatedFollowing: Types.ObjectId[];
@@ -622,7 +610,7 @@ export class UserService {
           };
 
           // Gửi notification
-          const sendNotiResult = await this.notificationClient.sendNotification(notificationDto);
+          const sendNotiResult = await this.notificationService.sendNotification(notificationDto);
 
           // Xóa các device token lỗi
           await this.removeDeviceId(authorId, sendNotiResult);
@@ -674,85 +662,87 @@ export class UserService {
 
 
   // ===== Dashboard: User Summary (total + MoM) =====
-async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
-  const now = new Date();
-  const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
+    const now = new Date();
+    const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [total, thisMonth, lastMonth] = await Promise.all([
-    this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
-    this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
-    this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
-  ]);
+    const [total, thisMonth, lastMonth] = await Promise.all([
+      this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
+      this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
+      this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
+    ]);
 
-  const deltaPctMoM =
-    lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
+    const deltaPctMoM =
+      lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
 
-  return { total, deltaPctMoM };
-}
+    return { total, deltaPctMoM };
+  }
 
-// ===== Dashboard: Weekly new users =====
-// user.service.ts
-async getUsersWeeklyNew(weeks = 4) {
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() - weeks * 7);
+  // ===== Dashboard: Weekly new users =====
+  // user.service.ts
+  async getUsersWeeklyNew(weeks = 4) {
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - weeks * 7);
 
-  return this.userModel.aggregate([
-    { $match: { createdAt: { $gte: from, $lte: now } } },
-    {
-      $group: {
-        _id: {
-          y: { $isoWeekYear: "$createdAt" },
-          w: { $isoWeek: "$createdAt" },
+    return this.userModel.aggregate([
+      { $match: { createdAt: { $gte: from, $lte: now } } },
+      {
+        $group: {
+          _id: {
+            y: { $isoWeekYear: "$createdAt" },
+            w: { $isoWeek: "$createdAt" },
+          },
+          cnt: { $sum: 1 },
         },
-        cnt: { $sum: 1 },
       },
-    },
-    {
-      $project: {
-        _id: 0,
-        week: {
-          $concat: [
-            { $toString: "$_id.y" },
-            "-W",
-            {
-              // pad 2 digits cho tuần
-              $cond: [
-                { $lt: ["$_id.w", 10] },
-                { $concat: ["0", { $toString: "$_id.w" }] },
-                { $toString: "$_id.w" },
-              ],
-            },
-          ],
+      {
+        $project: {
+          _id: 0,
+          week: {
+            $concat: [
+              { $toString: "$_id.y" },
+              "-W",
+              {
+                // pad 2 digits cho tuần
+                $cond: [
+                  { $lt: ["$_id.w", 10] },
+                  { $concat: ["0", { $toString: "$_id.w" }] },
+                  { $toString: "$_id.w" },
+                ],
+              },
+            ],
+          },
+          new: "$cnt",
         },
-        new: "$cnt",
       },
-    },
-    { $sort: { week: 1 } },
-  ]);
-}
+      { $sort: { week: 1 } },
+    ]);
+  }
 
 
-// ===== Dashboard: Recent users =====
-async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
-  const docs = await this.userModel
-    .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
-    .sort({ createdAt: -1 })
-    .limit(Math.min(Math.max(limit, 1), 50))
-    .lean();
+  // ===== Dashboard: Recent users =====
+  async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
+    const docs = await this.userModel
+      .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(limit, 1), 50))
+      .lean();
 
-  return docs.map((u: any) => ({
-    id: u._id.toString(),
-    name: u.username,
-    email: u.email,
-    role: u.role,
-    joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
-  }));
-}
+    return docs.map((u: any) => ({
+      id: u._id.toString(),
+      name: u.username,
+      email: u.email,
+      role: u.role,
+      joinDate: u.createdAt?.toISOString()?.slice(0, 10) ?? "",
+    }));
+  }
 
   async getEmojiPackOwn(id: string) {
+    await this.checkUser(id);
+    
     const user = await this.userModel
       .findById(id)
       .select("emoji_packs")
@@ -785,7 +775,7 @@ async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email
   }
 
   async buyEmojiPack(user_id: string, pack_id: string, price: string) {
-    const existingUser = await this.checkUserLegit(user_id)
+    const existingUser = await this.checkUser(user_id)
     if (existingUser.emoji_packs.includes(new Types.ObjectId(pack_id))) {
       throw new BadRequestException("Đã mua Emoji Pack này rồi")
     }
@@ -804,7 +794,7 @@ async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email
    * - Có ít nhất 5 người theo dõi
    * - Đọc ít nhất 20 chương truyện
    */
-async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> {
+  async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> {
     const userObjectId = new Types.ObjectId(userId);
 
     // Lấy thông tin user để kiểm tra email verification
@@ -965,10 +955,10 @@ async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> 
             receiver_id: userId,
             sender_id: userId,
           };
-          await this.notificationClient.sendNotification(notificationDto);
+          await this.notificationService.createNotification(notificationDto);
         }
       } catch (error) {
-        console.error('Lỗi gửi notification author approval:', error);
+        // Silently fail notification - không ảnh hưởng đến việc approve author
       }
 
       return {
@@ -1035,10 +1025,10 @@ async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> 
             receiver_id: userId,
             sender_id: userId,
           };
-          await this.notificationClient.sendNotification(notificationDto);
+          await this.notificationService.sendNotification(notificationDto);
         }
       } catch (error) {
-        console.error('Lỗi gửi notification author approval:', error);
+        // Silently fail notification - không ảnh hưởng đến việc approve author
       }
     }
   }

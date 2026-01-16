@@ -21,6 +21,20 @@ export class DonationService {
     private eventEmitter: EventEmitter2
   ) { }
 
+  private async checkUser(id: string) {
+    const existingUser = await this.userModel.findOne({ _id: id });
+    if (!existingUser) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+    if (existingUser.role != "user" && existingUser.role != "author") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    if (existingUser.status == "ban") {
+      throw new BadRequestException('Người dùng không có quyền');
+    }
+    return existingUser;
+  }
+
   async getItemById(itemId: string) {
     return this.donationItemModel.findById(itemId);
   }
@@ -63,13 +77,11 @@ export class DonationService {
 
     if (quantity < 1) throw new BadRequestException('Số lượng không hợp lệ');
 
-    const sender = await this.userModel.findById(senderId);
+    const sender = await this.checkUser(senderId);
     const receiver = await this.userModel.findById(receiverId);
+    if (!receiver) throw new NotFoundException('Không tìm thấy người nhận');
 
     const totalPrice = item.price * quantity;
-
-    if (!sender) throw new NotFoundException('Không tìm thấy người gửi');
-    if (!receiver) throw new NotFoundException('Không tìm thấy người nhận');
 
     if (sender.point < totalPrice)
       throw new ForbiddenException('Không đủ xu để tặng quà');
@@ -105,6 +117,7 @@ export class DonationService {
   }
 
   async getReceivedGifts(receiverId: string) {
+    await this.checkUser(receiverId);
     const receiverObjectId = new Types.ObjectId(receiverId);
 
     const donations = await this.donationModel
@@ -127,6 +140,7 @@ export class DonationService {
   }
 
   async getSentGifts(senderId: string) {
+    await this.checkUser(senderId);
     const senderObjectId = new Types.ObjectId(senderId);
 
     const donations = await this.donationModel
@@ -160,6 +174,7 @@ export class DonationService {
   }
 
   async markAsRead(receiverId: string, donationIds?: string[]) {
+    await this.checkUser(receiverId);
     const filter: any = { receiverId: new Types.ObjectId(receiverId), isRead: false };
     if (donationIds && donationIds.length > 0) {
       filter._id = { $in: donationIds.map((id) => new Types.ObjectId(id)) };

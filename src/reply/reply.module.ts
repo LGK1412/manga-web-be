@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ReplyService } from './reply.service';
 import { ReplyController } from './reply.controller';
 import { ChapterServiceOnlyNormalChapterInforModule } from 'src/chapter/chapter.module';
-import { NotificationModule } from 'src/notification-gateway/notification.module';
 import { MangaModule } from 'src/manga/manga.module';
 import { ChapterModule } from 'src/textChapter/text-chapter.module';
 import { UserModule } from 'src/user/user.module';
@@ -14,6 +13,7 @@ import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
 import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [

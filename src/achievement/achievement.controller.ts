@@ -1,39 +1,30 @@
-import { Controller, Get, Param, Post, Req } from "@nestjs/common";
-import { AchievementService } from "./achievement.service";
-import { JwtService } from "@nestjs/jwt";
+import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 
-@Controller("api/achievements")
+import { AchievementService } from './achievement.service';
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
+@Controller('api/achievements')
 export class AchievementController {
-  constructor(private readonly achievementService: AchievementService,
-    private readonly jwtService: JwtService
-  ) { }
+  constructor(private readonly achievementService: AchievementService) {}
 
-  @Get("me")
-  async getAchievementsForStudent(@Req() req) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.achievementService.getAllWithProgress(userId);
+  @Get('me')
+  @UseGuards(AccessTokenGuard)
+  async getAchievementsForStudent(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.achievementService.getAllWithProgress(payload.userId);
   }
 
-  @Post(":id/claim")
-  async claimReward(@Req() req, @Param('id') achievementId: string) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.achievementService.claimReward(userId, achievementId)
+  @Post(':id/claim')
+  @UseGuards(AccessTokenGuard)
+  async claimReward(@Req() req: Request, @Param('id') achievementId: string) {
+    const payload = (req as any).user as JwtPayload;
+    return this.achievementService.claimReward(payload.userId, achievementId);
   }
 
-  @Post("sync")
+  @Post('sync')
   async syncAchievement() {
-    return this.achievementService.syncAchievements()
+    return this.achievementService.syncAchievements();
   }
 }

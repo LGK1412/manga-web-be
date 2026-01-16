@@ -1,22 +1,33 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, BadRequestException } from '@nestjs/common';
-import { DonationService } from './donation.service';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Query,
+  Req,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { Types } from 'mongoose';
-import { JwtService } from '@nestjs/jwt';
+
+import { DonationService } from './donation.service';
+
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/donation')
 export class DonationController {
-  constructor(
-    private readonly donationService: DonationService,
-    private readonly jwtService: JwtService
-  ) { }
+  constructor(private readonly donationService: DonationService) {}
 
   @Get('items')
   async getAllDonationItems(
-    @Query("onlyAvailable") onlyAvailable?: string,
-    @Query("rarity") rarity?: string,
+    @Query('onlyAvailable') onlyAvailable?: string,
+    @Query('rarity') rarity?: string,
   ) {
     const items = await this.donationService.getAllDonationItems({
-      onlyAvailable: onlyAvailable === "true",
+      onlyAvailable: onlyAvailable === 'true',
       rarity,
     });
 
@@ -27,25 +38,41 @@ export class DonationController {
     };
   }
 
+  /**
+   * Logged-in: gửi quà/donation
+   * NOTE: KHÔNG nhận senderId từ body (tránh giả mạo).
+   */
   @Post('send')
+  @UseGuards(AccessTokenGuard)
   async sendGift(
+    @Req() req: Request,
     @Body()
     body: {
-      senderId: string,
       receiverId: string;
       itemId: string;
       quantity: number;
       message?: string;
-    }
+    },
   ) {
-    if (!Types.ObjectId.isValid(body.receiverId))
+    const payload = (req as any).user as JwtPayload;
+    const senderId = payload.userId;
+
+    if (!Types.ObjectId.isValid(senderId)) {
+      throw new BadRequestException('senderId không hợp lệ');
+    }
+    if (!Types.ObjectId.isValid(body.receiverId)) {
       throw new BadRequestException('receiverId không hợp lệ');
-    if (!Types.ObjectId.isValid(body.itemId))
+    }
+    if (!Types.ObjectId.isValid(body.itemId)) {
       throw new BadRequestException('itemId không hợp lệ');
+    }
+    if (!body.quantity || body.quantity <= 0) {
+      throw new BadRequestException('quantity không hợp lệ');
+    }
 
-    const { senderId, receiverId, itemId, quantity, message } = body;
+    const { receiverId, itemId, quantity, message } = body;
 
-    // Tính tổng tiền dựa theo item
+    // check item tồn tại
     const item = await this.donationService.getItemById(itemId);
     if (!item) throw new BadRequestException('Không tìm thấy vật phẩm');
 
@@ -59,44 +86,34 @@ export class DonationController {
   }
 
   @Get('received')
-  async getReceivedGifts(@Req() req) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    // Giải mã token để lấy userId
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.donationService.getReceivedGifts(userId);
+  @UseGuards(AccessTokenGuard)
+  async getReceivedGifts(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.donationService.getReceivedGifts(payload.userId);
   }
 
   @Get('sent')
-  async getSentGifts(@Req() req) {
-    const token = req.cookies['access_token'];
-    if (!token) {
-      throw new Error('Authentication required - No access token');
-    }
-
-    // Giải mã token để lấy userId
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
-    return this.donationService.getSentGifts(userId);
+  @UseGuards(AccessTokenGuard)
+  async getSentGifts(@Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.donationService.getSentGifts(payload.userId);
   }
 
   @Patch('mark-read')
-  async markAsRead(@Req() req, @Body() body: { donationIds?: string[]; id?: string }) {
-    const token = req.cookies?.['access_token'];
-    if (!token) {
-      throw new BadRequestException('Authentication required - No access token');
-    }
-
-    const payload: any = this.jwtService.verify(token);
-    const userId = payload.user_id;
+  @UseGuards(AccessTokenGuard)
+  async markAsRead(
+    @Req() req: Request,
+    @Body() body: { donationIds?: string[]; id?: string },
+  ) {
+    const payload = (req as any).user as JwtPayload;
 
     const ids = body.donationIds || (body.id ? [body.id] : []);
-    return this.donationService.markAsRead(userId, ids);
+    if (!ids.length) throw new BadRequestException('donationIds is required');
+
+    // optional: validate ids format
+    const invalid = ids.find((x) => !Types.ObjectId.isValid(x));
+    if (invalid) throw new BadRequestException('donationId không hợp lệ');
+
+    return this.donationService.markAsRead(payload.userId, ids);
   }
-
 }
-

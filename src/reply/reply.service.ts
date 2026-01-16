@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { NotificationClient } from 'src/notification-gateway/notification.client';
+import { NotificationService } from 'src/notification/notification.service';
 import { Reply } from 'src/schemas/Reply.schema';
 import { UserService } from 'src/user/user.service';
 import { CreateReplyChapterDTO } from './dto/createReplyChapterdto';
@@ -17,7 +17,7 @@ import { VoteReply } from 'src/schemas/VoteReply.schema';
 @Injectable()
 export class ReplyService {
   constructor(
-    private readonly notificationClient: NotificationClient,
+    private readonly notificationService: NotificationService,
     @InjectModel(Reply.name) private replyModel: Model<Reply>,
     private userService: UserService,
     private chapterService: ChapterServiceOnlyNormalChapterInfor,
@@ -90,7 +90,7 @@ export class ReplyService {
       sender_id: payload.user_id,
     };
 
-    const send_noti_result = await this.notificationClient.sendNotification(
+    const send_noti_result = await this.notificationService.createNotification(
       dto,
     );
 

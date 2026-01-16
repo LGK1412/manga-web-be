@@ -7,7 +7,7 @@ import { UserService } from 'src/user/user.service';
 import { ChapterServiceOnlyNormalChapterInfor } from 'src/chapter/chapter.service';
 import { MangaService } from 'src/manga/manga.service';
 import { sendNotificationDto } from './dto/sendNoti.dto';
-import { NotificationClient } from 'src/notification-gateway/notification.client';
+import { NotificationService } from 'src/notification/notification.service';
 import { ReplyService } from 'src/reply/reply.service';
 import { VoteComment } from 'src/schemas/VoteComment.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -15,7 +15,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 @Injectable()
 export class CommentService {
   constructor(
-    private readonly notificationClient: NotificationClient,
+    private readonly notificationService: NotificationService,
     @InjectModel(Comment.name) private commentModel: Model<Comment>,
     private userService: UserService,
     private chapterService: ChapterServiceOnlyNormalChapterInfor,
@@ -83,7 +83,7 @@ export class CommentService {
       // Emit event để cập nhật realtime
       this.eventEmitter.emit('comment_count', { userId: payload.user_id });
 
-      const send_noti_result = await this.notificationClient.sendNotification(
+      const send_noti_result = await this.notificationService.createNotification(
         dto,
       );
       await this.userService.removeDeviceId(
@@ -98,137 +98,143 @@ export class CommentService {
 
   // ================== COMMENT QUERY ==================
   async getAllCommentForChapter(chapterId: string, payload: any) {
-    const userId = payload?.user_id || null;
+  const userId = payload?.user_id || null;
 
-    const comments = await this.commentModel.aggregate([
-      { $match: { chapter_id: new Types.ObjectId(chapterId) } },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user_id',
-          foreignField: '_id',
-          as: 'user',
-          pipeline: [{ $project: { username: 1, _id: 1 } }],
-        },
+  const comments = await this.commentModel.aggregate([
+    {
+      $match: {
+        chapter_id: new Types.ObjectId(chapterId),
+        is_delete: false,         // ✅ chỉ lấy comment đang hiển thị
       },
-      { $unwind: '$user' },
-      {
-        $lookup: {
-          from: 'votecomments',
-          localField: '_id',
-          foreignField: 'comment_id',
-          as: 'votes',
-        },
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'user_id',
+        foreignField: '_id',
+        as: 'user',
+        pipeline: [{ $project: { username: 1, _id: 1 } }],
       },
-      {
-        $addFields: {
-          upvotes: {
-            $size: {
-              $filter: {
-                input: '$votes',
-                as: 'v',
-                cond: { $eq: ['$$v.is_up', true] },
-              },
+    },
+    { $unwind: '$user' },
+    {
+      $lookup: {
+        from: 'votecomments',
+        localField: '_id',
+        foreignField: 'comment_id',
+        as: 'votes',
+      },
+    },
+    {
+      $addFields: {
+        upvotes: {
+          $size: {
+            $filter: {
+              input: '$votes',
+              as: 'v',
+              cond: { $eq: ['$$v.is_up', true] },
             },
           },
-          downvotes: {
-            $size: {
-              $filter: {
-                input: '$votes',
-                as: 'v',
-                cond: { $eq: ['$$v.is_up', false] },
-              },
+        },
+        downvotes: {
+          $size: {
+            $filter: {
+              input: '$votes',
+              as: 'v',
+              cond: { $eq: ['$$v.is_up', false] },
             },
           },
-          userVote: userId
-            ? {
-                $cond: [
-                  {
-                    $gt: [
-                      {
-                        $size: {
-                          $filter: {
-                            input: '$votes',
-                            as: 'v',
-                            cond: {
-                              $and: [
-                                {
-                                  $eq: [
-                                    '$$v.user_id',
-                                    new Types.ObjectId(userId),
-                                  ],
-                                },
-                                { $eq: ['$$v.is_up', true] },
-                              ],
-                            },
+        },
+        userVote: userId
+          ? {
+              $cond: [
+                {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: '$votes',
+                          as: 'v',
+                          cond: {
+                            $and: [
+                              {
+                                $eq: [
+                                  '$$v.user_id',
+                                  new Types.ObjectId(userId),
+                                ],
+                              },
+                              { $eq: ['$$v.is_up', true] },
+                            ],
                           },
                         },
                       },
-                      0,
-                    ],
-                  },
-                  'up',
-                  {
-                    $cond: [
-                      {
-                        $gt: [
-                          {
-                            $size: {
-                              $filter: {
-                                input: '$votes',
-                                as: 'v',
-                                cond: {
-                                  $and: [
-                                    {
-                                      $eq: [
-                                        '$$v.user_id',
-                                        new Types.ObjectId(userId),
-                                      ],
-                                    },
-                                    { $eq: ['$$v.is_up', false] },
-                                  ],
-                                },
+                    },
+                    0,
+                  ],
+                },
+                'up',
+                {
+                  $cond: [
+                    {
+                      $gt: [
+                        {
+                          $size: {
+                            $filter: {
+                              input: '$votes',
+                              as: 'v',
+                              cond: {
+                                $and: [
+                                  {
+                                    $eq: [
+                                      '$$v.user_id',
+                                      new Types.ObjectId(userId),
+                                    ],
+                                  },
+                                  { $eq: ['$$v.is_up', false] },
+                                ],
                               },
                             },
                           },
-                          0,
-                        ],
-                      },
-                      'down',
-                      null,
-                    ],
-                  },
-                ],
-              }
-            : null,
-        },
+                        },
+                        0,
+                      ],
+                    },
+                    'down',
+                    null,
+                  ],
+                },
+              ],
+            }
+          : null,
       },
-      {
-        $project: {
-          _id: 1,
-          chapter_id: 1,
-          user_id: 1,
-          content: 1,
-          is_delete: 1,
-          createdAt: 1,
-          updatedAt: 1,
-          'user.username': 1,
-          'user._id': 1,
-          upvotes: 1,
-          downvotes: 1,
-          userVote: 1,
-        },
+    },
+    {
+      $project: {
+        _id: 1,
+        chapter_id: 1,
+        user_id: 1,
+        content: 1,
+        is_delete: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        'user.username': 1,
+        'user._id': 1,
+        upvotes: 1,
+        downvotes: 1,
+        userVote: 1,
       },
-      { $sort: { createdAt: -1 } },
-    ]);
+    },
+    { $sort: { createdAt: -1 } },
+  ]);
 
-    const replyMap = await this.replyService.getReplyCountByChapter(chapterId);
-    return comments.map((c) => ({
-      ...c,
-      replyCount: replyMap[c._id.toString()]?.replyCount || 0,
-      replyUsernames: replyMap[c._id.toString()]?.usernames || [],
-    }));
-  }
+  const replyMap = await this.replyService.getReplyCountByChapter(chapterId);
+  return comments.map((c) => ({
+    ...c,
+    replyCount: replyMap[c._id.toString()]?.replyCount || 0,
+    replyUsernames: replyMap[c._id.toString()]?.usernames || [],
+  }));
+}
+
 
   // ================== VOTE ==================
   async upVote(comment_id: string, payload: any) {

@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { JwtModule } from '@nestjs/jwt';
 
 // === Core modules ===
 import { UserModule } from './user/user.module';
@@ -19,7 +20,6 @@ import { ChapterServiceOnlyNormalChapterInforModule } from './chapter/chapter.mo
 import { VnpayModule } from './vnpay/vnpay.module';
 import { TopupModule } from './topup/topup.module';
 import { CommentModule } from './comment/comment.module';
-import { NotificationModule } from './notification-gateway/notification.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
 import { CatchGameModule } from './catch-game/catch-game.module';
 import { ChapterPurchaseModule } from './chapter-purchase/chapter-purchase.module';
@@ -33,19 +33,30 @@ import { PoliciesModule } from './policies/policies.module';
 import { ReportModule } from './report/report.module';
 import { ModerationModule } from './moderation/moderation.module';
 
-// === Optional / Advanced Modules (giữ nếu có) ===
+// === Optional / Advanced Modules ===
 import { DonationModule } from './donation/donation.module';
 import { AchievementModule } from './achievement/achievement.module';
 import { SpellCheckModule } from './spellcheck/spellcheck.module';
 import { AdminNotificationModule } from './admin-notification/admin-notification.module';
 import { CheckInModule } from './check-in/check-in.module';
 import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
     // ===== Global Config =====
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+
+    // ✅ JWT Global (fix lỗi JwtService injection trong Guard)
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '10m' },
+      }),
+      global: true, // ✅ để JwtService available ở mọi module context
     }),
 
     // ===== MongoDB =====
@@ -85,7 +96,7 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
       }),
     }),
 
-    // ===== Event Emitter (for Comment/Notification) =====
+    // ===== Event Emitter =====
     EventEmitterModule.forRoot(),
 
     // ===== Core Modules =====
@@ -102,7 +113,6 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
     VnpayModule,
     TopupModule,
     CommentModule,
-    NotificationModule,
     WithdrawModule,
     CatchGameModule,
     ChapterPurchaseModule,
@@ -115,7 +125,7 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
     PoliciesModule,
     ReportModule,
 
-    // ===== Optional Advanced Features (uncomment if available) =====
+    // ===== Optional Advanced Features =====
     DonationModule,
     AchievementModule,
     SpellCheckModule,
@@ -123,6 +133,7 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
     ModerationModule,
     CheckInModule,
     TaxSettlementModule,
+    NotificationModule,
   ],
   providers: [],
 })
