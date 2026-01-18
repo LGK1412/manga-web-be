@@ -32,7 +32,7 @@ export class NotificationController {
    */
   @Get('/me')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.USER, Role.AUTHOR)
+  @Roles(Role.USER, Role.AUTHOR, Role.ADMIN)
   async getMyNotifications(@Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
 
@@ -49,7 +49,7 @@ export class NotificationController {
    */
   @Get('/get-all-noti-for-user/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.USER, Role.AUTHOR)
+  @Roles(Role.USER, Role.AUTHOR , Role.ADMIN)
   async getAllNotiForUser(@Param('id') id: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
 

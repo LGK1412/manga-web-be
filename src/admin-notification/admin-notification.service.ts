@@ -13,7 +13,6 @@ type SendArgs = {
 @Injectable()
 export class AdminNotificationService {
   constructor(
-    // ⚠️ BẮT BUỘC forwardRef vì circular
     @Inject(forwardRef(() => NotificationService))
     private readonly noti: NotificationService,
 
@@ -30,11 +29,16 @@ export class AdminNotificationService {
       deviceId: [],
     };
 
-    const result = await this.noti.createNotification(dto);
+    // ⚠️ createNotification() trong project có thể return:
+    // 1) { noti, pushResult }
+    // 2) pushResult trực tiếp
+    const result: any = await this.noti.createNotification(dto);
 
-    // xoá token lỗi (firebase)
-    if (result?.failedTokens?.length) {
-      await this.users.removeDeviceId(receiver_id, result.failedTokens);
+    const pushResult = result?.pushResult ?? result;
+    const failedTokens: string[] = pushResult?.failedTokens ?? [];
+
+    if (failedTokens.length) {
+      await this.users.removeDeviceId(receiver_id, failedTokens);
     }
 
     return { success: true };
