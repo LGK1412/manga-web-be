@@ -23,8 +23,7 @@ import { Role } from 'src/common/enums/role.enum';
 export class ReportController {
   constructor(private readonly reportsService: ReportService) {}
 
-  // ================= USER / LOGGED-IN =================
-
+  // USER/AUTHOR create report
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
@@ -32,6 +31,7 @@ export class ReportController {
     return this.reportsService.create(dto);
   }
 
+  // ✅ Admin + Content Moderator can view
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
@@ -46,15 +46,15 @@ export class ReportController {
     return this.reportsService.findOne(id);
   }
 
-  // ================= ADMIN =================
-
+  // ✅ Content Moderator handles update status (NOT admin)
   @Put(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.CONTENT_MODERATOR)
   update(@Param('id') id: string, @Body() dto: UpdateReportDto) {
-    return this.reportsService.update(id, dto);
+    return this.reportsService.updateByModerator(id, dto);
   }
 
+  // ❌ Optional: disable delete (or keep admin only)
   @Delete(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)

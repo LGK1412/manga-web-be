@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
+
 import { Report, ReportDocument } from '../schemas/Report.schema'
 import { User } from '../schemas/User.schema'
+
+import { AuditLogService } from '../audit-log/audit-log.service'
+import { AuditActorRole, AuditTargetType } from '../schemas/AuditLog.schema'
 
 // === Interface definitions ===
 export interface MangaTarget {
@@ -65,6 +69,7 @@ export class ReportService {
   constructor(
     @InjectModel(Report.name) private reportModel: Model<ReportDocument>,
     @InjectModel(User.name) private userModel: Model<User>,
+    private readonly audit: AuditLogService,
   ) {}
 
   // 🟢 Tạo report mới
@@ -183,8 +188,11 @@ export class ReportService {
           else {
             reportAny.target_detail = { title: null, target_human: null }
           }
-        } catch (err) {
-          console.error(`❌ Populate detail error for report ${report._id}:`, err.message)
+        } catch (err: any) {
+          console.error(
+            `❌ Populate detail error for report ${report._id}:`,
+            err?.message,
+          )
           reportAny.target_detail = { title: null, target_human: null }
         }
 
@@ -220,11 +228,73 @@ export class ReportService {
     return this.findById(id)
   }
 
-  // 🟠 Cập nhật trạng thái hoặc ghi chú xử lý
-  async update(id: string, dto: any) {
-    const updated = await this.reportModel.findByIdAndUpdate(id, dto, { new: true })
+  /**
+   * ✅ Content Moderator update report -> auto create audit log
+   *
+   * NOTE:
+   * - dto.resolver_id nên là CM id (hoặc bạn lấy từ token rồi tự set trong controller)
+   * - dto.resolution_note là note xử lý
+   */
+  async updateByModerator(id: string, dto: any) {
+    const beforeDoc = await this.reportModel.findById(id).lean()
+    if (!beforeDoc) throw new NotFoundException(`Report with id ${id} not found`)
+
+    const updated = await this.reportModel
+      .findByIdAndUpdate(id, dto, { new: true })
+      .lean()
+
     if (!updated) throw new NotFoundException(`Report with id ${id} not found`)
+
+    // ✅ build action + summary
+    const action = dto?.status ? `report_status_${dto.status}` : 'report_update'
+    const summary = dto?.status
+      ? `Moderator updated report status: ${beforeDoc.status} → ${dto.status}`
+      : `Moderator updated report fields`
+
+    // ✅ risk suggestion (simple but useful)
+    const risk: 'low' | 'medium' | 'high' =
+      beforeDoc.reason === 'Harassment' || beforeDoc.reason === 'Inappropriate'
+        ? 'high'
+        : beforeDoc.reason === 'Copyright'
+        ? 'medium'
+        : 'low'
+
+    // ✅ create audit log
+    try {
+      await this.audit.createLog({
+        actor_id: dto?.resolver_id, // CM id from FE or token
+        actor_role: AuditActorRole.CONTENT_MODERATOR,
+        action,
+        target_type: AuditTargetType.REPORT,
+        target_id: id,
+        reportCode: (beforeDoc as any)?.reportCode,
+        summary,
+        risk,
+        before: {
+          status: beforeDoc.status,
+          resolution_note: beforeDoc.resolution_note ?? null,
+        },
+        after: {
+          status: updated.status,
+          resolution_note: updated.resolution_note ?? null,
+        },
+        note: dto?.resolution_note,
+      })
+    } catch (err: any) {
+      // ✅ Do not fail the report update if logging fails
+      console.error('❌ Audit log create failed:', err?.message)
+    }
+
     return updated
+  }
+
+  /**
+   * ⚠️ update() legacy
+   * Nếu code cũ còn gọi update() thì để khỏi crash.
+   * Theo nghiệp vụ mới: controller sẽ dùng updateByModerator() cho CM.
+   */
+  async update(id: string, dto: any) {
+    return this.updateByModerator(id, dto)
   }
 
   // 🔴 Xoá report
@@ -237,7 +307,9 @@ export class ReportService {
   // == SUMMARY ==
   async getAdminSummary() {
     const [open, new7d] = await Promise.all([
-      this.reportModel.countDocuments({ status: { $in: ['new', 'in-progress'] } }),
+      this.reportModel.countDocuments({
+        status: { $in: ['new', 'in-progress'] },
+      }),
       this.reportModel.countDocuments({
         status: 'new',
         createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
@@ -256,7 +328,10 @@ export class ReportService {
       { $match: { createdAt: { $gte: from, $lte: now } } },
       {
         $group: {
-          _id: { y: { $isoWeekYear: '$createdAt' }, w: { $isoWeek: '$createdAt' } },
+          _id: {
+            y: { $isoWeekYear: '$createdAt' },
+            w: { $isoWeek: '$createdAt' },
+          },
           cnt: { $sum: 1 },
         },
       },
