@@ -8,7 +8,9 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 
 import { ReportService } from './report.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -46,15 +48,36 @@ export class ReportController {
     return this.reportsService.findOne(id);
   }
 
-  // ✅ Content Moderator handles update status (NOT admin)
+  /**
+   * ✅ Content Moderator handles report update (create audit log)
+   * PUT /api/reports/:id/moderate
+   */
+  @Put(':id/moderate')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR)
+  moderateReport(
+    @Param('id') id: string,
+    @Body() dto: UpdateReportDto,
+    @Req() req: Request,
+  ) {
+    const moderatorId = req['user']?.userId; // từ JwtPayload
+    return this.reportsService.updateByModerator(id, dto, moderatorId);
+  }
+
+  // ❌ Optional: keep legacy route if old FE still calls PUT /api/reports/:id
   @Put(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.CONTENT_MODERATOR)
-  update(@Param('id') id: string, @Body() dto: UpdateReportDto) {
-    return this.reportsService.updateByModerator(id, dto);
+  updateLegacy(
+    @Param('id') id: string,
+    @Body() dto: UpdateReportDto,
+    @Req() req: Request,
+  ) {
+    const moderatorId = req['user']?.userId;
+    return this.reportsService.updateByModerator(id, dto, moderatorId);
   }
 
-  // ❌ Optional: disable delete (or keep admin only)
+  // Admin delete
   @Delete(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)

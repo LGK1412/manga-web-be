@@ -53,6 +53,8 @@ export interface ReportWithTargetDetail {
   updatedAt: Date
   reportCode: string
   id: string
+  resolver_id?: Types.ObjectId
+  resolution_note?: string
   target_detail?: {
     title?: string | null
     content?: string | null
@@ -99,11 +101,9 @@ export class ReportService {
 
     const detailedReports = await Promise.all(
       reports.map(async (report) => {
-        // ✅ fix TS2352: cast qua unknown trước
         const reportAny = report.toObject() as unknown as ReportWithTargetDetail
 
         try {
-          // ✅ MANGA: thêm author info
           if (report.target_type === 'Manga') {
             const manga = reportAny.target_id as MangaTarget
             const author = await this.userModel
@@ -121,13 +121,9 @@ export class ReportService {
                   }
                 : null,
             }
-          }
-
-          // ✅ CHAPTER: thêm author info qua manga
-          else if (report.target_type === 'Chapter') {
+          } else if (report.target_type === 'Chapter') {
             const chapter = reportAny.target_id as ChapterTarget
 
-            // lấy manga theo manga_id
             const manga = await this.reportModel.db
               .collection('mangas')
               .findOne(
@@ -157,10 +153,7 @@ export class ReportService {
                 target_human: null,
               }
             }
-          }
-
-          // ✅ COMMENT: thêm info của user viết comment
-          else if (report.target_type === 'Comment') {
+          } else if (report.target_type === 'Comment') {
             const comment = reportAny.target_id as CommentTarget
             const user = await this.userModel
               .findById(comment.user_id)
@@ -176,16 +169,12 @@ export class ReportService {
                     email: user.email,
                   }
                 : {
-                    // ✅ fix TS2322: dùng "as unknown as Types.ObjectId" để ép kiểu null an toàn
                     user_Id: null as unknown as Types.ObjectId,
                     username: 'Unknown User',
                     email: 'No email available',
                   },
             }
-          }
-
-          // ⚫ fallback
-          else {
+          } else {
             reportAny.target_detail = { title: null, target_human: null }
           }
         } catch (err: any) {
@@ -223,35 +212,35 @@ export class ReportService {
     return all.find((r) => String(r._id) === String(id)) || null
   }
 
-  // 🔵 Alias cho findById
   async findOne(id: string): Promise<ReportWithTargetDetail | null> {
     return this.findById(id)
   }
 
   /**
    * ✅ Content Moderator update report -> auto create audit log
-   *
-   * NOTE:
-   * - dto.resolver_id nên là CM id (hoặc bạn lấy từ token rồi tự set trong controller)
-   * - dto.resolution_note là note xử lý
+   * actor_id lấy từ TOKEN (moderatorId)
    */
-  async updateByModerator(id: string, dto: any) {
+  async updateByModerator(id: string, dto: any, moderatorId: string) {
     const beforeDoc = await this.reportModel.findById(id).lean()
     if (!beforeDoc) throw new NotFoundException(`Report with id ${id} not found`)
 
+    // ✅ gán resolver_id theo token để DB tracking ai xử lý
+    const payloadUpdate = {
+      ...dto,
+      resolver_id: moderatorId ? new Types.ObjectId(moderatorId) : undefined,
+    }
+
     const updated = await this.reportModel
-      .findByIdAndUpdate(id, dto, { new: true })
+      .findByIdAndUpdate(id, payloadUpdate, { new: true })
       .lean()
 
     if (!updated) throw new NotFoundException(`Report with id ${id} not found`)
 
-    // ✅ build action + summary
     const action = dto?.status ? `report_status_${dto.status}` : 'report_update'
     const summary = dto?.status
       ? `Moderator updated report status: ${beforeDoc.status} → ${dto.status}`
       : `Moderator updated report fields`
 
-    // ✅ risk suggestion (simple but useful)
     const risk: 'low' | 'medium' | 'high' =
       beforeDoc.reason === 'Harassment' || beforeDoc.reason === 'Inappropriate'
         ? 'high'
@@ -259,10 +248,9 @@ export class ReportService {
         ? 'medium'
         : 'low'
 
-    // ✅ create audit log
     try {
       await this.audit.createLog({
-        actor_id: dto?.resolver_id, // CM id from FE or token
+        actor_id: moderatorId,
         actor_role: AuditActorRole.CONTENT_MODERATOR,
         action,
         target_type: AuditTargetType.REPORT,
@@ -281,20 +269,10 @@ export class ReportService {
         note: dto?.resolution_note,
       })
     } catch (err: any) {
-      // ✅ Do not fail the report update if logging fails
       console.error('❌ Audit log create failed:', err?.message)
     }
 
     return updated
-  }
-
-  /**
-   * ⚠️ update() legacy
-   * Nếu code cũ còn gọi update() thì để khỏi crash.
-   * Theo nghiệp vụ mới: controller sẽ dùng updateByModerator() cho CM.
-   */
-  async update(id: string, dto: any) {
-    return this.updateByModerator(id, dto)
   }
 
   // 🔴 Xoá report
@@ -304,7 +282,6 @@ export class ReportService {
     return { message: 'Report deleted successfully', deleted }
   }
 
-  // == SUMMARY ==
   async getAdminSummary() {
     const [open, new7d] = await Promise.all([
       this.reportModel.countDocuments({
@@ -318,7 +295,6 @@ export class ReportService {
     return { open, new7d }
   }
 
-  // == WEEKLY ==
   async getWeeklyNew(weeks = 4) {
     const now = new Date()
     const from = new Date(now)

@@ -86,12 +86,13 @@ export class AuditLogService {
       filter.$or = [
         { summary: { $regex: s, $options: 'i' } },
         { reportCode: { $regex: s, $options: 'i' } },
+        { action: { $regex: s, $options: 'i' } },
       ];
     }
 
     const skip = (page - 1) * limit;
 
-    const [rows, total] = await Promise.all([
+    const [items, total] = await Promise.all([
       this.auditModel
         .find(filter)
         .sort({ createdAt: -1 })
@@ -103,7 +104,7 @@ export class AuditLogService {
     ]);
 
     return {
-      rows,
+      items,
       total,
       page,
       limit,
@@ -124,6 +125,21 @@ export class AuditLogService {
 
     if (!updated) throw new NotFoundException('Log not found');
     return updated;
+  }
+
+  async markAllSeen(adminId: string) {
+    await this.auditModel.updateMany(
+      { seen: false },
+      {
+        $set: {
+          seen: true,
+          seenBy: new Types.ObjectId(adminId),
+          seenAt: new Date(),
+        },
+      },
+    );
+
+    return { message: 'All logs marked as seen' };
   }
 
   async approve(logId: string, adminId: string, adminNote?: string) {

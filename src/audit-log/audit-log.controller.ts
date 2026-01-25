@@ -23,7 +23,7 @@ export class AuditLogController {
   constructor(private readonly audit: AuditLogService) {}
 
   private getUserId(payload: any): string {
-    return payload?.userId || payload?.user_id || payload?.user_id?.toString();
+    return payload?.userId || payload?.user_id || payload?._id;
   }
 
   @Get()
@@ -31,8 +31,8 @@ export class AuditLogController {
     @Query('search') search?: string,
     @Query('role') role?: string,
     @Query('action') action?: string,
-    @Query('status') status?: string,
-    @Query('risk') risk?: string,
+    @Query('status') status?: string, // unseen/seen/pending/approved
+    @Query('risk') risk?: string, // low/medium/high
     @Query('limit') limit = '20',
     @Query('page') page = '1',
   ) {
@@ -53,13 +53,23 @@ export class AuditLogController {
     return this.audit.markSeen(id, adminId);
   }
 
+  @Patch('seen-all')
+  async markAllSeen(@Req() req: Request) {
+    const adminId = this.getUserId(req['user']);
+    return this.audit.markAllSeen(adminId);
+  }
+
   @Patch(':id/approve')
   async approve(
     @Param('id') id: string,
-    @Body('adminNote') adminNote: string,
+    @Body() body: any,
     @Req() req: Request,
   ) {
     const adminId = this.getUserId(req['user']);
+
+    // ✅ accept both adminNote & admin_note
+    const adminNote = body?.adminNote ?? body?.admin_note ?? body?.adminNote?.trim();
+
     return this.audit.approve(id, adminId, adminNote);
   }
 }
