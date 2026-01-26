@@ -1,4 +1,3 @@
-
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -28,6 +27,14 @@ export class AuditLog {
   /** 🧑 actor (CM/Community/System) */
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   actor_id?: Types.ObjectId;
+
+  /** ✅ Snapshot (để Compass xem được ngay) */
+  @Prop({ type: String })
+  actor_name?: string;
+
+  /** ✅ Snapshot (để Compass xem được ngay) */
+  @Prop({ type: String })
+  actor_email?: string;
 
   @Prop({
     type: String,
@@ -113,3 +120,4 @@ AuditLogSchema.index({ actor_role: 1 });
 AuditLogSchema.index({ target_type: 1, target_id: 1 });
 AuditLogSchema.index({ approval: 1 });
 AuditLogSchema.index({ seen: 1 });
+AuditLogSchema.index({ reportCode: 1 }); // ✅ optional: search nhanh

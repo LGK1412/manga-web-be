@@ -17,6 +17,11 @@ export class AuditLogService {
 
   async createLog(payload: {
     actor_id?: string;
+
+    /** ✅ snapshot fields */
+    actor_name?: string;
+    actor_email?: string;
+
     actor_role: AuditActorRole;
     action: string;
     target_type: AuditTargetType;
@@ -31,10 +36,16 @@ export class AuditLogService {
   }) {
     const doc = await this.auditModel.create({
       actor_id: payload.actor_id ? new Types.ObjectId(payload.actor_id) : undefined,
+
+      // ✅ snapshot
+      actor_name: payload.actor_name,
+      actor_email: payload.actor_email,
+
       actor_role: payload.actor_role,
       action: payload.action,
       target_type: payload.target_type,
       target_id: new Types.ObjectId(payload.target_id),
+
       reportCode: payload.reportCode,
       summary: payload.summary,
       risk: payload.risk ?? 'low',
@@ -86,13 +97,14 @@ export class AuditLogService {
       filter.$or = [
         { summary: { $regex: s, $options: 'i' } },
         { reportCode: { $regex: s, $options: 'i' } },
-        { action: { $regex: s, $options: 'i' } },
+        { actor_name: { $regex: s, $options: 'i' } }, // ✅
+        { actor_email: { $regex: s, $options: 'i' } }, // ✅
       ];
     }
 
     const skip = (page - 1) * limit;
 
-    const [items, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.auditModel
         .find(filter)
         .sort({ createdAt: -1 })
@@ -104,12 +116,22 @@ export class AuditLogService {
     ]);
 
     return {
-      items,
+      rows,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async findOne(id: string) {
+    const doc = await this.auditModel
+      .findById(id)
+      .populate({ path: 'actor_id', select: 'username email role' })
+      .lean();
+
+    if (!doc) throw new NotFoundException('Log not found');
+    return doc;
   }
 
   async markSeen(logId: string, adminId: string) {
@@ -127,21 +149,6 @@ export class AuditLogService {
     return updated;
   }
 
-  async markAllSeen(adminId: string) {
-    await this.auditModel.updateMany(
-      { seen: false },
-      {
-        $set: {
-          seen: true,
-          seenBy: new Types.ObjectId(adminId),
-          seenAt: new Date(),
-        },
-      },
-    );
-
-    return { message: 'All logs marked as seen' };
-  }
-
   async approve(logId: string, adminId: string, adminNote?: string) {
     const updated = await this.auditModel.findByIdAndUpdate(
       logId,
@@ -156,5 +163,18 @@ export class AuditLogService {
 
     if (!updated) throw new NotFoundException('Log not found');
     return updated;
+  }
+
+  async markAllSeen(adminId: string) {
+    const res = await this.auditModel.updateMany(
+      { seen: false },
+      {
+        seen: true,
+        seenBy: new Types.ObjectId(adminId),
+        seenAt: new Date(),
+      },
+    );
+
+    return { updated: res.modifiedCount };
   }
 }

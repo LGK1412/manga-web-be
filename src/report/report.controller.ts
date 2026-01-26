@@ -25,6 +25,17 @@ import { Role } from 'src/common/enums/role.enum';
 export class ReportController {
   constructor(private readonly reportsService: ReportService) {}
 
+  /** ✅ normalize user id từ JwtPayload */
+  private getUserId(payload: any): string | undefined {
+    return (
+      payload?.userId ||
+      payload?.user_id ||
+      payload?.sub ||
+      payload?.id ||
+      undefined
+    );
+  }
+
   // USER/AUTHOR create report
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -60,7 +71,7 @@ export class ReportController {
     @Body() dto: UpdateReportDto,
     @Req() req: Request,
   ) {
-    const moderatorId = req['user']?.userId; // từ JwtPayload
+    const moderatorId = this.getUserId(req['user']);
     return this.reportsService.updateByModerator(id, dto, moderatorId);
   }
 
@@ -73,7 +84,7 @@ export class ReportController {
     @Body() dto: UpdateReportDto,
     @Req() req: Request,
   ) {
-    const moderatorId = req['user']?.userId;
+    const moderatorId = this.getUserId(req['user']);
     return this.reportsService.updateByModerator(id, dto, moderatorId);
   }
 
