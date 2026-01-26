@@ -46,12 +46,12 @@ export class ReplyService {
   ) {
     await this.checkLegitUser(payload);
 
-    // Lưu reply
     const newReplyChapter = new this.replyModel({
       comment_id: new Types.ObjectId(createReplyChapterDTO.comment_id),
       chapter_id: new Types.ObjectId(createReplyChapterDTO.chapter_id),
       user_id: new Types.ObjectId(payload.user_id),
       content: createReplyChapterDTO.content,
+      is_delete: false,
     });
 
     const savedReplyChapter = await newReplyChapter.save();
@@ -59,12 +59,10 @@ export class ReplyService {
       throw new BadRequestException('Failed to create comment');
     }
 
-    // ✅ Truyền ObjectId vào getChapterById
     const chapter = await this.chapterService.getChapterById(
       new Types.ObjectId(createReplyChapterDTO.chapter_id),
     );
 
-    // ✅ Lấy mangaId an toàn (support cả ObjectId thô lẫn object {_id})
     const mangaId =
       (chapter as any)?.manga_id?._id ?? (chapter as any)?.manga_id;
     if (!mangaId) {
@@ -73,7 +71,6 @@ export class ReplyService {
       );
     }
 
-    // ✅ Tham số là string | ObjectId (không còn undefined)
     const manga = await this.mangaService.getAuthorByMangaIdForCommentChapter(
       mangaId,
     );
@@ -94,8 +91,6 @@ export class ReplyService {
       dto,
     );
 
-    // Nếu removeDeviceId yêu cầu string, đảm bảo ép kiểu an toàn
-    // (trong nhiều schema authorId có thể là ObjectId hoặc populate object)
     const authorIdStr =
       (manga as any)?.authorId?._id?.toString?.() ??
       (manga as any)?.authorId?.toString?.();
@@ -107,10 +102,15 @@ export class ReplyService {
   }
 
   async getRepliesForCommentChapter(comment_id: string, payload: any) {
-    const userId = payload?.user_id || null; // an toàn nếu user chưa login
+    const userId = payload?.user_id || null;
 
     return await this.replyModel.aggregate([
-      { $match: { comment_id: new Types.ObjectId(comment_id) } },
+      {
+        $match: {
+          comment_id: new Types.ObjectId(comment_id),
+          is_delete: false, // ✅ chỉ lấy reply đang hiển thị
+        },
+      },
       {
         $lookup: {
           from: 'users',
@@ -230,10 +230,27 @@ export class ReplyService {
     ]);
   }
 
+  // ✅ NEW: hide/restore reply (admin/community_manager)
+  async toggleReplyVisibility(id: string) {
+    const reply = await this.replyModel.findById(id);
+    if (!reply) throw new BadRequestException('Reply does not exist');
+
+    reply.is_delete = !reply.is_delete;
+    await reply.save();
+
+    return {
+      success: true,
+      message: `Reply ${reply.is_delete ? 'has been hidden' : 'has been restored'}`,
+    };
+  }
+
   async getReplyCountByChapter(chapterId: string) {
     const replyData = await this.replyModel.aggregate([
       {
-        $match: { chapter_id: new Types.ObjectId(chapterId) },
+        $match: {
+          chapter_id: new Types.ObjectId(chapterId),
+          is_delete: false, // ✅ chỉ count reply đang hiển thị
+        },
       },
       {
         $lookup: {
@@ -249,19 +266,15 @@ export class ReplyService {
         $group: {
           _id: '$comment_id',
           replyCount: { $sum: 1 },
-          usernames: { $addToSet: '$user.username' }, // tránh trùng tên
+          usernames: { $addToSet: '$user.username' },
         },
       },
     ]);
 
-    // Trả về object dễ merge
     return Object.fromEntries(
       replyData.map((r) => [
         r._id.toString(),
-        {
-          replyCount: r.replyCount,
-          usernames: r.usernames,
-        },
+        { replyCount: r.replyCount, usernames: r.usernames },
       ]),
     );
   }

@@ -65,18 +65,19 @@ export class CommentController {
     return this.commentService.getAllCommentForChapter(id, payload);
   }
 
-  // ===== ADMIN / MODERATOR =====
+  // ===== ADMIN / COMMUNITY MANAGER =====
+  // ✅ Content Moderator KHÔNG còn được quản lý comment
 
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
   async getAllComments() {
     return this.commentService.getAllComments();
   }
 
   @Post('/filter')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
   async filterComments(
     @Body() body: { storyId?: string; chapterId?: string; userId?: string },
   ) {
@@ -85,7 +86,7 @@ export class CommentController {
 
   @Patch('/toggle/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
   async toggleComment(@Param('id') id: string) {
     return this.commentService.toggleCommentVisibility(id);
   }

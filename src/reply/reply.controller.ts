@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 
 import { ReplyService } from './reply.service';
@@ -49,12 +58,23 @@ export class ReplyController {
 
   /**
    * Public endpoint: ai cũng xem được reply
-   * Nếu có token hợp lệ => req.user có payload để service biết user đã vote chưa, v.v.
+   * ✅ chỉ trả reply is_delete=false
    */
   @Get('/:id')
   @UseGuards(OptionalAccessTokenGuard)
-  async getALlRepliesOfCommentChapter(@Param('id') id: string, @Req() req: Request) {
+  async getALlRepliesOfCommentChapter(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
     const payload = ((req as any).user ?? null) as JwtPayload | null;
     return this.replyService.getRepliesForCommentChapter(id, payload);
+  }
+
+  // ===== ADMIN / COMMUNITY MANAGER =====
+  @Patch('/toggle/:id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
+  async toggleReply(@Param('id') id: string) {
+    return this.replyService.toggleReplyVisibility(id);
   }
 }

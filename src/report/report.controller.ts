@@ -20,23 +20,12 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/reports')
 export class ReportController {
   constructor(private readonly reportsService: ReportService) {}
 
-  /** ✅ normalize user id từ JwtPayload */
-  private getUserId(payload: any): string | undefined {
-    return (
-      payload?.userId ||
-      payload?.user_id ||
-      payload?.sub ||
-      payload?.id ||
-      undefined
-    );
-  }
-
-  // USER/AUTHOR create report
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
@@ -44,51 +33,54 @@ export class ReportController {
     return this.reportsService.create(dto);
   }
 
-  // ✅ Admin + Content Moderator can view
+  // ✅ Admin + Content Moderator + Community Manager can view (service sẽ filter theo role)
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
-  findAll() {
-    return this.reportsService.findAll();
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  findAll(@Req() req: Request) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.findAllForRole(payload?.role);
   }
 
   @Get(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
-  findOne(@Param('id') id: string) {
-    return this.reportsService.findOne(id);
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  findOne(@Param('id') id: string, @Req() req: Request) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.findOneForRole(id, payload?.role);
   }
 
   /**
-   * ✅ Content Moderator handles report update (create audit log)
-   * PUT /api/reports/:id/moderate
+   * ✅ Staff handles report update
+   * - Content Moderator: Manga/Chapter reports
+   * - Community Manager: Comment/Reply reports
+   * - Admin: all
    */
   @Put(':id/moderate')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
   moderateReport(
     @Param('id') id: string,
     @Body() dto: UpdateReportDto,
     @Req() req: Request,
   ) {
-    const moderatorId = this.getUserId(req['user']);
-    return this.reportsService.updateByModerator(id, dto, moderatorId);
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.updateByStaff(id, dto, payload);
   }
 
-  // ❌ Optional: keep legacy route if old FE still calls PUT /api/reports/:id
+  // legacy
   @Put(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
   updateLegacy(
     @Param('id') id: string,
     @Body() dto: UpdateReportDto,
     @Req() req: Request,
   ) {
-    const moderatorId = this.getUserId(req['user']);
-    return this.reportsService.updateByModerator(id, dto, moderatorId);
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.updateByStaff(id, dto, payload);
   }
 
-  // Admin delete
   @Delete(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
