@@ -16,13 +16,13 @@ export class ChapterPurchaseService {
   private async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
+      throw new BadRequestException('User does not exist');
     }
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
+      throw new BadRequestException('User does not have permission');
     }
     return existingUser;
   }
@@ -37,21 +37,21 @@ export class ChapterPurchaseService {
       })
       .lean();
 
-    if (!chapter) throw new NotFoundException('Không tìm thấy chapter');
+    if (!chapter) throw new NotFoundException('Chapter not found');
     if (chapter.price <= 0) {
-      throw new BadRequestException('Chapter này miễn phí');
+      throw new BadRequestException('This chapter is free');
     }
 
     const user = await this.checkUser(userId);
 
-    // Kiểm tra đã mua chưa
+    // Check if already purchased
     const existed = await this.purchaseModel.findOne({ user: userId, chapter: chapterId });
     if (existed) {
-      throw new BadRequestException('Bạn đã mua chapter này rồi');
+      throw new BadRequestException('You have already purchased this chapter');
     }
 
     if (user.point < chapter.price) {
-      throw new BadRequestException('Không đủ điểm để mua');
+      throw new BadRequestException('Insufficient points to purchase');
     }
 
     // --- Ép kiểu để TS hiểu manga_id có authorId ---
@@ -78,7 +78,7 @@ export class ChapterPurchaseService {
     });
 
     return {
-      message: 'Mua chapter thành công',
+      message: 'Chapter purchased successfully',
       purchase,
       remainPoint: user.point,
     };

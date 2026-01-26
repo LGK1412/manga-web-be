@@ -87,7 +87,7 @@ export class MangaService {
     } catch (error) {
       console.error('Error creating manga:', error);
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('Không thể tạo manga mới');
+      throw new BadRequestException('Unable to create new manga');
     }
   }
 
@@ -97,7 +97,7 @@ export class MangaService {
     authorId: Types.ObjectId,
   ) {
     if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID manga không hợp lệ');
+      throw new BadRequestException('Invalid manga ID');
     }
 
     // Validate styles nếu có
@@ -122,7 +122,7 @@ export class MangaService {
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
-        'Không thể cập nhật manga hoặc manga không tồn tại',
+        'Unable to update manga or manga does not exist',
       );
     }
 
@@ -134,28 +134,28 @@ export class MangaService {
 
   async deleteManga(id: string, authorId: Types.ObjectId) {
     if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID manga không hợp lệ');
+      throw new BadRequestException('Invalid manga ID');
     }
 
     const result = await this.mangaModel.deleteOne({ _id: id, authorId });
     if (result.deletedCount === 0) {
       throw new BadRequestException(
-        'Không thể xóa manga hoặc manga không tồn tại',
+        'Unable to delete manga or manga does not exist',
       );
     }
 
-    return { success: true, message: 'Xóa manga thành công' };
+    return { success: true, message: 'Manga deleted successfully' };
   }
 
   async toggleDelete(id: string, authorId: Types.ObjectId) {
     if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID manga không hợp lệ');
+      throw new BadRequestException('Invalid manga ID');
     }
 
     const manga = await this.mangaModel.findOne({ _id: id, authorId });
     if (!manga) {
       throw new BadRequestException(
-        'Manga không tồn tại hoặc không thuộc quyền sở hữu',
+        'Manga does not exist or does not belong to you',
       );
     }
 
@@ -641,16 +641,16 @@ export class MangaService {
     try {
       // Validate ObjectId format
       if (!Id || !Types.ObjectId.isValid(Id)) {
-        throw new BadRequestException('ID chương không hợp lệ');
+        throw new BadRequestException('Invalid chapter ID');
       }
 
       const chapter = await this.chapterModel.findById(Id).exec();
       if (!chapter) {
-        throw new NotFoundException('Chương không tồn tại');
+        throw new NotFoundException('Chapter does not exist');
       }
 
       if (!chapter.manga_id) {
-        throw new BadRequestException('Chương không có manga_id');
+        throw new BadRequestException('Chapter does not have manga_id');
       }
 
       const updatedManga = await this.mangaModel
@@ -662,7 +662,7 @@ export class MangaService {
         .exec();
 
       if (!updatedManga) {
-        throw new NotFoundException('Manga không tồn tại');
+        throw new NotFoundException('Manga does not exist');
       }
 
       return updatedManga;
@@ -670,7 +670,7 @@ export class MangaService {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
       }
-      throw new InternalServerErrorException('Không thể tăng lượt xem');
+      throw new InternalServerErrorException('Unable to increment view count');
     }
   }
   async getRecommendStory(user_id: Types.ObjectId) {

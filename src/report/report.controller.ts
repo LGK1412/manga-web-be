@@ -8,7 +8,9 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 
 import { ReportService } from './report.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -18,38 +20,65 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/reports')
 export class ReportController {
   constructor(private readonly reportsService: ReportService) {}
 
-  // ================= USER / LOGGED-IN =================
-
   @Post()
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   create(@Body() dto: CreateReportDto) {
     return this.reportsService.create(dto);
   }
 
+  // ✅ Admin + Content Moderator + Community Manager can view (service sẽ filter theo role)
   @Get()
-  @UseGuards(AccessTokenGuard)
-  findAll() {
-    return this.reportsService.findAll();
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  findAll(@Req() req: Request) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.findAllForRole(payload?.role);
   }
 
   @Get(':id')
-  @UseGuards(AccessTokenGuard)
-  findOne(@Param('id') id: string) {
-    return this.reportsService.findOne(id);
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  findOne(@Param('id') id: string, @Req() req: Request) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.findOneForRole(id, payload?.role);
   }
 
-  // ================= ADMIN =================
+  /**
+   * ✅ Staff handles report update
+   * - Content Moderator: Manga/Chapter reports
+   * - Community Manager: Comment/Reply reports
+   * - Admin: all
+   */
+  @Put(':id/moderate')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  moderateReport(
+    @Param('id') id: string,
+    @Body() dto: UpdateReportDto,
+    @Req() req: Request,
+  ) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.updateByStaff(id, dto, payload);
+  }
 
+  // legacy
   @Put(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateReportDto) {
-    return this.reportsService.update(id, dto);
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  updateLegacy(
+    @Param('id') id: string,
+    @Body() dto: UpdateReportDto,
+    @Req() req: Request,
+  ) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.updateByStaff(id, dto, payload);
   }
 
   @Delete(':id')

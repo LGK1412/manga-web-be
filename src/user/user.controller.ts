@@ -5,6 +5,7 @@ import {
   Get,
   Patch,
   Req,
+  Param,
   BadRequestException,
   UseInterceptors,
   UploadedFile,
@@ -97,21 +98,23 @@ export class UserController {
   // ================= USER =================
 
   @Post('/update-role')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async updateRole(@Body('role') role: string, @Req() req: Request) {
     const user = (req as any).user;
-    const userId = user.userId;
+    // JWT payload has user_id, not userId
+    const userId = (user as any).user_id || (user as any).userId;
 
     const userNormalInfo = req.cookies?.user_normal_info;
     if (!userNormalInfo) {
-      throw new BadRequestException('Thiếu thông tin user_normal_info');
+      throw new BadRequestException('Missing user_normal_info');
     }
 
     let userInfo: any;
     try {
       userInfo = JSON.parse(userNormalInfo);
     } catch {
-      throw new BadRequestException('user_normal_info không hợp lệ');
+      throw new BadRequestException('Invalid user_normal_info');
     }
 
     return this.userService.updateRoleWithValidation(role, userId, userInfo);
@@ -119,14 +122,16 @@ export class UserController {
 
 
   @Get('/favourites')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getFavourites(@Req() req: Request) {
     const token = req.cookies?.access_token;
     return this.userService.getFavourites(token);
   }
 
   @Post('/toggle-favourite')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async toggleFavourite(
     @Body('mangaId') mangaId: string,
     @Req() req: Request,
@@ -136,7 +141,8 @@ export class UserController {
   }
 
   @Patch('/profile')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   @UseInterceptors(
     FileInterceptor('avatar', {
       storage: diskStorage({
@@ -152,7 +158,7 @@ export class UserController {
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
           return cb(
-            new BadRequestException('File không phải ảnh'),
+            new BadRequestException('File is not an image'),
             false,
           );
         }
@@ -175,7 +181,8 @@ export class UserController {
   }
 
   @Get('/point')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getPoint(@Req() req: Request) {
     const user = req['user'];
     return {
@@ -200,14 +207,16 @@ export class UserController {
   }
 
   @Get('/following')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getFollowingAuthors(@Req() req: Request) {
     const token = req.cookies?.access_token;
     return this.userService.getFollowingAuthors(token);
   }
 
   @Post('/toggle-follow')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async toggleFollowAuthor(
     @Body('authorId') authorId: string,
     @Req() req: Request,
@@ -217,43 +226,68 @@ export class UserController {
   }
 
   @Get('/follow-stats')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getFollowStats(@Req() req: Request) {
     const token = req.cookies?.access_token;
     return this.userService.getFollowStats(token);
   }
 
   @Get('/emoji-packs-own')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getUserEmojiPacksOwn(@Req() req: Request) {
     const user = req['user'];
-    return this.userService.getEmojiPackOwn(user.userId);
+    // JWT payload has user_id, not userId
+    const userId = (user as any).user_id || (user as any).userId;
+    return this.userService.getEmojiPackOwn(userId);
   }
 
   @Post('/buy-emoji-pack')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async buyEmojiPack(
     @Req() req: Request,
     @Body('pack_id') pack_id: string,
     @Body('price') price: string,
   ) {
     const user = req['user'];
-    return this.userService.buyEmojiPack(user.userId, pack_id, price);
+    // JWT payload has user_id, not userId
+    const userId = (user as any).user_id || (user as any).userId;
+    return this.userService.buyEmojiPack(userId, pack_id, price);
   }
 
   // ================= AUTHOR =================
 
   @Get('/author-request/status')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getAuthorRequestStatus(@Req() req: Request) {
     const user = req['user'];
-    return this.userService.getAuthorRequestStatus(user.userId);
+    // JWT payload has user_id, not userId
+    const userId = (user as any).user_id || (user as any).userId;
+    return this.userService.getAuthorRequestStatus(userId);
   }
 
   @Post('/author-request')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async requestAuthor(@Req() req: Request) {
     const user = req['user'];
-    return this.userService.requestAuthor(user.userId);
+    // JWT payload has user_id, not userId
+    const userId = (user as any).user_id || (user as any).userId;
+    return this.userService.requestAuthor(userId);
+  }
+
+  // ================= PUBLIC =================
+
+  @Get('/public/:id')
+  async getPublicUser(@Param('id') id: string) {
+    return this.userService.getPublicUserById(id);
+  }
+
+  @Get('/public-follow-stats/:id')
+  async getPublicFollowStats(@Param('id') id: string) {
+    return this.userService.getPublicFollowStats(id);
   }
 }

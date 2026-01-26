@@ -11,7 +11,7 @@ export class EmojiService {
 
     async uploadEmojis(files: Express.Multer.File[]) {
         if (!files || files.length === 0)
-            throw new BadRequestException("Không có file nào được upload");
+            throw new BadRequestException("No files uploaded");
 
         const uploadDir = path.join(process.cwd(), "public", "assets", "emoji");
         await fs.mkdir(uploadDir, { recursive: true });
@@ -26,7 +26,7 @@ export class EmojiService {
 
                 // kiểm tra emoji tồn tại chưa
                 const exist = await this.emojiModel.findOne({ name: baseName });
-                if (exist) throw new BadRequestException(`Emoji "${baseName}" đã tồn tại`);
+                if (exist) throw new BadRequestException(`Emoji "${baseName}" already exists`);
 
                 const uniqueName = `${baseName}${ext}`;
                 const filePath = path.join(uploadDir, uniqueName);
@@ -59,7 +59,7 @@ export class EmojiService {
             if (err instanceof BadRequestException) throw err;
 
             throw new InternalServerErrorException(
-                err.message || "Lỗi khi upload emoji"
+                err.message || "Error uploading emoji"
             );
         }
     }

@@ -92,7 +92,7 @@ export class MangaController {
   @Get('random')
   async getRandom() {
     const randomManga = await this.mangaService.getRandomManga();
-    if (!randomManga) throw new NotFoundException('Không tìm thấy truyện nào');
+    if (!randomManga) throw new NotFoundException('No story found');
     return randomManga;
   }
 
@@ -117,7 +117,8 @@ export class MangaController {
   @UseGuards(OptionalAccessTokenGuard)
   async getMangaDetail(@Req() req: Request, @Param('id') id: string) {
     const payload = ((req as any).user ?? null) as JwtPayload | null;
-    const userId = payload?.userId ?? '';
+    // JWT payload has user_id, not userId
+    const userId = payload ? ((payload as any).user_id || (payload as any).userId) : '';
     return this.mangaService.findMangaDetail(id, userId);
   }
 
@@ -131,10 +132,13 @@ export class MangaController {
    * Nên bắt login + check mismatch để tránh user xem recommend của người khác
    */
   @Get('recomment/user/:userId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getRecommendStory(@Param('userId') userId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    if (userId !== payload.userId) {
+    // JWT payload has user_id, not userId
+    const tokenUserId = (payload as any).user_id || (payload as any).userId;
+    if (userId !== tokenUserId) {
       throw new BadRequestException('User ID mismatch');
     }
     return this.mangaService.getRecommendStory(new Types.ObjectId(userId));
@@ -158,10 +162,11 @@ export class MangaController {
     @Param('authorId') authorId: string,
   ) {
     const payload = (req as any).user as JwtPayload;
-    const userId = payload.userId;
+    // JWT payload has user_id, not userId
+    const userId = (payload as any).user_id || (payload as any).userId;
 
     if (userId !== authorId && payload.role !== Role.ADMIN) {
-      throw new BadRequestException('Không có quyền tạo truyện cho author này');
+      throw new BadRequestException('You do not have permission to create story for this author');
     }
 
     if (file) {
@@ -183,7 +188,8 @@ export class MangaController {
     @Req() req: Request,
   ) {
     const payload = (req as any).user as JwtPayload;
-    const userId = payload.userId;
+    // JWT payload has user_id, not userId
+    const userId = (payload as any).user_id || (payload as any).userId;
 
     if (file) updateMangaDto.coverImage = file.filename;
 
@@ -194,12 +200,13 @@ export class MangaController {
     );
   }
 
-  @Post('toggle-delete/:mangaId')
+  @Post(':mangaId/toggle-delete')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
   async toggleDelete(@Param('mangaId') mangaId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    const userId = payload.userId;
+    // JWT payload has user_id, not userId
+    const userId = (payload as any).user_id || (payload as any).userId;
 
     return this.mangaService.toggleDelete(mangaId, new Types.ObjectId(userId));
   }
@@ -209,7 +216,8 @@ export class MangaController {
   @Roles(Role.AUTHOR, Role.ADMIN)
   async deleteManga(@Param('mangaId') mangaId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    const userId = payload.userId;
+    // JWT payload has user_id, not userId
+    const userId = (payload as any).user_id || (payload as any).userId;
 
     return this.mangaService.deleteManga(mangaId, new Types.ObjectId(userId));
   }

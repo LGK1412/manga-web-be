@@ -40,10 +40,10 @@ export class GenreService {
    */
   async getGenreById(id: string) {
     if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID không hợp lệ');
+      throw new BadRequestException('Invalid ID');
     }
     const genre = await this.genreModel.findById(id);
-    if (!genre) throw new NotFoundException('Genre không tồn tại');
+    if (!genre) throw new NotFoundException('Genre does not exist');
     return genre;
   }
 
@@ -55,7 +55,7 @@ export class GenreService {
       const newGenre = new this.genreModel(dto);
       return await newGenre.save();
     } catch (e) {
-      throw new BadRequestException('Không thể tạo genre (có thể bị trùng tên)');
+      throw new BadRequestException('Unable to create genre (possibly duplicate name)');
     }
   }
 

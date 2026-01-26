@@ -14,6 +14,9 @@ import { Types } from 'mongoose';
 import { RatingService } from './rating.service';
 
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/rating')
@@ -35,7 +38,8 @@ export class RatingController {
   }
 
   @Post('upsert')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async upsert(
     @Body('mangaId') mangaIdStr: string,
     @Body('rating') rating: number,
@@ -65,7 +69,8 @@ export class RatingController {
   }
 
   @Get('mine')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async mine(@Query('mangaId') mangaIdStr: string, @Req() req: Request) {
     if (!mangaIdStr) throw new BadRequestException('mangaId is required');
     if (!Types.ObjectId.isValid(mangaIdStr)) {

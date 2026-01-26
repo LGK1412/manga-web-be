@@ -41,6 +41,7 @@ import { AdminNotificationModule } from './admin-notification/admin-notification
 import { CheckInModule } from './check-in/check-in.module';
 import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
 import { NotificationModule } from './notification/notification.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 
 @Module({
   imports: [
@@ -134,6 +135,7 @@ import { NotificationModule } from './notification/notification.module';
     CheckInModule,
     TaxSettlementModule,
     NotificationModule,
+    AuditLogModule,
   ],
   providers: [],
 })
