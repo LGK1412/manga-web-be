@@ -15,8 +15,7 @@ export class Reply {
   @Prop({ type: String })
   content: string;
 
-  // ✅ NEW: allow hide/restore
   @Prop({ type: Boolean, default: false })
-  is_delete: boolean;
+  is_delete: boolean; // ✅ NEW
 }
 export const ReplySchema = SchemaFactory.createForClass(Reply);

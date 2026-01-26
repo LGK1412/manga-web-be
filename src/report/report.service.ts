@@ -121,11 +121,13 @@ export class ReportService {
   }
 
   private mapAuditActorRole(appRole?: string): AuditActorRole {
-    const r = this.normalizeRole(appRole)
-    if (r === Role.CONTENT_MODERATOR) return AuditActorRole.CONTENT_MODERATOR
-    if (r === Role.COMMUNITY_MANAGER) return AuditActorRole.COMMUNITY_MANAGER
-    return AuditActorRole.SYSTEM
-  }
+  const r = String(appRole || '').toLowerCase();
+  if (r === 'admin') return AuditActorRole.ADMIN; // ✅ NEW
+  if (r === 'content_moderator') return AuditActorRole.CONTENT_MODERATOR;
+  if (r === 'community_manager') return AuditActorRole.COMMUNITY_MANAGER;
+  return AuditActorRole.SYSTEM;
+}
+
 
   private computeReportCode(reportId: any): string {
     const idStr = String(reportId)

@@ -14,6 +14,9 @@ import { MangaService } from 'src/manga/manga.service';
 import { sendNotificationDto } from './dto/sendNoti.dto';
 import { VoteReply } from 'src/schemas/VoteReply.schema';
 
+import { AuditLogService } from 'src/audit-log/audit-log.service';
+import { AuditActorRole, AuditTargetType } from 'src/schemas/AuditLog.schema';
+
 @Injectable()
 export class ReplyService {
   constructor(
@@ -23,7 +26,27 @@ export class ReplyService {
     private chapterService: ChapterServiceOnlyNormalChapterInfor,
     private mangaService: MangaService,
     @InjectModel(VoteReply.name) private voteReplyModel: Model<VoteReply>,
+
+    private readonly audit: AuditLogService, // ✅ NEW
   ) {}
+
+  private mapAuditActorRole(appRole?: string): AuditActorRole {
+    const r = String(appRole || '').toLowerCase();
+    if (r === 'admin') return AuditActorRole.ADMIN;
+    if (r === 'content_moderator') return AuditActorRole.CONTENT_MODERATOR;
+    if (r === 'community_manager') return AuditActorRole.COMMUNITY_MANAGER;
+    return AuditActorRole.SYSTEM;
+  }
+
+  private actorName(payload: any) {
+    return payload?.username || payload?.name || payload?.user_name;
+  }
+  private actorEmail(payload: any) {
+    return payload?.email || payload?.user_email;
+  }
+  private actorId(payload: any): string | undefined {
+    return payload?.userId || payload?.user_id || payload?.user_id?.toString?.();
+  }
 
   private async checkLegitUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
@@ -40,10 +63,7 @@ export class ReplyService {
     }
   }
 
-  async createReplyChapter(
-    createReplyChapterDTO: CreateReplyChapterDTO,
-    payload: any,
-  ) {
+  async createReplyChapter(createReplyChapterDTO: CreateReplyChapterDTO, payload: any) {
     await this.checkLegitUser(payload);
 
     const newReplyChapter = new this.replyModel({
@@ -63,21 +83,14 @@ export class ReplyService {
       new Types.ObjectId(createReplyChapterDTO.chapter_id),
     );
 
-    const mangaId =
-      (chapter as any)?.manga_id?._id ?? (chapter as any)?.manga_id;
+    const mangaId = (chapter as any)?.manga_id?._id ?? (chapter as any)?.manga_id;
     if (!mangaId) {
-      throw new InternalServerErrorException(
-        'Chapter does not have a valid manga_id',
-      );
+      throw new InternalServerErrorException('Chapter does not have a valid manga_id');
     }
 
-    const manga = await this.mangaService.getAuthorByMangaIdForCommentChapter(
-      mangaId,
-    );
+    const manga = await this.mangaService.getAuthorByMangaIdForCommentChapter(mangaId);
 
-    const receiver = await this.userService.getUserById(
-      createReplyChapterDTO.receiver_id,
-    );
+    const receiver = await this.userService.getUserById(createReplyChapterDTO.receiver_id);
 
     const dto: sendNotificationDto = {
       title: 'New reply',
@@ -87,9 +100,7 @@ export class ReplyService {
       sender_id: payload.user_id,
     };
 
-    const send_noti_result = await this.notificationService.createNotification(
-      dto,
-    );
+    const send_noti_result = await this.notificationService.createNotification(dto);
 
     const authorIdStr =
       (manga as any)?.authorId?._id?.toString?.() ??
@@ -108,7 +119,7 @@ export class ReplyService {
       {
         $match: {
           comment_id: new Types.ObjectId(comment_id),
-          is_delete: false, // ✅ chỉ lấy reply đang hiển thị
+          is_delete: false, // ✅ hide
         },
       },
       {
@@ -163,12 +174,7 @@ export class ReplyService {
                                 as: 'v',
                                 cond: {
                                   $and: [
-                                    {
-                                      $eq: [
-                                        '$$v.user_id',
-                                        new Types.ObjectId(userId),
-                                      ],
-                                    },
+                                    { $eq: ['$$v.user_id', new Types.ObjectId(userId)] },
                                     { $eq: ['$$v.is_up', true] },
                                   ],
                                 },
@@ -190,12 +196,7 @@ export class ReplyService {
                                 as: 'v',
                                 cond: {
                                   $and: [
-                                    {
-                                      $eq: [
-                                        '$$v.user_id',
-                                        new Types.ObjectId(userId),
-                                      ],
-                                    },
+                                    { $eq: ['$$v.user_id', new Types.ObjectId(userId)] },
                                     { $eq: ['$$v.is_up', false] },
                                   ],
                                 },
@@ -230,13 +231,31 @@ export class ReplyService {
     ]);
   }
 
-  // ✅ NEW: hide/restore reply (admin/community_manager)
-  async toggleReplyVisibility(id: string) {
+  // ✅ UPDATED: toggle + audit
+  async toggleReplyVisibility(id: string, payload: any) {
     const reply = await this.replyModel.findById(id);
     if (!reply) throw new BadRequestException('Reply does not exist');
 
+    const before = { is_delete: reply.is_delete };
     reply.is_delete = !reply.is_delete;
     await reply.save();
+    const after = { is_delete: reply.is_delete };
+
+    const staffId = this.actorId(payload);
+
+    await this.audit.createLog({
+      actor_id: staffId,
+      actor_name: this.actorName(payload),
+      actor_email: this.actorEmail(payload),
+      actor_role: this.mapAuditActorRole(payload?.role),
+      action: reply.is_delete ? 'reply_hidden' : 'reply_restored',
+      target_type: AuditTargetType.REPLY,
+      target_id: id,
+      summary: reply.is_delete ? `Hide reply ${id}` : `Restore reply ${id}`,
+      risk: 'low',
+      before,
+      after,
+    });
 
     return {
       success: true,
@@ -246,12 +265,7 @@ export class ReplyService {
 
   async getReplyCountByChapter(chapterId: string) {
     const replyData = await this.replyModel.aggregate([
-      {
-        $match: {
-          chapter_id: new Types.ObjectId(chapterId),
-          is_delete: false, // ✅ chỉ count reply đang hiển thị
-        },
-      },
+      { $match: { chapter_id: new Types.ObjectId(chapterId), is_delete: false } },
       {
         $lookup: {
           from: 'users',

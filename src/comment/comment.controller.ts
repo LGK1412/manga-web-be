@@ -26,7 +26,6 @@ export class CommentController {
   constructor(private readonly commentService: CommentService) {}
 
   // ===== USER =====
-
   @Post('/create-comment')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
@@ -54,10 +53,6 @@ export class CommentController {
     return this.commentService.downVote(body.comment_id, payload);
   }
 
-  /**
-   * Public: xem comment của chapter
-   * Nếu có token hợp lệ => req.user có payload để service biết user đã vote, v.v.
-   */
   @Get('/all-comment-chapter/:id')
   @UseGuards(OptionalAccessTokenGuard)
   async getAllCommentForChapter(@Param('id') id: string, @Req() req: Request) {
@@ -66,8 +61,6 @@ export class CommentController {
   }
 
   // ===== ADMIN / COMMUNITY MANAGER =====
-  // ✅ Content Moderator KHÔNG còn được quản lý comment
-
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
@@ -87,7 +80,8 @@ export class CommentController {
   @Patch('/toggle/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
-  async toggleComment(@Param('id') id: string) {
-    return this.commentService.toggleCommentVisibility(id);
+  async toggleComment(@Param('id') id: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.commentService.toggleCommentVisibility(id, payload); // ✅ pass payload
   }
 }

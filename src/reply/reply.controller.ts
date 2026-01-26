@@ -56,10 +56,6 @@ export class ReplyController {
     return this.replyService.downVote(reply_id, payload);
   }
 
-  /**
-   * Public endpoint: ai cũng xem được reply
-   * ✅ chỉ trả reply is_delete=false
-   */
   @Get('/:id')
   @UseGuards(OptionalAccessTokenGuard)
   async getALlRepliesOfCommentChapter(
@@ -70,11 +66,12 @@ export class ReplyController {
     return this.replyService.getRepliesForCommentChapter(id, payload);
   }
 
-  // ===== ADMIN / COMMUNITY MANAGER =====
+  // ✅ NEW: toggle
   @Patch('/toggle/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
-  async toggleReply(@Param('id') id: string) {
-    return this.replyService.toggleReplyVisibility(id);
+  async toggleReply(@Param('id') id: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    return this.replyService.toggleReplyVisibility(id, payload);
   }
 }

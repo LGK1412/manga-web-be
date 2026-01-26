@@ -4,6 +4,7 @@ import { Document, Types } from 'mongoose';
 export type AuditLogDocument = AuditLog & Document;
 
 export enum AuditActorRole {
+  ADMIN = 'admin', // ✅ NEW
   CONTENT_MODERATOR = 'content_moderator',
   COMMUNITY_MANAGER = 'community_manager',
   SYSTEM = 'system',
@@ -24,15 +25,12 @@ export enum AuditTargetType {
 
 @Schema({ timestamps: true })
 export class AuditLog {
-  /** 🧑 actor (CM/Community/System) */
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   actor_id?: Types.ObjectId;
 
-  /** ✅ Snapshot (để Compass xem được ngay) */
   @Prop({ type: String })
   actor_name?: string;
 
-  /** ✅ Snapshot (để Compass xem được ngay) */
   @Prop({ type: String })
   actor_email?: string;
 
@@ -43,11 +41,9 @@ export class AuditLog {
   })
   actor_role: AuditActorRole;
 
-  /** action: approve/reject/hide_content/... */
   @Prop({ type: String, required: true })
   action: string;
 
-  /** target */
   @Prop({
     type: String,
     enum: Object.values(AuditTargetType),
@@ -58,19 +54,15 @@ export class AuditLog {
   @Prop({ type: Types.ObjectId, required: true })
   target_id: Types.ObjectId;
 
-  /** optional reportCode for quick search UI */
   @Prop({ type: String })
   reportCode?: string;
 
-  /** summary for table */
   @Prop({ type: String, required: true })
   summary: string;
 
-  /** risk for highlighting */
   @Prop({ type: String, enum: ['low', 'medium', 'high'], default: 'low' })
   risk: 'low' | 'medium' | 'high';
 
-  /** admin review */
   @Prop({ type: Boolean, default: false })
   seen: boolean;
 
@@ -81,22 +73,18 @@ export class AuditLog {
   })
   approval: AuditApprovalStatus;
 
-  /** diff */
   @Prop({ type: Object })
   before?: Record<string, any>;
 
   @Prop({ type: Object })
   after?: Record<string, any>;
 
-  /** moderator note */
   @Prop({ type: String })
   note?: string;
 
-  /** evidence images (urls) */
   @Prop({ type: [String], default: [] })
   evidenceImages?: string[];
 
-  /** admin note */
   @Prop({ type: String })
   adminNote?: string;
 
@@ -120,4 +108,4 @@ AuditLogSchema.index({ actor_role: 1 });
 AuditLogSchema.index({ target_type: 1, target_id: 1 });
 AuditLogSchema.index({ approval: 1 });
 AuditLogSchema.index({ seen: 1 });
-AuditLogSchema.index({ reportCode: 1 }); // ✅ optional: search nhanh
+AuditLogSchema.index({ reportCode: 1 });

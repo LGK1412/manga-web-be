@@ -8,12 +8,12 @@ import { UserModule } from 'src/user/user.module';
 import { StylesModule } from 'src/styles/styles.module';
 import { GenreModule } from 'src/genre/genre.module';
 import { MongooseModule } from '@nestjs/mongoose';
-import { CommentSchema } from 'src/schemas/comment.schema';
 import { Reply, ReplySchema } from 'src/schemas/Reply.schema';
 import { VoteReply, VoteReplySchema } from 'src/schemas/VoteReply.schema';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationModule } from 'src/notification/notification.module';
+import { AuditLogModule } from '../audit-log/audit-log.module'; // ✅
 
 @Module({
   imports: [
@@ -24,9 +24,12 @@ import { NotificationModule } from 'src/notification/notification.module';
     UserModule,
     StylesModule,
     GenreModule,
+
+    AuditLogModule, // ✅ THÊM DÒNG NÀY
+
     MongooseModule.forFeature([
       { name: Reply.name, schema: ReplySchema },
-      { name: VoteReply.name, schema: VoteReplySchema }
+      { name: VoteReply.name, schema: VoteReplySchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -37,10 +40,8 @@ import { NotificationModule } from 'src/notification/notification.module';
       }),
     }),
   ],
-  providers: [
-    ReplyService,
-  ],
+  providers: [ReplyService],
   controllers: [ReplyController],
-  exports: [ReplyService]
+  exports: [ReplyService],
 })
-export class ReplyModule { }
+export class ReplyModule {}
