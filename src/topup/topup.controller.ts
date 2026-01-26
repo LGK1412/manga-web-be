@@ -1,8 +1,6 @@
-import { BadRequestException, Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-
 import { TopupService } from './topup.service';
-
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -11,36 +9,22 @@ import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/topup')
 export class TopupController {
-  constructor(private readonly topupService: TopupService) {}
+  constructor(private readonly topupService: TopupService) { }
 
-  /**
-   * Logged-in: Lấy danh sách package + bonus info theo user hiện tại
-   */
   @Get('packages')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getPackages(@Req() req: Request) {
-    const user = (req as any).user as JwtPayload;
-
-    if (!user?.userId) {
-      return { packages: [], bonus: { hasBonus: false, lastBonus: null } };
-    }
-
-    return this.topupService.getPackagesWithBonus(user.userId);
+    const user = req['user'];
+    return this.topupService.getPackagesWithBonus(user.user_id);
   }
 
-  /**
-   * Logged-in: Kiểm tra trạng thái bonus theo user hiện tại
-   */
   @Get('bonus-status')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async checkBonus(@Req() req: Request) {
-    const user = (req as any).user as JwtPayload;
-
-    if (!user?.userId) return { hasBonus: false, lastBonus: null };
-
-    return this.topupService.hasMonthlyBonus(user.userId);
+    const user = req['user'];
+    return this.topupService.hasMonthlyBonus(user.user_id);
   }
 
   /**
@@ -50,13 +34,7 @@ export class TopupController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getUserTransactions(@Req() req: Request) {
-    const user = (req as any).user as JwtPayload;
-
-    if (!user?.userId) {
-      throw new BadRequestException('Missing userId');
-    }
-
-    const transactions = await this.topupService.getUserTransactions(user.userId);
-    return { transactions };
+    const user = req['user'];
+    return await this.topupService.getUserTransactions(user.user_id);
   }
 }

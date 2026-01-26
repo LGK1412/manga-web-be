@@ -7,9 +7,9 @@ export enum TaxType {
 }
 
 export enum TaxStatus {
-    DRAFT = 'DRAFT',
-    DECLARED = 'DECLARED',
-    PAID = 'PAID',
+    DRAFT = 'Draft',
+    DECLARED = 'Declared',
+    PAID = 'Paid',
 }
 
 @Schema({ timestamps: true })
@@ -23,7 +23,7 @@ export class TaxSettlement {
     @Prop({ type: Types.ObjectId, ref: 'User' })
     authorId?: Types.ObjectId;
 
-    @Prop()
+    @Prop({ type: Types.ObjectId, ref: 'Withdraw' })
     withdrawId?: Types.ObjectId;
 
     @Prop()
@@ -42,9 +42,11 @@ export class TaxSettlement {
     @Prop({ required: true })
     netAmount: number; // tiền sau thuế
 
-    // Flatform
     @Prop()
-    year?: number;
+    month: number;
+
+    @Prop()
+    year: number;
 
     // Status
     @Prop({

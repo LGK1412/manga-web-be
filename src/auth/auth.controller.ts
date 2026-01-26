@@ -86,6 +86,12 @@
       return this.authService.sendVerificationForgotPassword(email);
     }
 
+  @Get('me')
+  @UseGuards(AccessTokenGuard)
+  async getMe(@Req() req: Request) {
+    return req['user'];
+  }
+
     @Post('/verify-forgot-password')
     async verificationForgotPassword(
       @Body('code') code: string,
@@ -125,18 +131,4 @@
       );
     }
 
-    @Get('me')
-    @UseGuards(AccessTokenGuard, RolesGuard)
-    @Roles(Role.USER, Role.AUTHOR)
-    async getMe(@Req() req: Request) {
-      // Guard mới đã verify token và gắn payload vào req.user
-      const user = (req as any).user as JwtPayload;
-      return this.authService.getMe(user);
-
-      /**
-       * Nếu AuthService.getMe() của bạn đang nhận nguyên req (cũ),
-       * thì dùng: return this.authService.getMe(req);
-       * Nhưng nên refactor để nhận payload/userId cho gọn.
-       */
-    }
   }

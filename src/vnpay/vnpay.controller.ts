@@ -30,7 +30,7 @@ export class VnpayController {
   constructor(
     private readonly vnpayService: VnpayService,
     private readonly topupService: TopupService,
-  ) {}
+  ) { }
 
   /**
    * Tạo payment url
@@ -45,12 +45,6 @@ export class VnpayController {
     @Req() req: Request,
     @Param('id') userId: string,
   ) {
-    const payload = (req as any).user as JwtPayload;
-    const userIdFromToken = payload.userId;
-
-    if (userId !== userIdFromToken) {
-      throw new BadRequestException('User ID mismatch');
-    }
 
     const ipAddr =
       (req.headers['x-forwarded-for'] as string) ||
@@ -58,7 +52,7 @@ export class VnpayController {
       '127.0.0.1';
 
     const { points, isDouble } = await this.topupService.getEffectivePoints(
-      userIdFromToken,
+      userId,
       body.packageId,
     );
 
@@ -75,12 +69,12 @@ export class VnpayController {
     // tạo txnRef bên trong service (và nhận về luôn)
     const { paymentUrl, txnRef } = await this.vnpayService.createPaymentUrl(
       paymentBody,
-      userIdFromToken,
+      userId,
     );
 
     // Lưu transaction với txnRef vừa nhận
     await this.topupService.createTransaction(
-      userIdFromToken, // userId string
+      userId, // userId string
       body.packageId,
       body.amount,
       points,

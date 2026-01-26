@@ -10,22 +10,22 @@ import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/achievements')
 export class AchievementController {
-  constructor(private readonly achievementService: AchievementService) {}
+  constructor(private readonly achievementService: AchievementService) { }
 
   @Get('me')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getAchievementsForStudent(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload;
-    return this.achievementService.getAllWithProgress(payload.userId);
+    const user = req['user'];
+    return this.achievementService.getAllWithProgress(user.user_id);
   }
 
   @Post(':id/claim')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async claimReward(@Req() req: Request, @Param('id') achievementId: string) {
-    const payload = (req as any).user as JwtPayload;
-    return this.achievementService.claimReward(payload.userId, achievementId);
+    const user = req['user'];
+    return this.achievementService.claimReward(user.user_id, achievementId);
   }
 
   @Post('sync')

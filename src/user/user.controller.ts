@@ -32,7 +32,7 @@ export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   // ================= ADMIN =================
 
@@ -44,7 +44,7 @@ export class UserController {
     //   req.cookies?.access_token ||
     //   req.headers['authorization']?.replace('Bearer ', '');
     // ✅ guard đã check admin rồi -> không cần truyền token
-   return this.userService.getAllUsers();
+    return this.userService.getAllUsers();
   }
 
   @Post('/update-status')
@@ -180,23 +180,16 @@ export class UserController {
     return this.userService.updateProfile(user, updateData);
   }
 
-  @Get('point')
+  @Get('/point')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getPoint(@Req() req: Request) {
     const user = req['user'];
-    // JWT payload has user_id, not userId
-    const userId = (user as any).user_id || (user as any).userId;
-    if (!userId) {
-      throw new BadRequestException('User ID not found in token');
-    }
-    const found = await this.userService.findUserById(userId);
-
     return {
-      point: found.point ?? 0,
-      author_point: found.author_point ?? 0,
-      game_point: found.game_point ?? 0,
-      role: found.role,
+      point: user.point,
+      author_point: user.author_point,
+      game_point: user.game_point,
+      role: user.role,
     };
   }
 
