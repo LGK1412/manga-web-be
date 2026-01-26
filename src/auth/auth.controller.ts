@@ -20,7 +20,7 @@ import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('/register')
   async register(@Body() registerDto: RegisterDto) {
@@ -124,14 +124,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(AccessTokenGuard)
   async getMe(@Req() req: Request) {
-    // Guard mới đã verify token và gắn payload vào req.user
-    const user = (req as any).user as JwtPayload;
-    return this.authService.getMe(user);
-
-    /**
-     * Nếu AuthService.getMe() của bạn đang nhận nguyên req (cũ),
-     * thì dùng: return this.authService.getMe(req);
-     * Nhưng nên refactor để nhận payload/userId cho gọn.
-     */
+    return req['user'];
   }
+
 }

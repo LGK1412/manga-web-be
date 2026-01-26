@@ -21,7 +21,7 @@ import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/withdraw')
 export class WithdrawController {
-  constructor(private readonly withdrawService: WithdrawService) {}
+  constructor(private readonly withdrawService: WithdrawService) { }
 
   /**
    * Author tạo yêu cầu rút tiền (CHỈ AUTHOR)
@@ -37,10 +37,10 @@ export class WithdrawController {
     @Body('bankAccount') bankAccount: string,
     @Body('accountHolder') accountHolder: string,
   ) {
-    const user = (req as any).user as JwtPayload;
+    const user = req['user'];
 
     return this.withdrawService.createWithdraw(
-      user.userId, // <-- dùng userId từ JWT
+      user.user_id,
       withdraw_point,
       bankCode,
       bankAccount,
@@ -82,10 +82,10 @@ export class WithdrawController {
     @Query('page') page = '1',
     @Query('limit') limit = '5',
   ) {
-    const user = (req as any).user as JwtPayload;
+    const user = req['user'];
 
     return this.withdrawService.getUserWithdraws(
-      user.userId, // <-- lấy từ JWT
+      user.user_id,
       parseInt(page, 10),
       parseInt(limit, 10),
     );

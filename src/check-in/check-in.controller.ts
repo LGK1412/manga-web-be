@@ -16,37 +16,19 @@ import { Role } from 'src/common/enums/role.enum';
 
 @Controller('api/checkin')
 export class CheckinController {
-  constructor(private readonly checkinService: CheckinService) {}
-
-  private toCheckinRole(role: Role): 'user' | 'author' {
-    // Nếu là AUTHOR => author, còn lại coi như user
-    // (ADMIN / MODERATOR / MANAGER vẫn check-in như user)
-    return role === Role.AUTHOR ? 'author' : 'user';
-  }
+  constructor(private readonly checkinService: CheckinService) { }
 
   @Post('today')
   @UseGuards(AccessTokenGuard)
   async checkinToday(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload;
-
-    if (!payload?.userId) {
-      throw new BadRequestException('Authentication required');
-    }
-
-    const checkinRole = this.toCheckinRole(payload.role);
-
-    return this.checkinService.checkinToday(payload.userId, checkinRole);
+    const user = req['user'];
+    return this.checkinService.checkinToday(user.user_id, user.role);
   }
 
   @Get('status')
   @UseGuards(AccessTokenGuard)
   async getStatus(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload;
-
-    if (!payload?.userId) {
-      throw new BadRequestException('Authentication required');
-    }
-
-    return this.checkinService.getCheckinStatus(payload.userId);
+    const user = req['user'];
+    return this.checkinService.getCheckinStatus(user.user_id);
   }
 }

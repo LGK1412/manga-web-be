@@ -31,7 +31,7 @@ export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   // ================= ADMIN =================
 
@@ -43,7 +43,7 @@ export class UserController {
     //   req.cookies?.access_token ||
     //   req.headers['authorization']?.replace('Bearer ', '');
     // ✅ guard đã check admin rồi -> không cần truyền token
-   return this.userService.getAllUsers();
+    return this.userService.getAllUsers();
   }
 
   @Post('/update-status')
@@ -174,17 +174,15 @@ export class UserController {
     return this.userService.updateProfile(user, updateData);
   }
 
-  @Get('point')
+  @Get('/point')
   @UseGuards(AccessTokenGuard)
   async getPoint(@Req() req: Request) {
     const user = req['user'];
-    const found = await this.userService.findUserById(user.userId);
-
     return {
-      point: found.point,
-      author_point: found.author_point,
-      game_point: found.game_point,
-      role: found.role,
+      point: user.point,
+      author_point: user.author_point,
+      game_point: user.game_point,
+      role: user.role,
     };
   }
 

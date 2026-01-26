@@ -139,61 +139,10 @@ export class WithdrawService {
    */
   async getUserWithdraws(authorId: string, page = 1, limit = 5) {
     const skip = (page - 1) * limit;
-
-    const matchStage = {
-      $match: {
-        authorId: new Types.ObjectId(authorId),
-      },
-    };
-
-    const lookupTaxStage = {
-      $lookup: {
-        from: 'taxsettlements',
-        localField: '_id',
-        foreignField: 'withdrawId',
-        as: 'tax',
-      },
-    };
-
-    const unwindTaxStage = {
-      $unwind: {
-        path: '$tax',
-        preserveNullAndEmptyArrays: true, // phòng trường hợp pending
-      },
-    };
-
-    const projectStage = {
-      $project: {
-        authorId: 1,
-        withdraw_point: 1,
-        bankCode: 1,
-        bankAccount: 1,
-        accountHolder: 1,
-        status: 1,
-        note: 1,
-        createdAt: 1,
-
-        // tax fields
-        taxAmount: '$tax.taxAmount',
-        netAmount: '$tax.netAmount',
-        grossAmount: '$tax.grossAmount',
-        taxRate: '$tax.taxRate',
-      },
-    };
-
-    const [docs, totalDocs] = await Promise.all([
-      this.withdrawModel.aggregate([
-        matchStage,
-        { $sort: { createdAt: -1 } },
-        { $skip: skip },
-        { $limit: limit },
-        lookupTaxStage,
-        unwindTaxStage,
-        projectStage,
-      ]),
-      this.withdrawModel.countDocuments(matchStage.$match),
-    ]);
-
+    const [docs, totalDocs] = await Promise.all([this.withdrawModel
+      .find({ authorId: new Types.ObjectId(authorId) })
+      .sort({ createdAt: -1 })
+      .skip(skip).limit(limit), this.withdrawModel.countDocuments({ authorId: new Types.ObjectId(authorId) }),]);
     return {
       docs,
       totalDocs,
@@ -203,62 +152,11 @@ export class WithdrawService {
     };
   }
 
-  /**
-   * Lấy danh sách tất cả yêu cầu rút (cho admin)
-   */
+  /** * Lấy danh sách tất cả yêu cầu rút (cho admin) */
   async getAllWithdraws() {
-    return this.withdrawModel.aggregate([
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'authorId',
-          foreignField: '_id',
-          as: 'author',
-        },
-      },
-      { $unwind: '$author' },
-
-      {
-        $lookup: {
-          from: 'taxsettlements',
-          localField: '_id',
-          foreignField: 'withdrawId',
-          as: 'tax',
-        },
-      },
-      {
-        $unwind: {
-          path: '$tax',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-
-      {
-        $project: {
-          withdraw_point: 1,
-          amount: 1,
-          bankCode: 1,
-          bankAccount: 1,
-          accountHolder: 1,
-          status: 1,
-          note: 1,
-          createdAt: 1,
-
-          author: {
-            _id: '$author._id',
-            username: '$author.username',
-            email: '$author.email',
-          },
-
-          taxAmount: '$tax.taxAmount',
-          netAmount: '$tax.netAmount',
-          grossAmount: '$tax.grossAmount',
-          taxRate: '$tax.taxRate',
-        },
-      },
-
-      { $sort: { createdAt: -1 } },
-    ]);
+    return this.withdrawModel.find()
+      .populate('authorId')
+      .sort({ createdAt: -1 });
   }
 
   private async sendWithdrawReceiptEmail(

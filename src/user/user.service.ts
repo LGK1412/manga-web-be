@@ -230,12 +230,12 @@ export class UserService {
     return { success: true, message: 'Status updated successfully' };
   }
 
-   /**
-   * ✅ admin: set role cho user
-   * rule gợi ý:
-   * - không cho admin tự remove role admin của chính mình (tránh lock system)
-   * - không cho set role rác (đã validate bằng enum Role)
-   */
+  /**
+  * ✅ admin: set role cho user
+  * rule gợi ý:
+  * - không cho admin tự remove role admin của chính mình (tránh lock system)
+  * - không cho set role rác (đã validate bằng enum Role)
+  */
   async adminSetRole(adminId: string, targetUserId: string, role: Role) {
     if (!Types.ObjectId.isValid(targetUserId)) {
       throw new BadRequestException('Invalid userId');
@@ -418,30 +418,30 @@ export class UserService {
 
   async findUserById(userId: string): Promise<User> {
     if (!Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('User not found1');
     }
 
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
     return user;
   }
 
   async getPublicUserById(userId: string): Promise<any> {
-      if (!userId || !Types.ObjectId.isValid(userId)) {
-        throw new NotFoundException('User does not exist');
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User does not exist');
     }
-    
+
     try {
       const user = await this.userModel
         .findById(userId)
         .select('username avatar bio role')
         .lean();
-      
+
       if (!user) {
         throw new NotFoundException('User does not exist');
       }
-      
+
       return user;
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -455,13 +455,13 @@ export class UserService {
     if (!userId || !Types.ObjectId.isValid(userId)) {
       throw new NotFoundException('User does not exist');
     }
-    
+
     try {
       const user = await this.userModel
         .findById(userId)
         .select('following_authors')
         .lean();
-      
+
       if (!user) {
         throw new NotFoundException('User does not exist');
       }
@@ -742,7 +742,7 @@ export class UserService {
 
   async getEmojiPackOwn(id: string) {
     await this.checkUser(id);
-    
+
     const user = await this.userModel
       .findById(id)
       .select("emoji_packs")
@@ -845,7 +845,7 @@ export class UserService {
    */
   async getAuthorRequestStatus(userId: string): Promise<AuthorRequestStatusResponse> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus authorRequestedAt authorApprovedAt authorAutoApproved');
-    
+
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại');
     }
@@ -873,8 +873,8 @@ export class UserService {
         status: 'none',
         criteria,
         canRequest: true,
-        message: allCriteriaMet 
-          ? 'Bạn đã đủ điều kiện để trở thành tác giả' 
+        message: allCriteriaMet
+          ? 'Bạn đã đủ điều kiện để trở thành tác giả'
           : 'Bạn chưa đủ điều kiện để trở thành tác giả',
       };
     }
@@ -886,8 +886,8 @@ export class UserService {
         requestedAt: user.authorRequestedAt?.toISOString(),
         criteria,
         canRequest: false,
-        message: allCriteriaMet 
-          ? 'Yêu cầu của bạn đang được xử lý. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.' 
+        message: allCriteriaMet
+          ? 'Yêu cầu của bạn đang được xử lý. Hệ thống sẽ tự động duyệt khi bạn đủ điều kiện.'
           : 'Yêu cầu của bạn đang chờ. Vui lòng cải thiện các tiêu chí còn thiếu.',
       };
     }
@@ -909,7 +909,7 @@ export class UserService {
    */
   async requestAuthor(userId: string): Promise<{ success: boolean; message: string; autoApproved?: boolean }> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus');
-    
+
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại');
     }
@@ -992,7 +992,7 @@ export class UserService {
    */
   async reEvaluateAuthorRequest(userId: string): Promise<void> {
     const user = await this.userModel.findById(userId).select('role authorRequestStatus');
-    
+
     if (!user || user.role === 'author' || user.authorRequestStatus !== AuthorRequestStatus.PENDING) {
       return; // Không cần re-evaluate
     }
