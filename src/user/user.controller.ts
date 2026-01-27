@@ -32,6 +32,7 @@ import { Role } from 'src/common/enums/role.enum';
 
 import { AdminSetRoleDto } from './dto/admin-set-role.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
+import { AdminResetUserStatusDto } from "./dto/admin-reset-user-status.dto";
 
 @Controller('api/user')
 export class UserController {
@@ -44,7 +45,7 @@ export class UserController {
 
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
   async getAllUsers(@Req() req: Request) {
     return this.userService.getAllUsers();
   }
@@ -305,4 +306,15 @@ export class UserController {
   async getPublicFollowStats(@Param('id') id: string) {
     return this.userService.getPublicFollowStats(id);
   }
+
+  @Patch("/admin/reset-user-status")
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.ADMIN)
+@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+async adminResetUserStatus(@Body() dto: AdminResetUserStatusDto, @Req() req: Request) {
+  const admin = (req as any).user;
+  const adminId = admin?.userId || admin?.user_id;
+  return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
+}
+
 }

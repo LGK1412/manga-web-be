@@ -158,107 +158,125 @@ export class UserService {
    * ✅ Content moderator: BAN user/author (không mute)
    */
   async moderatorBanUser(actorId: string, targetUserId: string, reason?: string) {
-    if (!Types.ObjectId.isValid(targetUserId)) {
-      throw new BadRequestException("Invalid userId");
-    }
-
-    const actorSnap = await this.getActorSnapshot(actorId);
-
-    if (actorSnap.actor_role !== Role.CONTENT_MODERATOR) {
-      throw new BadRequestException("Only CONTENT_MODERATOR can ban");
-    }
-
-    const target = await this.userModel
-      .findById(targetUserId)
-      .select("role status username email")
-      .lean();
-
-    if (!target) throw new NotFoundException("User does not exist");
-
-    const targetRole = String(target.role);
-    this.assertTargetRoleIsUserOrAuthor(targetRole);
-
-    const before = { role: targetRole, status: target.status };
-
-    const res = await this.userModel.updateOne(
-      { _id: targetUserId },
-      { $set: { status: UserStatus.BAN } },
-    );
-
-    if (res.modifiedCount === 0) {
-      throw new BadRequestException("Unable to ban user");
-    }
-
-    await this.auditLogService.createLog({
-      actor_id: actorId,
-      actor_name: actorSnap.actor_name,
-      actor_email: actorSnap.actor_email,
-      actor_role: AuditActorRole.CONTENT_MODERATOR,
-      action: "ban_user",
-      target_type: AuditTargetType.USER,
-      target_id: targetUserId,
-      summary: `Content moderator banned ${target.username} (${target.email})`,
-      risk: "high",
-      before,
-      after: { role: targetRole, status: UserStatus.BAN },
-      note: reason,
-    });
-
-    return { success: true, message: "User banned" };
+  if (!Types.ObjectId.isValid(targetUserId)) {
+    throw new BadRequestException("Invalid userId");
   }
+
+  const actorSnap = await this.getActorSnapshot(actorId);
+  if (actorSnap.actor_role !== Role.CONTENT_MODERATOR) {
+    throw new BadRequestException("Only CONTENT_MODERATOR can ban");
+  }
+
+  const target = await this.userModel
+    .findById(targetUserId)
+    .select("role status username email")
+    .lean();
+
+  if (!target) throw new NotFoundException("User does not exist");
+
+  const targetRole = String(target.role);
+  this.assertTargetRoleIsUserOrAuthor(targetRole);
+
+  // ✅ lock rule
+  if (target.status !== UserStatus.NORMAL) {
+    throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
+  }
+
+  const before = { role: targetRole, status: target.status };
+
+  // ✅ atomic: chỉ update nếu đang NORMAL
+  const res = await this.userModel.updateOne(
+    { _id: targetUserId, status: UserStatus.NORMAL },
+    { $set: { status: UserStatus.BAN } },
+  );
+
+  if (res.matchedCount === 0) {
+    throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
+  }
+  if (res.modifiedCount === 0) {
+    throw new BadRequestException("Unable to ban user");
+  }
+
+  await this.auditLogService.createLog({
+    actor_id: actorId,
+    actor_name: actorSnap.actor_name,
+    actor_email: actorSnap.actor_email,
+    actor_role: AuditActorRole.CONTENT_MODERATOR,
+    action: "ban_user",
+    target_type: AuditTargetType.USER,
+    target_id: targetUserId,
+    summary: `Content moderator banned ${target.username} (${target.email})`,
+    risk: "high",
+    before,
+    after: { role: targetRole, status: UserStatus.BAN },
+    note: reason,
+  });
+
+  return { success: true, message: "User banned" };
+}
+
 
   /**
    * ✅ Community manager: MUTE user/author (không ban)
    */
   async communityMuteUser(actorId: string, targetUserId: string, reason?: string) {
-    if (!Types.ObjectId.isValid(targetUserId)) {
-      throw new BadRequestException("Invalid userId");
-    }
-
-    const actorSnap = await this.getActorSnapshot(actorId);
-
-    if (actorSnap.actor_role !== Role.COMMUNITY_MANAGER) {
-      throw new BadRequestException("Only COMMUNITY_MANAGER can mute");
-    }
-
-    const target = await this.userModel
-      .findById(targetUserId)
-      .select("role status username email")
-      .lean();
-
-    if (!target) throw new NotFoundException("User does not exist");
-
-    const targetRole = String(target.role);
-    this.assertTargetRoleIsUserOrAuthor(targetRole);
-
-    const before = { role: targetRole, status: target.status };
-
-    const res = await this.userModel.updateOne(
-      { _id: targetUserId },
-      { $set: { status: UserStatus.MUTE } },
-    );
-
-    if (res.modifiedCount === 0) {
-      throw new BadRequestException("Unable to mute user");
-    }
-
-    await this.auditLogService.createLog({
-      actor_id: actorId,
-      actor_name: actorSnap.actor_name,
-      actor_email: actorSnap.actor_email,
-      actor_role: AuditActorRole.COMMUNITY_MANAGER,
-      action: "mute_user",
-      target_type: AuditTargetType.USER,
-      target_id: targetUserId,
-      summary: `Community manager muted ${target.username} (${target.email})`,
-      risk: "medium",
-      before,
-      after: { role: targetRole, status: UserStatus.MUTE },
-      note: reason,
-    });
-
-    return { success: true, message: "User muted" };
+  if (!Types.ObjectId.isValid(targetUserId)) {
+    throw new BadRequestException("Invalid userId");
   }
+
+  const actorSnap = await this.getActorSnapshot(actorId);
+  if (actorSnap.actor_role !== Role.COMMUNITY_MANAGER) {
+    throw new BadRequestException("Only COMMUNITY_MANAGER can mute");
+  }
+
+  const target = await this.userModel
+    .findById(targetUserId)
+    .select("role status username email")
+    .lean();
+
+  if (!target) throw new NotFoundException("User does not exist");
+
+  const targetRole = String(target.role);
+  this.assertTargetRoleIsUserOrAuthor(targetRole);
+
+  // ✅ lock rule
+  if (target.status !== UserStatus.NORMAL) {
+    throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
+  }
+
+  const before = { role: targetRole, status: target.status };
+
+  // ✅ atomic
+  const res = await this.userModel.updateOne(
+    { _id: targetUserId, status: UserStatus.NORMAL },
+    { $set: { status: UserStatus.MUTE } },
+  );
+
+  if (res.matchedCount === 0) {
+    throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
+  }
+  if (res.modifiedCount === 0) {
+    throw new BadRequestException("Unable to mute user");
+  }
+
+  await this.auditLogService.createLog({
+    actor_id: actorId,
+    actor_name: actorSnap.actor_name,
+    actor_email: actorSnap.actor_email,
+    actor_role: AuditActorRole.COMMUNITY_MANAGER,
+    action: "mute_user",
+    target_type: AuditTargetType.USER,
+    target_id: targetUserId,
+    summary: `Community manager muted ${target.username} (${target.email})`,
+    risk: "medium",
+    before,
+    after: { role: targetRole, status: UserStatus.MUTE },
+    note: reason,
+  });
+
+  return { success: true, message: "User muted" };
+}
+
 
   // ---------------- Auth-related helpers -------------------- //
 
@@ -1236,4 +1254,59 @@ export class UserService {
       } catch {}
     }
   }
+
+  async adminResetUserStatus(adminId: string, targetUserId: string, reason?: string) {
+  if (!Types.ObjectId.isValid(targetUserId)) {
+    throw new BadRequestException("Invalid userId");
+  }
+
+  const actorSnap = await this.getActorSnapshot(adminId);
+  if (actorSnap.actor_role !== Role.ADMIN) {
+    throw new BadRequestException("Only ADMIN can reset status");
+  }
+
+  const target = await this.userModel
+    .findById(targetUserId)
+    .select("role status username email")
+    .lean();
+
+  if (!target) throw new NotFoundException("User does not exist");
+
+  const targetRole = String(target.role);
+  this.assertTargetRoleIsUserOrAuthor(targetRole);
+
+  // nếu đã normal thì có thể return ok luôn
+  if (target.status === UserStatus.NORMAL) {
+    return { success: true, message: "Already NORMAL" };
+  }
+
+  const before = { role: targetRole, status: target.status };
+
+  const res = await this.userModel.updateOne(
+    { _id: targetUserId, status: { $ne: UserStatus.NORMAL } },
+    { $set: { status: UserStatus.NORMAL } },
+  );
+
+  if (res.modifiedCount === 0) {
+    throw new BadRequestException("Unable to reset status");
+  }
+
+  await this.auditLogService.createLog({
+    actor_id: adminId,
+    actor_name: actorSnap.actor_name,
+    actor_email: actorSnap.actor_email,
+    actor_role: AuditActorRole.ADMIN,
+    action: "admin_reset_user_status",
+    target_type: AuditTargetType.USER,
+    target_id: targetUserId,
+    summary: `Admin reset status of ${target.username} (${target.email}) -> normal`,
+    risk: "medium",
+    before,
+    after: { role: targetRole, status: UserStatus.NORMAL },
+    note: reason,
+  });
+
+  return { success: true, message: "Reset to NORMAL" };
+}
+
 }
