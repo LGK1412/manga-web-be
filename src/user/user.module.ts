@@ -12,10 +12,12 @@ import { Manga, MangaSchema } from "src/schemas/Manga.schema";
 import { Chapter, ChapterSchema } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressSchema } from "src/schemas/UserChapterProgress.schema";
 import { AuthorApprovalEventListener } from "./author-approval.event.listener";
+import { AuditLogModule } from 'src/audit-log/audit-log.module'; // ✅ Import AuditLogModule
 
 @Module({
     imports: [
-         forwardRef(() => NotificationModule),
+         forwardRef(() => NotificationModule,),
+        forwardRef(() => AuditLogModule),
         MongooseModule.forFeature([
             {
                 name: User.name,

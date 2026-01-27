@@ -4,7 +4,7 @@ import { Document, Types } from 'mongoose';
 export type AuditLogDocument = AuditLog & Document;
 
 export enum AuditActorRole {
-  ADMIN = 'admin', // ✅ NEW
+  ADMIN = 'admin',
   CONTENT_MODERATOR = 'content_moderator',
   COMMUNITY_MANAGER = 'community_manager',
   SYSTEM = 'system',
@@ -21,6 +21,9 @@ export enum AuditTargetType {
   CHAPTER = 'Chapter',
   COMMENT = 'Comment',
   REPLY = 'Reply',
+
+  // ✅ NEW: log hành động lên user
+  USER = 'User',
 }
 
 @Schema({ timestamps: true })

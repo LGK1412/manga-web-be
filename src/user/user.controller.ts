@@ -7,32 +7,38 @@ import {
   Req,
   Param,
   BadRequestException,
-  UseInterceptors,
-  UploadedFile,
   UseGuards,
   UsePipes,
   ValidationPipe,
+
+  // ✅ THÊM
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-import { UserService } from './user.service';
-import { JwtService } from '@nestjs/jwt';
+// ✅ THÊM
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+
+import { UserService } from './user.service';
+import { JwtService } from '@nestjs/jwt';
 
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+
 import { AdminSetRoleDto } from './dto/admin-set-role.dto';
+import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
 
 @Controller('api/user')
 export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) { }
+  ) {}
 
   // ================= ADMIN =================
 
@@ -40,13 +46,12 @@ export class UserController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async getAllUsers(@Req() req: Request) {
-    // const token =
-    //   req.cookies?.access_token ||
-    //   req.headers['authorization']?.replace('Bearer ', '');
-    // ✅ guard đã check admin rồi -> không cần truyền token
     return this.userService.getAllUsers();
   }
 
+  /**
+   * ✅ Admin: chỉ ban/mute cho CONTENT_MODERATOR & COMMUNITY_MANAGER (kỷ luật staff)
+   */
   @Post('/update-status')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
@@ -55,21 +60,47 @@ export class UserController {
     @Body('status') status: string,
     @Req() req: Request,
   ) {
-    // const token =
-    //   req.cookies?.access_token ||
-    //   req.headers['authorization']?.replace('Bearer ', '');
-    // ✅ guard đã check admin rồi -> không cần token
-    return this.userService.updateStatus(userId, status);
+    const admin = (req as any).user;
+    const adminId = admin?.userId || admin?.user_id;
+    return this.userService.adminUpdateStaffStatus(adminId, userId, status);
   }
 
-  // ✅ Admin set role cho user
   @Patch('/admin/set-role')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async adminSetRole(@Body() dto: AdminSetRoleDto, @Req() req: Request) {
-    const admin = (req as any).user; // JwtPayload
-    return this.userService.adminSetRole(admin.userId, dto.userId, dto.role);
+    const admin = (req as any).user;
+    const adminId = admin?.userId || admin?.user_id; // ✅ fix nhỏ cho chắc
+    return this.userService.adminSetRole(adminId, dto.userId, dto.role);
+  }
+
+  // ================= MODERATION =================
+
+  /**
+   * ✅ Content Moderator: BAN user/author + log cho admin
+   */
+  @Patch('/moderation/ban')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async modBan(@Body() dto: ModBanUserDto, @Req() req: Request) {
+    const actor = (req as any).user;
+    const actorId = actor?.userId || actor?.user_id;
+    return this.userService.moderatorBanUser(actorId, dto.userId, dto.reason);
+  }
+
+  /**
+   * ✅ Community Manager: MUTE user/author + log cho admin
+   */
+  @Patch('/moderation/mute')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.COMMUNITY_MANAGER)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async modMute(@Body() dto: ModMuteUserDto, @Req() req: Request) {
+    const actor = (req as any).user;
+    const actorId = actor?.userId || actor?.user_id;
+    return this.userService.communityMuteUser(actorId, dto.userId, dto.reason);
   }
 
   @Get('/admin/summary')
@@ -102,7 +133,6 @@ export class UserController {
   @Roles(Role.USER, Role.AUTHOR)
   async updateRole(@Body('role') role: string, @Req() req: Request) {
     const user = (req as any).user;
-    // JWT payload has user_id, not userId
     const userId = (user as any).user_id || (user as any).userId;
 
     const userNormalInfo = req.cookies?.user_normal_info;
@@ -119,7 +149,6 @@ export class UserController {
 
     return this.userService.updateRoleWithValidation(role, userId, userInfo);
   }
-
 
   @Get('/favourites')
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -148,8 +177,7 @@ export class UserController {
       storage: diskStorage({
         destination: 'public/assets/avatars',
         filename: (req, file, cb) => {
-          const unique =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);
           cb(null, `${unique}${ext}`);
         },
@@ -157,10 +185,7 @@ export class UserController {
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
-          return cb(
-            new BadRequestException('File is not an image'),
-            false,
-          );
+          return cb(new BadRequestException('File is not an image'), false);
         }
         cb(null, true);
       },
@@ -196,10 +221,7 @@ export class UserController {
   // ================= MISC =================
 
   @Patch('/add-device-id')
-  async addDeviceId(
-    @Body('device_id') deviceId: string,
-    @Req() req: Request,
-  ) {
+  async addDeviceId(@Body('device_id') deviceId: string, @Req() req: Request) {
     const token = req.cookies?.access_token;
     if (!token) return true;
     const payload = await this.jwtService.verify(token);
@@ -217,10 +239,7 @@ export class UserController {
   @Post('/toggle-follow')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
-  async toggleFollowAuthor(
-    @Body('authorId') authorId: string,
-    @Req() req: Request,
-  ) {
+  async toggleFollowAuthor(@Body('authorId') authorId: string, @Req() req: Request) {
     const token = req.cookies?.access_token;
     return this.userService.toggleFollowAuthor(token, authorId);
   }
@@ -238,7 +257,6 @@ export class UserController {
   @Roles(Role.USER, Role.AUTHOR)
   async getUserEmojiPacksOwn(@Req() req: Request) {
     const user = req['user'];
-    // JWT payload has user_id, not userId
     const userId = (user as any).user_id || (user as any).userId;
     return this.userService.getEmojiPackOwn(userId);
   }
@@ -252,7 +270,6 @@ export class UserController {
     @Body('price') price: string,
   ) {
     const user = req['user'];
-    // JWT payload has user_id, not userId
     const userId = (user as any).user_id || (user as any).userId;
     return this.userService.buyEmojiPack(userId, pack_id, price);
   }
@@ -264,7 +281,6 @@ export class UserController {
   @Roles(Role.USER, Role.AUTHOR)
   async getAuthorRequestStatus(@Req() req: Request) {
     const user = req['user'];
-    // JWT payload has user_id, not userId
     const userId = (user as any).user_id || (user as any).userId;
     return this.userService.getAuthorRequestStatus(userId);
   }
@@ -274,7 +290,6 @@ export class UserController {
   @Roles(Role.USER, Role.AUTHOR)
   async requestAuthor(@Req() req: Request) {
     const user = req['user'];
-    // JWT payload has user_id, not userId
     const userId = (user as any).user_id || (user as any).userId;
     return this.userService.requestAuthor(userId);
   }

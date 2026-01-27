@@ -1,20 +1,43 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
-import { User, UserDocument, UserStatus, AuthorRequestStatus } from "src/schemas/User.schema";
+
+import {
+  User,
+  UserDocument,
+  UserStatus,
+  AuthorRequestStatus,
+} from "src/schemas/User.schema";
 import { RegisterDto } from "../auth/dto/Register.dto";
 import { CreateUserGoogleDto } from "src/auth/dto/CreateUserGoogle.dto";
-import { JwtService } from '@nestjs/jwt'
+import { JwtService } from "@nestjs/jwt";
 import { sendNotificationDto } from "src/comment/dto/sendNoti.dto";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Emoji } from "src/schemas/Emoji.schema";
 import { Manga, MangaDocument } from "src/schemas/Manga.schema";
 import { Chapter, ChapterDocument } from "src/schemas/chapter.schema";
-import { UserChapterProgress, UserChapterProgressDocument } from "src/schemas/UserChapterProgress.schema";
-import { AuthorRequestStatusResponse, EligibilityCriteria } from "./dto/author-request.dto";
+import {
+  UserChapterProgress,
+  UserChapterProgressDocument,
+} from "src/schemas/UserChapterProgress.schema";
+import {
+  AuthorRequestStatusResponse,
+  EligibilityCriteria,
+} from "./dto/author-request.dto";
 import { NotificationService } from "src/notification/notification.service";
-import { Role } from 'src/common/enums/role.enum';
+import { Role } from "src/common/enums/role.enum";
 
+// ✅ Audit
+import { AuditLogService } from "src/audit-log/audit-log.service";
+import {
+  AuditActorRole,
+  AuditTargetType,
+} from "src/schemas/AuditLog.schema";
 
 @Injectable()
 export class UserService {
@@ -23,27 +46,237 @@ export class UserService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
-    @InjectModel(UserChapterProgress.name) private chapterProgressModel: Model<UserChapterProgressDocument>,
+    @InjectModel(UserChapterProgress.name)
+    private chapterProgressModel: Model<UserChapterProgressDocument>,
     private jwtService: JwtService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+
+    private readonly auditLogService: AuditLogService, // ✅
+  ) {}
+
+  // =========================
+  // ✅ Helpers for moderation
+  // =========================
+
+  private toUserId(payload: any): string {
+    return payload?.userId || payload?.user_id || payload?.user_id?.toString();
+  }
+
+  private async getActorSnapshot(actorId: string) {
+    if (!Types.ObjectId.isValid(actorId)) {
+      throw new BadRequestException("Invalid actorId");
+    }
+
+    const actor = await this.userModel
+      .findById(actorId)
+      .select("username email role")
+      .lean();
+
+    if (!actor) throw new NotFoundException("Actor not found");
+
+    return {
+      actor_name: actor.username,
+      actor_email: actor.email,
+      actor_role: String(actor.role), // Role enum string
+    };
+  }
+
+  private assertTargetRoleIsUserOrAuthor(targetRole: string) {
+    if (targetRole !== Role.USER && targetRole !== Role.AUTHOR) {
+      throw new BadRequestException(
+        "You can only apply moderation to USER/AUTHOR",
+      );
+    }
+  }
+
+  // =========================
+  // ✅ NEW RULED APIs (use in controller)
+  // =========================
+
+  /**
+   * ✅ Admin: chỉ ban/mute cho CONTENT_MODERATOR & COMMUNITY_MANAGER (kỷ luật staff)
+   * - admin không ban/mute user/author
+   */
+  async adminUpdateStaffStatus(adminId: string, targetUserId: string, status: string) {
+    if (!Object.values(UserStatus).includes(status as UserStatus)) {
+      throw new BadRequestException("Invalid status");
+    }
+
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException("Invalid userId");
+    }
+
+    const target = await this.userModel
+      .findById(targetUserId)
+      .select("role status username email")
+      .lean();
+
+    if (!target) throw new NotFoundException("User does not exist");
+
+    const targetRole = String(target.role);
+
+    if (
+      targetRole !== Role.CONTENT_MODERATOR &&
+      targetRole !== Role.COMMUNITY_MANAGER
+    ) {
+      throw new BadRequestException(
+        "Admin can only ban/mute CONTENT_MODERATOR or COMMUNITY_MANAGER",
+      );
+    }
+
+    const before = { role: targetRole, status: target.status };
+
+    const res = await this.userModel.updateOne(
+      { _id: targetUserId },
+      { $set: { status } },
+    );
+
+    if (res.modifiedCount === 0) {
+      throw new BadRequestException("Unable to update user status");
+    }
+
+    const actorSnap = await this.getActorSnapshot(adminId);
+
+    await this.auditLogService.createLog({
+      actor_id: adminId,
+      actor_name: actorSnap.actor_name,
+      actor_email: actorSnap.actor_email,
+      actor_role: AuditActorRole.ADMIN,
+      action: "admin_update_staff_status",
+      target_type: AuditTargetType.USER,
+      target_id: targetUserId,
+      summary: `Admin updated staff status: ${target.username} (${target.email}) -> ${status}`,
+      risk: "medium",
+      before,
+      after: { role: targetRole, status },
+    });
+
+    return { success: true, message: "Status updated successfully" };
+  }
+
+  /**
+   * ✅ Content moderator: BAN user/author (không mute)
+   */
+  async moderatorBanUser(actorId: string, targetUserId: string, reason?: string) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException("Invalid userId");
+    }
+
+    const actorSnap = await this.getActorSnapshot(actorId);
+
+    if (actorSnap.actor_role !== Role.CONTENT_MODERATOR) {
+      throw new BadRequestException("Only CONTENT_MODERATOR can ban");
+    }
+
+    const target = await this.userModel
+      .findById(targetUserId)
+      .select("role status username email")
+      .lean();
+
+    if (!target) throw new NotFoundException("User does not exist");
+
+    const targetRole = String(target.role);
+    this.assertTargetRoleIsUserOrAuthor(targetRole);
+
+    const before = { role: targetRole, status: target.status };
+
+    const res = await this.userModel.updateOne(
+      { _id: targetUserId },
+      { $set: { status: UserStatus.BAN } },
+    );
+
+    if (res.modifiedCount === 0) {
+      throw new BadRequestException("Unable to ban user");
+    }
+
+    await this.auditLogService.createLog({
+      actor_id: actorId,
+      actor_name: actorSnap.actor_name,
+      actor_email: actorSnap.actor_email,
+      actor_role: AuditActorRole.CONTENT_MODERATOR,
+      action: "ban_user",
+      target_type: AuditTargetType.USER,
+      target_id: targetUserId,
+      summary: `Content moderator banned ${target.username} (${target.email})`,
+      risk: "high",
+      before,
+      after: { role: targetRole, status: UserStatus.BAN },
+      note: reason,
+    });
+
+    return { success: true, message: "User banned" };
+  }
+
+  /**
+   * ✅ Community manager: MUTE user/author (không ban)
+   */
+  async communityMuteUser(actorId: string, targetUserId: string, reason?: string) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException("Invalid userId");
+    }
+
+    const actorSnap = await this.getActorSnapshot(actorId);
+
+    if (actorSnap.actor_role !== Role.COMMUNITY_MANAGER) {
+      throw new BadRequestException("Only COMMUNITY_MANAGER can mute");
+    }
+
+    const target = await this.userModel
+      .findById(targetUserId)
+      .select("role status username email")
+      .lean();
+
+    if (!target) throw new NotFoundException("User does not exist");
+
+    const targetRole = String(target.role);
+    this.assertTargetRoleIsUserOrAuthor(targetRole);
+
+    const before = { role: targetRole, status: target.status };
+
+    const res = await this.userModel.updateOne(
+      { _id: targetUserId },
+      { $set: { status: UserStatus.MUTE } },
+    );
+
+    if (res.modifiedCount === 0) {
+      throw new BadRequestException("Unable to mute user");
+    }
+
+    await this.auditLogService.createLog({
+      actor_id: actorId,
+      actor_name: actorSnap.actor_name,
+      actor_email: actorSnap.actor_email,
+      actor_role: AuditActorRole.COMMUNITY_MANAGER,
+      action: "mute_user",
+      target_type: AuditTargetType.USER,
+      target_id: targetUserId,
+      summary: `Community manager muted ${target.username} (${target.email})`,
+      risk: "medium",
+      before,
+      after: { role: targetRole, status: UserStatus.MUTE },
+      note: reason,
+    });
+
+    return { success: true, message: "User muted" };
+  }
+
   // ---------------- Auth-related helpers -------------------- //
 
   async checkUser(id: string) {
     const existingUser = await this.userModel.findOne({ _id: id });
     if (!existingUser) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('User does not have permission');
+      throw new BadRequestException("User does not have permission");
     }
 
     if (existingUser.status == "ban") {
-      throw new BadRequestException('User does not have permission');
+      throw new BadRequestException("User does not have permission");
     }
 
-    return existingUser
+    return existingUser;
   }
 
   async createUserGoogle(createUserGoogleDto: CreateUserGoogleDto) {
@@ -83,9 +316,7 @@ export class UserService {
   }
 
   async findByEmail(email: string) {
-    return await this.userModel
-      .findOne({ email })
-      .select("+password +google_id");
+    return await this.userModel.findOne({ email }).select("+password +google_id");
   }
 
   async findByUsername(username: string) {
@@ -105,7 +336,7 @@ export class UserService {
   async updateVerify(id: Types.ObjectId) {
     const result = await this.userModel.updateOne(
       { _id: id },
-      { $set: { verified: true } }
+      { $set: { verified: true } },
     );
 
     if (result.modifiedCount === 0) {
@@ -118,13 +349,11 @@ export class UserService {
   async updateVerifyEmailCode(code: string, email: string) {
     const result = await this.userModel.updateOne(
       { email },
-      { $set: { verify_email_code: code } }
+      { $set: { verify_email_code: code } },
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException(
-        "Unable to update verify_email_code for user"
-      );
+      throw new BadRequestException("Unable to update verify_email_code for user");
     }
 
     return { success: true };
@@ -133,12 +362,12 @@ export class UserService {
   async updateVerifyForgotPasswordCode(code: string, email: string) {
     const result = await this.userModel.updateOne(
       { email },
-      { $set: { verify_forgot_password_code: code } }
+      { $set: { verify_forgot_password_code: code } },
     );
 
     if (result.modifiedCount === 0) {
       throw new BadRequestException(
-        "Unable to update verify_forgot_password_code for user"
+        "Unable to update verify_forgot_password_code for user",
       );
     }
 
@@ -148,7 +377,7 @@ export class UserService {
   async changePasswordForgot(newPassword: string, email: string) {
     const result = await this.userModel.updateOne(
       { email },
-      { $set: { verify_forgot_password_code: "", password: newPassword } }
+      { $set: { verify_forgot_password_code: "", password: newPassword } },
     );
 
     if (result.modifiedCount === 0) {
@@ -161,7 +390,7 @@ export class UserService {
   async changePassword(newPassword: string, email: string) {
     const result = await this.userModel.updateOne(
       { email },
-      { $set: { password: newPassword } }
+      { $set: { password: newPassword } },
     );
 
     if (result.modifiedCount === 0) {
@@ -170,53 +399,59 @@ export class UserService {
 
     return { success: true };
   }
+
   // ---------------- Auth-related role & status APIs -------------------- //
   async updateRole(role: string, token: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let payload: any;
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
 
     const existingUser = await this.userModel.findOne({ email: payload.email });
     if (!existingUser) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     // Prevent downgrade from author to user
-    if (existingUser.role === 'author' && role === 'user') {
-      throw new BadRequestException('Cannot change role from author back to regular user');
+    if (existingUser.role === "author" && role === "user") {
+      throw new BadRequestException("Cannot change role from author back to regular user");
     }
 
     const result = await this.userModel.updateOne(
       { email: payload.email },
-      { $set: { role: role } }
+      { $set: { role: role } },
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException('Unable to update user role');
+      throw new BadRequestException("Unable to update user role");
     }
 
-    return { success: true, message: 'Role updated successfully' };
-  }
-  // ✅ admin: lấy tất cả users (không cần token nữa)
-  async getAllUsers() {
-    return this.userModel.find().select('-password -google_id');
+    return { success: true, message: "Role updated successfully" };
   }
 
-  // ✅ admin: update status (không cần token nữa)
+  // ✅ admin: lấy tất cả users (không cần token nữa)
+  async getAllUsers() {
+    return this.userModel.find().select("-password -google_id");
+  }
+
+  /**
+   * ❗LEGACY: admin update status (cũ)
+   * - Bạn nên đổi controller không gọi hàm này nữa.
+   * - Thay bằng adminUpdateStaffStatus()
+   */
   async updateStatus(userId: string, status: string) {
     if (!Object.values(UserStatus).includes(status as UserStatus)) {
-      throw new BadRequestException('Invalid status');
+      throw new BadRequestException("Invalid status");
     }
 
     const existingUser = await this.userModel.findById(userId);
-    if (!existingUser) throw new NotFoundException('User does not exist');
+    if (!existingUser) throw new NotFoundException("User does not exist");
 
     const result = await this.userModel.updateOne(
       { _id: userId },
@@ -224,116 +459,111 @@ export class UserService {
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException('Unable to update user status');
+      throw new BadRequestException("Unable to update user status");
     }
 
-    return { success: true, message: 'Status updated successfully' };
+    return { success: true, message: "Status updated successfully" };
   }
 
   /**
-  * ✅ admin: set role cho user
-  * rule gợi ý:
-  * - không cho admin tự remove role admin của chính mình (tránh lock system)
-  * - không cho set role rác (đã validate bằng enum Role)
-  */
+   * ✅ admin: set role cho user
+   */
   async adminSetRole(adminId: string, targetUserId: string, role: Role) {
     if (!Types.ObjectId.isValid(targetUserId)) {
-      throw new BadRequestException('Invalid userId');
+      throw new BadRequestException("Invalid userId");
     }
 
-    const target = await this.userModel.findById(targetUserId).select('role');
-    if (!target) throw new NotFoundException('User not found');
+    const target = await this.userModel.findById(targetUserId).select("role");
+    if (!target) throw new NotFoundException("User not found");
 
     // Prevent admin from removing their own admin role
     if (adminId === targetUserId && role !== Role.ADMIN) {
-      throw new BadRequestException('You cannot remove your own ADMIN role');
+      throw new BadRequestException("You cannot remove your own ADMIN role");
     }
 
     // (tuỳ hệ thống) nếu bạn muốn ngăn đổi AUTHOR -> USER (giống logic cũ) thì bật:
     if (target.role === Role.AUTHOR && role === Role.USER) {
-      throw new BadRequestException('Cannot downgrade AUTHOR back to USER');
+      throw new BadRequestException("Cannot downgrade AUTHOR back to USER");
     }
 
     target.role = role;
     await target.save();
 
-    return { success: true, message: 'Role updated successfully', role };
+    return { success: true, message: "Role updated successfully", role };
   }
 
   async updateRoleWithValidation(role: string, userId: string, userInfo: any) {
-    // 1. Get user info from database
-    const user = await this.userModel.findById(userId).select('email username avatar bio role');
+    const user = await this.userModel
+      .findById(userId)
+      .select("email username avatar bio role");
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
-    // 2. Prevent downgrade from author to user
-    if (user.role === 'author' && role === 'user') {
-      throw new BadRequestException('Cannot change role from author back to regular user');
+    if (user.role === "author" && role === "user") {
+      throw new BadRequestException("Cannot change role from author back to regular user");
     }
 
-    // 3. Compare info from cookie with database
     const isEmailMatch = user.email === userInfo.email;
     const isUsernameMatch = user.username === userInfo.username;
     const isAvatarMatch = user.avatar === userInfo.avatar;
     const isBioMatch = user.bio === userInfo.bio;
 
-    // 4. If not matched then reject
     if (!isEmailMatch || !isUsernameMatch || !isAvatarMatch || !isBioMatch) {
-      throw new BadRequestException('User information does not match system data. Please log in again.');
+      throw new BadRequestException(
+        "User information does not match system data. Please log in again.",
+      );
     }
 
-    // 5. If matched then allow role update
     const result = await this.userModel.updateOne(
       { _id: userId },
-      { $set: { role: role } }
+      { $set: { role: role } },
     );
 
     if (result.modifiedCount === 0) {
-      throw new BadRequestException('Unable to update user role');
+      throw new BadRequestException("Unable to update user role");
     }
 
-    return { success: true, message: 'Role updated successfully' };
+    return { success: true, message: "Role updated successfully" };
   }
 
   async updateProfile(userPayload: any, payload: any) {
     try {
       if (!userPayload || !userPayload.user_id) {
-        throw new BadRequestException('Invalid user information');
+        throw new BadRequestException("Invalid user information");
       }
 
       const userId = userPayload.user_id;
 
-      const updates: any = {}
-      if (payload.username !== undefined) updates.username = payload.username
-      if (payload.avatar !== undefined) updates.avatar = payload.avatar
-      if (payload.bio !== undefined) updates.bio = payload.bio
+      const updates: any = {};
+      if (payload.username !== undefined) updates.username = payload.username;
+      if (payload.avatar !== undefined) updates.avatar = payload.avatar;
+      if (payload.bio !== undefined) updates.bio = payload.bio;
 
       if (Object.keys(updates).length === 0) {
-        return { success: true, message: 'No changes to update' }
+        return { success: true, message: "No changes to update" };
       }
 
-      // Kiểm tra username trùng nếu có thay đổi username
       if (updates.username !== undefined) {
         const existingUser = await this.userModel.findOne({
           username: updates.username,
-          _id: { $ne: userId }
+          _id: { $ne: userId },
         });
 
         if (existingUser) {
-          throw new BadRequestException('Username already exists');
+          throw new BadRequestException("Username already exists");
         }
       }
 
       const user = await this.userModel.findByIdAndUpdate(
         userId,
         { $set: updates },
-        { new: true, runValidators: true, select: "-password -google_id" }
+        { new: true, runValidators: true, select: "-password -google_id" },
       );
 
       if (!user) {
-        throw new BadRequestException('Unable to update user profile');
+        throw new BadRequestException("Unable to update user profile");
       }
 
       return { success: true, user };
@@ -341,34 +571,35 @@ export class UserService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      throw new InternalServerErrorException('Unable to update user profile');
+      throw new InternalServerErrorException("Unable to update user profile");
     }
   }
 
   async getFavourites(token: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
+
     const user = await this.userModel
       .findById(decoded.user_id)
-      .select('favourites')
+      .select("favourites")
       .populate({
-        path: 'favourites',
+        path: "favourites",
         populate: {
-          path: 'styles',
-          select: 'name'
-        }
+          path: "styles",
+          select: "name",
+        },
       });
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     return { favourites: user.favourites || [] };
@@ -376,38 +607,37 @@ export class UserService {
 
   async toggleFavourite(token: string, mangaId: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
 
     const mangaObjectId = new Types.ObjectId(mangaId);
 
     const user = await this.userModel
       .findById(decoded.user_id)
-      .select('favourites')
-      .populate('favourites');
+      .select("favourites")
+      .populate("favourites");
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     let updatedFavourites: Types.ObjectId[];
     const exists = user.favourites.some((m: any) => m._id.equals(mangaObjectId));
 
     if (exists) {
-      // Remove manga khỏi favourites
-      updatedFavourites = user.favourites.filter((m: any) => !m._id.equals(mangaObjectId));
+      updatedFavourites = user.favourites.filter(
+        (m: any) => !m._id.equals(mangaObjectId),
+      );
     } else {
-      // Add manga vào favourites
       updatedFavourites = [...user.favourites, mangaObjectId];
-      // Emit
-      this.eventEmitter.emit("favorite_story_count", { userId: user._id })
+      this.eventEmitter.emit("favorite_story_count", { userId: user._id });
     }
 
     user.favourites = updatedFavourites;
@@ -418,28 +648,28 @@ export class UserService {
 
   async findUserById(userId: string): Promise<User> {
     if (!Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User not found1');
+      throw new NotFoundException("User not found1");
     }
 
     const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException("User not found");
 
     return user;
   }
 
   async getPublicUserById(userId: string): Promise<any> {
     if (!userId || !Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User does not exist');
+      throw new NotFoundException("User does not exist");
     }
 
     try {
       const user = await this.userModel
         .findById(userId)
-        .select('username avatar bio role')
+        .select("username avatar bio role")
         .lean();
 
       if (!user) {
-        throw new NotFoundException('User does not exist');
+        throw new NotFoundException("User does not exist");
       }
 
       return user;
@@ -447,23 +677,23 @@ export class UserService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new BadRequestException('Unable to get user information');
+      throw new BadRequestException("Unable to get user information");
     }
   }
 
   async getPublicFollowStats(userId: string) {
     if (!userId || !Types.ObjectId.isValid(userId)) {
-      throw new NotFoundException('User does not exist');
+      throw new NotFoundException("User does not exist");
     }
 
     try {
       const user = await this.userModel
         .findById(userId)
-        .select('following_authors')
+        .select("following_authors")
         .lean();
 
       if (!user) {
-        throw new NotFoundException('User does not exist');
+        throw new NotFoundException("User does not exist");
       }
 
       const followingCount = Array.isArray((user as any).following_authors)
@@ -479,23 +709,21 @@ export class UserService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new BadRequestException('Unable to get follow statistics');
+      throw new BadRequestException("Unable to get follow statistics");
     }
   }
 
-  // Add device_id cho user
   async addDeviceId(userId: string, deviceId: string) {
-    // Validate input
     if (!deviceId) return { success: false };
 
     const result = await this.userModel.findByIdAndUpdate(
       userId,
-      { $addToSet: { device_id: deviceId } }, // $addToSet to avoid duplicates
-      { new: true } // return updated user
+      { $addToSet: { device_id: deviceId } },
+      { new: true },
     );
 
     if (!result) {
-      return { success: false, message: 'User not found' };
+      return { success: false, message: "User not found" };
     }
 
     return { success: true, data: result.device_id };
@@ -503,18 +731,16 @@ export class UserService {
 
   async removeDeviceId(userId: string, pushResult: any) {
     try {
-      // if there are no failedTokens or empty array → skip
       if (!pushResult?.failedTokens?.length) {
         return { success: true, message: "No failed tokens to remove." };
       }
 
-      // Get list of failed tokens
       const failedTokens = pushResult.failedTokens.map((t: any) => t.token);
-      // Remove all failed tokens in a single query
+
       const result = await this.userModel.findByIdAndUpdate(
         userId,
         { $pull: { device_id: { $in: pushResult.failedTokens } } },
-        { new: true }
+        { new: true },
       );
 
       if (!result) {
@@ -533,29 +759,28 @@ export class UserService {
   }
 
   async getUserById(id) {
-    return await this.userModel.findById(id)
+    return await this.userModel.findById(id);
   }
-
 
   async getFollowingAuthors(token: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
+
     const user = await this.userModel
       .findById(decoded.user_id)
-      .select('following_authors')
-      .populate('following_authors');
-
+      .select("following_authors")
+      .populate("following_authors");
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     return { following: user.following_authors || [] };
@@ -563,42 +788,50 @@ export class UserService {
 
   async toggleFollowAuthor(token: string, authorId: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
 
     const authorObjectId = new Types.ObjectId(authorId);
 
     const user = await this.userModel
       .findById(decoded.user_id)
-      .select('following_authors')
-      .populate('following_authors');
+      .select("following_authors")
+      .populate("following_authors");
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     let updatedFollowing: Types.ObjectId[];
-    const exists = user.following_authors.some((m: any) => m._id.equals(authorObjectId));
+    const exists = user.following_authors.some((m: any) =>
+      m._id.equals(authorObjectId),
+    );
+
     if (exists) {
-      // UNFOLLOW - Không gửi notification
-      updatedFollowing = user.following_authors.filter((m: any) => !m._id.equals(authorObjectId));
-      // Emit
-      this.eventEmitter.emit("follow_count_decrease", { userId: user._id.toString() });
+      updatedFollowing = user.following_authors.filter(
+        (m: any) => !m._id.equals(authorObjectId),
+      );
+      this.eventEmitter.emit("follow_count_decrease", {
+        userId: user._id.toString(),
+      });
       this.eventEmitter.emit("follower_count_decrease", { userId: authorId });
     } else {
-      // FOLLOW MỚI - Gửi notification cho author
       updatedFollowing = [...user.following_authors, authorObjectId];
 
       try {
-        const follower = await this.userModel.findById(decoded.user_id).select('username');
-        const author = await this.userModel.findById(authorId).select('device_id');
+        const follower = await this.userModel
+          .findById(decoded.user_id)
+          .select("username");
+        const author = await this.userModel
+          .findById(authorId)
+          .select("device_id");
 
         if (follower && author) {
           const notificationDto: sendNotificationDto = {
@@ -606,47 +839,48 @@ export class UserService {
             body: `${follower.username} is now following you`,
             deviceId: author.device_id ?? [],
             receiver_id: authorId,
-            sender_id: decoded.user_id
+            sender_id: decoded.user_id,
           };
 
-          // Send notification
-          const sendNotiResult = await this.notificationService.sendNotification(notificationDto);
+          const sendNotiResult = await this.notificationService.sendNotification(
+            notificationDto,
+          );
 
-          // Remove failed device tokens
           await this.removeDeviceId(authorId, sendNotiResult);
         }
       } catch (error) {
-        console.error('Error sending follow notification:', error);
+        console.error("Error sending follow notification:", error);
       }
-      // Emit
-      this.eventEmitter.emit("follow_count_increase", { userId: user._id.toString() });
+
+      this.eventEmitter.emit("follow_count_increase", {
+        userId: user._id.toString(),
+      });
       this.eventEmitter.emit("follower_count_increase", { userId: authorId });
     }
 
     user.following_authors = updatedFollowing;
     await user.save();
     return { following: user.following_authors, isFollowing: !exists };
-
   }
 
   async getFollowStats(token: string) {
     if (!token) {
-      throw new BadRequestException('Missing verification token');
+      throw new BadRequestException("Missing verification token");
     }
 
     let decoded: any;
     try {
       decoded = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token is invalid or has expired');
+      throw new BadRequestException("Token is invalid or has expired");
     }
 
     const user = await this.userModel
       .findById(decoded.user_id)
-      .select('following_authors');
+      .select("following_authors");
 
     if (!user) {
-      throw new BadRequestException('User does not exist');
+      throw new BadRequestException("User does not exist");
     }
 
     const followingCount = Array.isArray((user as any).following_authors)
@@ -660,7 +894,6 @@ export class UserService {
     return { followingCount, followersCount };
   }
 
-
   // ===== Dashboard: User Summary (total + MoM) =====
   async getUsersSummary(): Promise<{ total: number; deltaPctMoM: number }> {
     const now = new Date();
@@ -669,19 +902,25 @@ export class UserService {
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const [total, thisMonth, lastMonth] = await Promise.all([
-      this.userModel.estimatedDocumentCount(), // nhanh hơn countDocuments()
-      this.userModel.countDocuments({ createdAt: { $gte: startThisMonth, $lt: startNextMonth } }),
-      this.userModel.countDocuments({ createdAt: { $gte: startLastMonth, $lt: startThisMonth } }),
+      this.userModel.estimatedDocumentCount(),
+      this.userModel.countDocuments({
+        createdAt: { $gte: startThisMonth, $lt: startNextMonth },
+      }),
+      this.userModel.countDocuments({
+        createdAt: { $gte: startLastMonth, $lt: startThisMonth },
+      }),
     ]);
 
     const deltaPctMoM =
-      lastMonth === 0 ? (thisMonth > 0 ? 100 : 0) : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
+      lastMonth === 0
+        ? thisMonth > 0
+          ? 100
+          : 0
+        : Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2));
 
     return { total, deltaPctMoM };
   }
 
-  // ===== Dashboard: Weekly new users =====
-  // user.service.ts
   async getUsersWeeklyNew(weeks = 4) {
     const now = new Date();
     const from = new Date(now);
@@ -706,7 +945,6 @@ export class UserService {
               { $toString: "$_id.y" },
               "-W",
               {
-                // pad 2 digits cho tuần
                 $cond: [
                   { $lt: ["$_id.w", 10] },
                   { $concat: ["0", { $toString: "$_id.w" }] },
@@ -722,9 +960,9 @@ export class UserService {
     ]);
   }
 
-
-  // ===== Dashboard: Recent users =====
-  async getRecentUsers(limit = 5): Promise<Array<{ id: string; name: string; email: string; role: string; joinDate: string }>> {
+  async getRecentUsers(limit = 5): Promise<
+    Array<{ id: string; name: string; email: string; role: string; joinDate: string }>
+  > {
     const docs = await this.userModel
       .find({}, { username: 1, email: 1, role: 1, createdAt: 1 })
       .sort({ createdAt: -1 })
@@ -750,63 +988,48 @@ export class UserService {
         path: "emoji_packs",
         populate: { path: "emojis", model: Emoji.name },
       });
-    // console.log(JSON.stringify(user, null, 2));
+
     return user?.emoji_packs || [];
   }
 
-  // Nhiều pack
   async checkEmojiPacskOwn(id: string, emoji_ids: string[]) {
     const user = await this.userModel.findById(id).select("emoji_packs");
     if (!user) return false;
 
     const ownedIds = user.emoji_packs.map((e: Types.ObjectId) => e.toString());
-    const hasAll = emoji_ids.every((id) => ownedIds.includes(id));
-
+    const hasAll = emoji_ids.every((x) => ownedIds.includes(x));
     return hasAll;
   }
 
-  // 1 pack duy nhất
   async checkEmojiPackOwn(id: string, emoji_id: string) {
     const user = await this.userModel.findById(id).select("emoji_packs");
     if (!user) return false;
-    return user.emoji_packs.some(
-      (e: Types.ObjectId) => e.toString() === emoji_id
-    );
+    return user.emoji_packs.some((e: Types.ObjectId) => e.toString() === emoji_id);
   }
 
   async buyEmojiPack(user_id: string, pack_id: string, price: string) {
-    const existingUser = await this.checkUser(user_id)
+    const existingUser = await this.checkUser(user_id);
     if (existingUser.emoji_packs.includes(new Types.ObjectId(pack_id))) {
-      throw new BadRequestException("You have already purchased this Emoji Pack")
+      throw new BadRequestException("You have already purchased this Emoji Pack");
     }
-    existingUser.emoji_packs.push(new Types.ObjectId(pack_id))
+    existingUser.emoji_packs.push(new Types.ObjectId(pack_id));
     existingUser.point -= Number(price);
-    existingUser.save()
-    return { success: true }
+    existingUser.save();
+    return { success: true };
   }
 
   // ==================== Author Approval ====================
 
-  /**
-   * Đánh giá điều kiện trở thành tác giả
-   * Tiêu chí:
-   * - Email phải được xác minh
-   * - Có ít nhất 5 người theo dõi
-   * - Đọc ít nhất 20 chương truyện
-   */
   async evaluateAuthorEligibility(userId: string): Promise<EligibilityCriteria[]> {
     const userObjectId = new Types.ObjectId(userId);
 
-    // Lấy thông tin user để kiểm tra email verification
-    const user = await this.userModel.findById(userId).select('verified');
+    const user = await this.userModel.findById(userId).select("verified");
     const isEmailVerified = user?.verified === true;
 
-    // 1️⃣ Followers count
     const followersCount = await this.userModel.countDocuments({
       following_authors: userObjectId,
     });
 
-    // 2️⃣ Đếm số chương đã đọc (is_completed === true)
     const chaptersReadCount = await this.chapterProgressModel.countDocuments({
       user_id: userObjectId,
       is_completed: true,
@@ -814,22 +1037,22 @@ export class UserService {
 
     const criteria: EligibilityCriteria[] = [
       {
-        id: 'email_verified',
-        label: 'Email verified',
+        id: "email_verified",
+        label: "Email verified",
         required: 1,
         actual: isEmailVerified ? 1 : 0,
         met: isEmailVerified,
       },
       {
-        id: 'followers',
-        label: 'Number of followers',
+        id: "followers",
+        label: "Number of followers",
         required: 5,
         actual: followersCount,
         met: followersCount >= 5,
       },
       {
-        id: 'chapters_read',
-        label: 'Chapters read',
+        id: "chapters_read",
+        label: "Chapters read",
         required: 20,
         actual: chaptersReadCount,
         met: chaptersReadCount >= 20,
@@ -839,136 +1062,121 @@ export class UserService {
     return criteria;
   }
 
-
-  /**
-   * Lấy trạng thái yêu cầu trở thành tác giả
-   */
   async getAuthorRequestStatus(userId: string): Promise<AuthorRequestStatusResponse> {
-    const user = await this.userModel.findById(userId).select('role authorRequestStatus authorRequestedAt authorApprovedAt authorAutoApproved');
+    const user = await this.userModel
+      .findById(userId)
+      .select("role authorRequestStatus authorRequestedAt authorApprovedAt authorAutoApproved");
 
     if (!user) {
-      throw new NotFoundException('User does not exist');
+      throw new NotFoundException("User does not exist");
     }
 
-    // If already an author, return approved
-    if (user.role === 'author') {
+    if (user.role === "author") {
       const criteria = await this.evaluateAuthorEligibility(userId);
       return {
-        status: 'approved',
+        status: "approved",
         approvedAt: user.authorApprovedAt?.toISOString(),
         autoApproved: user.authorAutoApproved,
         criteria,
         canRequest: false,
-        message: 'You are already an author',
+        message: "You are already an author",
       };
     }
 
-    // Evaluate eligibility
     const criteria = await this.evaluateAuthorEligibility(userId);
     const allCriteriaMet = criteria.every((c) => c.met);
 
-    // If no request yet
     if (!user.authorRequestStatus || user.authorRequestStatus === AuthorRequestStatus.NONE) {
       return {
-        status: 'none',
+        status: "none",
         criteria,
         canRequest: true,
-        message: allCriteriaMet 
-          ? 'You meet all requirements to become an author' 
-          : 'You do not meet all requirements to become an author',
+        message: allCriteriaMet
+          ? "You meet all requirements to become an author"
+          : "You do not meet all requirements to become an author",
       };
     }
 
-    // If pending
     if (user.authorRequestStatus === AuthorRequestStatus.PENDING) {
       return {
-        status: 'pending',
+        status: "pending",
         requestedAt: user.authorRequestedAt?.toISOString(),
         criteria,
         canRequest: false,
-        message: allCriteriaMet 
-          ? 'Your request is being processed. The system will automatically approve when you meet all requirements.' 
-          : 'Your request is pending. Please improve the missing criteria.',
+        message: allCriteriaMet
+          ? "Your request is being processed. The system will automatically approve when you meet all requirements."
+          : "Your request is pending. Please improve the missing criteria.",
       };
     }
 
-    // If approved (but role not updated - edge case)
     return {
-      status: 'approved',
+      status: "approved",
       approvedAt: user.authorApprovedAt?.toISOString(),
       autoApproved: user.authorAutoApproved,
       criteria,
       canRequest: false,
-      message: 'You have been approved',
+      message: "You have been approved",
     };
   }
 
-  /**
-   * Gửi yêu cầu trở thành tác giả
-   * Tự động approve nếu đủ điều kiện
-   */
-  async requestAuthor(userId: string): Promise<{ success: boolean; message: string; autoApproved?: boolean }> {
-    const user = await this.userModel.findById(userId).select('role authorRequestStatus');
+  async requestAuthor(
+    userId: string,
+  ): Promise<{ success: boolean; message: string; autoApproved?: boolean }> {
+    const user = await this.userModel.findById(userId).select("role authorRequestStatus");
 
     if (!user) {
-      throw new NotFoundException('User does not exist');
+      throw new NotFoundException("User does not exist");
     }
 
-    // If already an author
-    if (user.role === 'author') {
-      throw new BadRequestException('You are already an author');
+    if (user.role === "author") {
+      throw new BadRequestException("You are already an author");
     }
 
-    // If already approved
     if (user.authorRequestStatus === AuthorRequestStatus.APPROVED) {
-      throw new BadRequestException('Your request has already been approved');
+      throw new BadRequestException("Your request has already been approved");
     }
 
-    // Evaluate eligibility
     const criteria = await this.evaluateAuthorEligibility(userId);
     const allCriteriaMet = criteria.every((c) => c.met);
 
-    // If all criteria met → auto approve
     if (allCriteriaMet) {
       const now = new Date();
       await this.userModel.updateOne(
         { _id: userId },
         {
           $set: {
-            role: 'author',
+            role: "author",
             authorRequestStatus: AuthorRequestStatus.APPROVED,
             authorRequestedAt: now,
             authorApprovedAt: now,
             authorAutoApproved: true,
           },
-        }
+        },
       );
 
-      // Send notification
       try {
-        const userWithDevice = await this.userModel.findById(userId).select('device_id username');
+        const userWithDevice = await this.userModel
+          .findById(userId)
+          .select("device_id username");
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
-            title: 'Congratulations! You are now an author',
-            body: 'Your request to become an author has been automatically approved',
+            title: "Congratulations! You are now an author",
+            body: "Your request to become an author has been automatically approved",
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
           };
           await this.notificationService.createNotification(notificationDto);
         }
-      } catch (error) {
-        // Silently fail notification - does not affect author approval
-      }
+      } catch {}
 
       return {
         success: true,
-        message: 'Congratulations! You are now an author',
+        message: "Congratulations! You are now an author",
         autoApproved: true,
       };
     }
 
-    // If criteria not met → set pending
     await this.userModel.updateOne(
       { _id: userId },
       {
@@ -976,25 +1184,22 @@ export class UserService {
           authorRequestStatus: AuthorRequestStatus.PENDING,
           authorRequestedAt: new Date(),
         },
-      }
+      },
     );
 
     return {
       success: true,
-      message: 'Your request has been submitted. The system will automatically approve when you meet all requirements.',
+      message:
+        "Your request has been submitted. The system will automatically approve when you meet all requirements.",
       autoApproved: false,
     };
   }
 
-  /**
-   * Re-evaluate author request (gọi khi có chapter mới được publish)
-   * Tự động approve nếu đủ điều kiện
-   */
   async reEvaluateAuthorRequest(userId: string): Promise<void> {
-    const user = await this.userModel.findById(userId).select('role authorRequestStatus');
+    const user = await this.userModel.findById(userId).select("role authorRequestStatus");
 
-    if (!user || user.role === 'author' || user.authorRequestStatus !== AuthorRequestStatus.PENDING) {
-      return; // Không cần re-evaluate
+    if (!user || user.role === "author" || user.authorRequestStatus !== AuthorRequestStatus.PENDING) {
+      return;
     }
 
     const criteria = await this.evaluateAuthorEligibility(userId);
@@ -1006,33 +1211,29 @@ export class UserService {
         { _id: userId },
         {
           $set: {
-            role: 'author',
+            role: "author",
             authorRequestStatus: AuthorRequestStatus.APPROVED,
             authorApprovedAt: now,
             authorAutoApproved: true,
           },
-        }
+        },
       );
 
-      // Send notification
       try {
-        const userWithDevice = await this.userModel.findById(userId).select('device_id username');
+        const userWithDevice = await this.userModel
+          .findById(userId)
+          .select("device_id username");
         if (userWithDevice && userWithDevice.device_id?.length > 0) {
           const notificationDto: sendNotificationDto = {
-            title: 'Congratulations! You are now an author',
-            body: 'Your request to become an author has been automatically approved',
+            title: "Congratulations! You are now an author",
+            body: "Your request to become an author has been automatically approved",
             deviceId: userWithDevice.device_id,
             receiver_id: userId,
             sender_id: userId,
           };
           await this.notificationService.sendNotification(notificationDto);
         }
-      } catch (error) {
-        // Silently fail notification - does not affect author approval
-      }
+      } catch {}
     }
   }
 }
-
-
-
