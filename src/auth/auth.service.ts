@@ -198,7 +198,7 @@ export class AuthService {
                 await this.userService.updateVerifyEmailCode(code, email);
             } catch (err) {
                 throw new InternalServerErrorException(
-                    `Unable to update verify_email_code for user: ${err.message}`,
+                    `Unable to send verification email`,
                 );
             }
 
@@ -208,7 +208,7 @@ export class AuthService {
             };
         } catch (error) {
             throw new InternalServerErrorException(
-                `Unable to send verification email: ${error.message}`,
+                `Unable to send verification email`,
             );
         }
     }
@@ -380,7 +380,7 @@ export class AuthService {
                 await this.userService.updateVerifyForgotPasswordCode(code, email);
             } catch (err) {
                 throw new InternalServerErrorException(
-                    `Unable to update verify_forgot_password_code for user: ${err.message}`,
+                    `Unable to send verification email`
                 );
             }
 
@@ -390,7 +390,7 @@ export class AuthService {
             };
         } catch (error) {
             throw new InternalServerErrorException(
-                `Unable to send verification email: ${error.message}`,
+                `Unable to send verification email`,
             );
         }
     }
