@@ -302,11 +302,11 @@ export class UserService {
       const newUser = new this.userModel(createUserGoogleDto);
       return await newUser.save();
     } catch (error) {
-      if (error.code === 11000) {
-        if (error.keyPattern?.email) {
+      if ((error as any).code === 11000) {
+        if ((error as any).keyPattern?.email) {
           throw new BadRequestException("Email already exists");
         }
-        if (error.keyPattern?.username) {
+        if ((error as any).keyPattern?.username) {
           throw new BadRequestException("Username already exists");
         }
         throw new BadRequestException("Data already exists");
@@ -320,11 +320,11 @@ export class UserService {
       const newUser = new this.userModel(registerDto);
       return await newUser.save();
     } catch (error) {
-      if (error.code === 11000) {
-        if (error.keyPattern?.email) {
+      if ((error as any).code === 11000) {
+        if ((error as any).keyPattern?.email) {
           throw new BadRequestException("Email already exists");
         }
-        if (error.keyPattern?.username) {
+        if ((error as any).keyPattern?.username) {
           throw new BadRequestException("Username already exists");
         }
         throw new BadRequestException("Data already exists");
