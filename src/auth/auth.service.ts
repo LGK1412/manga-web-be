@@ -72,26 +72,6 @@ export class AuthService {
 
     // Login
     async login(loginDto: LoginDto) {
-        const now = Date.now();
-        const rateLimitKey = `${loginDto.email}_${loginDto.password.substring(0, 3)}`;
-        const rateLimitData = this.loginRateLimitMap.get(rateLimitKey);
-
-        if (rateLimitData) {
-            if (now < rateLimitData.resetTime) {
-                if (rateLimitData.count >= 5) {
-                    const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
-                    throw new BadRequestException(
-                        `Too many login attempts. Please try again in ${remainingSeconds} seconds.`
-                    );
-                }
-                rateLimitData.count += 1;
-            } else {
-                this.loginRateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60 * 1000 });
-            }
-        } else {
-            this.loginRateLimitMap.set(rateLimitKey, { count: 1, resetTime: now + 60 * 1000 });
-        }
-
         const existingUser = await this.userService.findByEmail(loginDto.email);
 
         if (!existingUser) {
@@ -325,25 +305,6 @@ export class AuthService {
     async sendVerificationForgotPassword(email: string) {
         if (!email) {
             throw new BadRequestException('Invalid email');
-        }
-
-        const now = Date.now();
-        const rateLimitData = this.forgotPasswordRateLimitMap.get(email);
-
-        if (rateLimitData) {
-            if (now < rateLimitData.resetTime) {
-                if (rateLimitData.count >= 3) {
-                    const remainingSeconds = Math.ceil((rateLimitData.resetTime - now) / 1000);
-                    throw new BadRequestException(
-                        `Too many emails sent. Please try again in ${remainingSeconds} seconds.`
-                    );
-                }
-                rateLimitData.count += 1;
-            } else {
-                this.forgotPasswordRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
-            }
-        } else {
-            this.forgotPasswordRateLimitMap.set(email, { count: 1, resetTime: now + 60 * 1000 });
         }
 
         const existingUser = await this.userService.findByEmail(email)
