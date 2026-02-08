@@ -16,11 +16,10 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
-
-// ✅ THÊM
+import fs from 'fs';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import multer, { diskStorage } from 'multer';
+import { extname, join } from 'path';
 
 import { UserService } from './user.service';
 import { JwtService } from '@nestjs/jwt';
@@ -39,7 +38,7 @@ export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   // ================= ADMIN =================
 
@@ -175,14 +174,7 @@ export class UserController {
   @Roles(Role.USER, Role.AUTHOR)
   @UseInterceptors(
     FileInterceptor('avatar', {
-      storage: diskStorage({
-        destination: 'public/assets/avatars',
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          cb(null, `${unique}${ext}`);
-        },
-      }),
+      storage: multer.memoryStorage(),
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
@@ -203,7 +195,15 @@ export class UserController {
     if (file) updateData.avatar = file.filename;
 
     const user = req['user'];
-    return this.userService.updateProfile(user, updateData);
+    const result = await this.userService.updateProfile(user, updateData);
+
+    if (file && result.success) {
+      const filename = file.filename ;
+      const filePath = join('public/assets/avatars', filename);
+      await fs.promises.writeFile(filePath, file.buffer);
+    }
+
+    return result;
   }
 
   @Get('/point')
@@ -308,13 +308,13 @@ export class UserController {
   }
 
   @Patch("/admin/reset-user-status")
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN)
-@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-async adminResetUserStatus(@Body() dto: AdminResetUserStatusDto, @Req() req: Request) {
-  const admin = (req as any).user;
-  const adminId = admin?.userId || admin?.user_id;
-  return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
-}
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async adminResetUserStatus(@Body() dto: AdminResetUserStatusDto, @Req() req: Request) {
+    const admin = (req as any).user;
+    const adminId = admin?.userId || admin?.user_id;
+    return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
+  }
 
 }
