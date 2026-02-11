@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Manga, MangaDocument } from '../schemas/Manga.schema';
+import fs from 'fs';
+import { join, extname } from 'path';
+import crypto from 'crypto';
+
+import { Manga, MangaDocument, MangaLicenseStatus } from '../schemas/Manga.schema';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
@@ -38,8 +42,130 @@ export class MangaService {
     private readonly eventEmitter: EventEmitter2,
     @InjectModel(UserStoryHistory.name)
     private historyModel: Model<UserStoryHistoryDocument>,
+  ) {}
 
-  ) { }
+  // =========================================================
+  // ✅ License upload helpers (NEW - theo code update)
+  // =========================================================
+
+  private genFileName(originalName: string) {
+    const ext = extname(originalName || '').toLowerCase();
+    const safeExt = ext && ext.length <= 8 ? ext : '';
+    return `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${safeExt}`;
+  }
+
+  private async unlinkSafe(absPath: string) {
+    await fs.promises.unlink(absPath).catch(() => {});
+  }
+
+  private toAbsFromRel(rel: string) {
+    // rel dạng "assets/licenses/<mangaId>/<file>"
+    return join('public', rel.replace(/^\/?/, ''));
+  }
+
+  /**
+   * ✅ Upload license files for a manga (owner-only)
+   * - Save file mới → save DB → cleanup file cũ
+   * - Rollback xoá file mới nếu DB save lỗi
+   */
+  async uploadLicenseForManga(
+    mangaId: string,
+    actorId: string,
+    files: Express.Multer.File[],
+    note?: string,
+  ) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+    if (!Types.ObjectId.isValid(actorId)) {
+      throw new BadRequestException('Invalid actorId');
+    }
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new BadRequestException('No files uploaded');
+    }
+
+    const manga = await this.mangaModel
+      .findById(mangaId)
+      .select(
+        'authorId licenseFiles licenseStatus licenseNote licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy',
+      );
+
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    // ✅ chỉ owner mới upload
+    if (String((manga as any).authorId) !== String(actorId)) {
+      throw new BadRequestException('You are not the owner of this manga');
+    }
+
+    const dir = join('public', 'assets', 'licenses', mangaId);
+    await fs.promises.mkdir(dir, { recursive: true });
+
+    const oldRelFiles: string[] = Array.isArray((manga as any).licenseFiles)
+      ? [...((manga as any).licenseFiles as string[])]
+      : [];
+
+    const newRelFiles: string[] = [];
+    const newAbsFiles: string[] = [];
+
+    // 1) ✅ Save file mới trước
+    try {
+      for (const f of files) {
+        if (!f?.buffer || !Buffer.isBuffer(f.buffer)) {
+          throw new BadRequestException('Invalid file buffer');
+        }
+
+        const filename = this.genFileName(f.originalname);
+        const absPath = join(dir, filename);
+
+        await fs.promises.writeFile(absPath, f.buffer);
+
+        const relPath = join('assets', 'licenses', mangaId, filename).replace(
+          /\\/g,
+          '/',
+        );
+
+        newAbsFiles.push(absPath);
+        newRelFiles.push(relPath);
+      }
+    } catch (err) {
+      await Promise.allSettled(newAbsFiles.map((p) => this.unlinkSafe(p)));
+      if (err instanceof BadRequestException) throw err;
+      throw new InternalServerErrorException('Unable to save license files');
+    }
+
+    // 2) ✅ Update DB
+    try {
+      (manga as any).licenseStatus = MangaLicenseStatus.PENDING;
+      (manga as any).licenseFiles = newRelFiles;
+      (manga as any).licenseNote = note ?? '';
+      (manga as any).licenseSubmittedAt = new Date();
+
+      // reset nếu re-upload
+      (manga as any).licenseRejectReason = '';
+      (manga as any).licenseReviewedAt = undefined;
+      (manga as any).licenseReviewedBy = undefined;
+
+      await manga.save();
+    } catch {
+      await Promise.allSettled(newAbsFiles.map((p) => this.unlinkSafe(p)));
+      throw new InternalServerErrorException('Unable to update manga license');
+    }
+
+    // 3) ✅ Cleanup file cũ (best-effort)
+    if (oldRelFiles.length > 0) {
+      await Promise.allSettled(
+        oldRelFiles.map((rel) => this.unlinkSafe(this.toAbsFromRel(rel))),
+      );
+    }
+
+    return {
+      success: true,
+      mangaId,
+      licenseStatus: (manga as any).licenseStatus,
+      files: (manga as any).licenseFiles,
+      submittedAt: (manga as any).licenseSubmittedAt,
+    };
+  }
 
   // ====================== CRUD ======================
 
@@ -52,9 +178,9 @@ export class MangaService {
           if (!style) {
             throw new BadRequestException(`Style với ID ${styleId} không tồn tại`);
           }
-          if (style.status === 'hide') {
+          if ((style as any).status === 'hide') {
             throw new BadRequestException(
-              `Style "${style.name}" đã bị ẩn, không thể tạo truyện với style này`,
+              `Style "${(style as any).name}" đã bị ẩn, không thể tạo truyện với style này`,
             );
           }
         }
@@ -67,9 +193,9 @@ export class MangaService {
           if (!genre) {
             throw new BadRequestException(`Genre với ID ${genreId} không tồn tại`);
           }
-          if (genre.status === 'hide') {
+          if ((genre as any).status === 'hide') {
             throw new BadRequestException(
-              `Genre "${genre.name}" đã bị ẩn, không thể tạo truyện với genre này`,
+              `Genre "${(genre as any).name}" đã bị ẩn, không thể tạo truyện với genre này`,
             );
           }
         }
@@ -85,6 +211,7 @@ export class MangaService {
 
       return await newManga.save();
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error creating manga:', error);
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('Unable to create new manga');
@@ -107,9 +234,9 @@ export class MangaService {
         if (!style) {
           throw new BadRequestException(`Style với ID ${styleId} không tồn tại`);
         }
-        if (style.status === 'hide') {
+        if ((style as any).status === 'hide') {
           throw new BadRequestException(
-            `Style "${style.name}" đã bị ẩn, không thể cập nhật truyện với style này`,
+            `Style "${(style as any).name}" đã bị ẩn, không thể cập nhật truyện với style này`,
           );
         }
       }
@@ -194,7 +321,6 @@ export class MangaService {
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // Chapters public gần nhất (theo schema chapter: manga_id, is_published, isDeleted)
       {
         $lookup: {
           from: 'chapters',
@@ -218,7 +344,6 @@ export class MangaService {
         },
       },
 
-      // Styles
       {
         $lookup: {
           from: 'styles',
@@ -228,7 +353,6 @@ export class MangaService {
         },
       },
 
-      // Genres
       {
         $lookup: {
           from: 'genres',
@@ -238,7 +362,6 @@ export class MangaService {
         },
       },
 
-      // Ratings (Rating schema dùng mangaId)
       {
         $lookup: {
           from: 'ratings',
@@ -310,7 +433,11 @@ export class MangaService {
       },
     ];
 
-    const [res] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
+    const [res] = await this.mangaModel
+      .aggregate(pipeline)
+      .allowDiskUse(true)
+      .exec();
+
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
@@ -326,14 +453,12 @@ export class MangaService {
 
     if (!manga) throw new NotFoundException('Manga not found');
 
-    // Chapters đã publish
     const chapters = await this.chapterModel
       .find({ manga_id: new Types.ObjectId(mangaId), is_published: true })
       .sort({ order: 1 })
       .select('_id title order price')
       .lean();
 
-    // Các chapter user đã mua
     let purchasedChapterIds: string[] = [];
     if (userId) {
       const purchases = await this.chapterPurchaseModel
@@ -344,7 +469,7 @@ export class MangaService {
 
     const chaptersWithPurchase = chapters.map((c) => {
       const purchased = purchasedChapterIds.includes(c._id.toString());
-      const isFree = c.price === 0;
+      const isFree = (c as any).price === 0;
       return {
         ...c,
         purchased,
@@ -352,7 +477,6 @@ export class MangaService {
       };
     });
 
-    // Summary rating
     const summaryAgg = await this.ratingModel.aggregate([
       { $match: { mangaId: new Types.ObjectId(mangaId) } },
       {
@@ -369,19 +493,18 @@ export class MangaService {
       : { count: 0, avgRating: 0 };
 
     return {
-      _id: manga._id.toString(),
-      title: manga.title,
-      summary: manga.summary,
-      coverImage: manga.coverImage,
-      author: manga.authorId,
-      views: manga.views,
-      status: manga.status,
+      _id: (manga as any)._id.toString(),
+      title: (manga as any).title,
+      summary: (manga as any).summary,
+      coverImage: (manga as any).coverImage,
+      author: (manga as any).authorId,
+      views: (manga as any).views,
+      status: (manga as any).status,
       chapters: chaptersWithPurchase,
       ratingSummary,
     };
   }
 
-  // FE cần list cơ bản (id + title)
   async getAllBasic() {
     const mangas = await this.mangaModel
       .find({ isDeleted: false, isPublish: true })
@@ -391,7 +514,6 @@ export class MangaService {
     return mangas;
   }
 
-  // Lấy thông tin manga + author cho luồng comment chapter
   async getAuthorByMangaIdForCommentChapter(id: string | Types.ObjectId) {
     return this.mangaModel.findById(id).populate('authorId').exec();
   }
@@ -404,18 +526,13 @@ export class MangaService {
       this.mangaModel.aggregate([
         {
           $match: {
-            createdAt: {
-              $gte: startOfMonth(subMonths(new Date(), 1)),
-            },
+            createdAt: { $gte: startOfMonth(subMonths(new Date(), 1)) },
             isDeleted: { $ne: true },
           },
         },
         {
           $group: {
-            _id: {
-              y: { $year: '$createdAt' },
-              m: { $month: '$createdAt' },
-            },
+            _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' } },
             cnt: { $sum: 1 },
           },
         },
@@ -427,17 +544,21 @@ export class MangaService {
     const curY = now.getFullYear();
     const curM = now.getMonth() + 1;
 
-    let cur = 0,
-      prev = 0;
+    let cur = 0;
+    let prev = 0;
+
     for (const row of byMonth) {
       const { y, m } = row._id;
       if (y === curY && m === curM) cur = row.cnt;
 
       const prevDate = subMonths(new Date(curY, curM - 1, 1), 1);
-      if (y === prevDate.getFullYear() && m === prevDate.getMonth() + 1) prev = row.cnt;
+      if (y === prevDate.getFullYear() && m === prevDate.getMonth() + 1) {
+        prev = row.cnt;
+      }
     }
 
-    const deltaPctMoM = prev === 0 ? (cur > 0 ? 100 : 0) : ((cur - prev) / prev) * 100;
+    const deltaPctMoM =
+      prev === 0 ? (cur > 0 ? 100 : 0) : ((cur - prev) / prev) * 100;
 
     const [published, statusAgg] = await Promise.all([
       this.mangaModel.countDocuments({ isDeleted: false, isPublish: true }),
@@ -456,19 +577,14 @@ export class MangaService {
       total: totals,
       deltaPctMoM,
       published,
-      byStatus, // { ongoing: n, completed: n, hiatus: n }
+      byStatus,
     };
   }
 
   async monthlyGrowth(months = 6) {
     const from = startOfMonth(subMonths(new Date(), months - 1));
     const rows = await this.mangaModel.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: from },
-          isDeleted: { $ne: true },
-        },
-      },
+      { $match: { createdAt: { $gte: from }, isDeleted: { $ne: true } } },
       {
         $group: {
           _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' } },
@@ -506,11 +622,11 @@ export class MangaService {
       .lean();
 
     return items.map((m) => ({
-      id: m._id,
-      title: m.title,
-      views: m.views || 0,
+      id: (m as any)._id,
+      title: (m as any).title,
+      views: (m as any).views || 0,
       author: (m as any).authorId?.username || 'Unknown',
-      status: m.status || 'ongoing',
+      status: (m as any).status || 'ongoing',
     }));
   }
 
@@ -518,12 +634,7 @@ export class MangaService {
 
   async getRandomManga() {
     const pipeline: any[] = [
-      {
-        $match: {
-          isDeleted: false,
-          isPublish: true,
-        },
-      },
+      { $match: { isDeleted: false, isPublish: true } },
       {
         $lookup: {
           from: 'chapters',
@@ -544,21 +655,18 @@ export class MangaService {
           as: '_chapters',
         },
       },
-      {
-        $match: {
-          '_chapters.0': { $exists: true },
-        },
-      },
+      { $match: { '_chapters.0': { $exists: true } } },
       { $sample: { size: 1 } },
       { $project: { _id: 1, title: 1 } },
     ];
 
-    const [result] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
+    const [result] = await this.mangaModel
+      .aggregate(pipeline)
+      .allowDiskUse(true)
+      .exec();
+
     if (result) {
-      return {
-        _id: result._id.toString(),
-        title: result.title,
-      };
+      return { _id: result._id.toString(), title: result.title };
     }
     return null;
   }
@@ -578,11 +686,7 @@ export class MangaService {
         totalViews: 0,
         totalChapters: 0,
         avgViewsPerStory: 0,
-        statusBreakdown: {
-          ongoing: 0,
-          completed: 0,
-          hiatus: 0,
-        },
+        statusBreakdown: { ongoing: 0, completed: 0, hiatus: 0 },
       };
     }
 
@@ -614,15 +718,10 @@ export class MangaService {
     const avgViewsPerStory =
       publishedStories > 0 ? Math.round(totalViews / publishedStories) : 0;
 
-    const statusMap: any = {
-      ongoing: 0,
-      completed: 0,
-      hiatus: 0,
-    };
-
-    statusBreakdown.forEach((item) => {
+    const statusMap: any = { ongoing: 0, completed: 0, hiatus: 0 };
+    statusBreakdown.forEach((item: any) => {
       const status = item._id || 'ongoing';
-      if (statusMap.hasOwnProperty(status)) {
+      if (Object.prototype.hasOwnProperty.call(statusMap, status)) {
         statusMap[status] = item.cnt;
       }
     });
@@ -639,7 +738,6 @@ export class MangaService {
 
   async ViewCounter(Id: Types.ObjectId) {
     try {
-      // Validate ObjectId format
       if (!Id || !Types.ObjectId.isValid(Id)) {
         throw new BadRequestException('Invalid chapter ID');
       }
@@ -649,13 +747,13 @@ export class MangaService {
         throw new NotFoundException('Chapter does not exist');
       }
 
-      if (!chapter.manga_id) {
+      if (!(chapter as any).manga_id) {
         throw new BadRequestException('Chapter does not have manga_id');
       }
 
       const updatedManga = await this.mangaModel
         .findByIdAndUpdate(
-          chapter.manga_id,
+          (chapter as any).manga_id,
           { $inc: { views: 1 } },
           { new: true },
         )
@@ -673,8 +771,8 @@ export class MangaService {
       throw new InternalServerErrorException('Unable to increment view count');
     }
   }
+
   async getRecommendStory(user_id: Types.ObjectId) {
-    // 1️⃣ Lấy danh sách manga mà user đã đọc
     const histories = await this.historyModel
       .find({ user_id: user_id })
       .sort({ updatedAt: -1 })
@@ -683,33 +781,26 @@ export class MangaService {
       .lean();
 
     if (histories.length === 0) {
-      // Nếu user chưa đọc gì → fallback top phổ biến
-      // This already returns { data: [], total: 0 }
       return this.getAllManga(1, 10);
     }
 
     const readMangaIds = histories.map((h) => h.story_id);
 
-    // 2️⃣ Lấy những manga user đã rate >=4
     const highRated = await this.ratingModel
       .find({ userId: user_id, rating: { $gte: 4 } })
       .select('mangaId')
       .lean();
 
-    const likedIds = highRated.length
-      ? highRated.map((r) => r.mangaId)
-      : readMangaIds;
+    const likedIds = highRated.length ? highRated.map((r) => r.mangaId) : readMangaIds;
 
-    // 3️⃣ Lấy genres & styles từ manga đã rate cao
     const likedManga = await this.mangaModel
       .find({ _id: { $in: likedIds } })
       .select('genres styles')
       .lean();
 
-    const genreIds = [...new Set(likedManga.flatMap((m) => m.genres.map(String)))];
-    const styleIds = [...new Set(likedManga.flatMap((m) => m.styles.map(String)))];
+    const genreIds = [...new Set(likedManga.flatMap((m: any) => m.genres.map(String)))];
+    const styleIds = [...new Set(likedManga.flatMap((m: any) => m.styles.map(String)))];
 
-    // 4️⃣ Pipeline giống getAllManga nhưng có filter theo genre/style
     const pipeline: any[] = [
       {
         $match: {
@@ -723,7 +814,6 @@ export class MangaService {
         },
       },
 
-      // Chapters
       {
         $lookup: {
           from: 'chapters',
@@ -747,7 +837,6 @@ export class MangaService {
         },
       },
 
-      // Styles
       {
         $lookup: {
           from: 'styles',
@@ -757,7 +846,6 @@ export class MangaService {
         },
       },
 
-      // Genres
       {
         $lookup: {
           from: 'genres',
@@ -767,7 +855,6 @@ export class MangaService {
         },
       },
 
-      // Ratings
       {
         $lookup: {
           from: 'ratings',
@@ -823,14 +910,11 @@ export class MangaService {
         },
       },
 
-      // Sort by recommendation score first
       { $sort: { rating_avg: -1, views: -1 } },
 
-      // *** MODIFICATION START ***
-      // Use $facet to get both the limited data and the total count
       {
         $facet: {
-          data: [{ $skip: 0 }, { $limit: 10 }], // Hard-code limit to 10
+          data: [{ $skip: 0 }, { $limit: 10 }],
           total: [{ $count: 'count' }],
         },
       },
@@ -840,17 +924,112 @@ export class MangaService {
           total: { $ifNull: [{ $arrayElemAt: ['$total.count', 0] }, 0] },
         },
       },
-      // *** MODIFICATION END ***
     ];
 
-    // Run the aggregation and destructure the result
-    const [res] = await this.mangaModel
-      .aggregate(pipeline)
-      .allowDiskUse(true)
-      .exec();
-
-    // Return in the { data, total } format
+    const [res] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
+
+
+  async getPendingLicenses() {
+  return this.mangaModel
+    .find({
+      licenseStatus: MangaLicenseStatus.PENDING,
+    })
+    .select(
+      '_id title coverImage licenseSubmittedAt licenseStatus authorId',
+    )
+    .populate('authorId', 'username email')
+    .sort({ licenseSubmittedAt: -1 })
+    .lean();
+}
+
+async getLicenseDetail(mangaId: string) {
+  if (!Types.ObjectId.isValid(mangaId)) {
+    throw new BadRequestException('Invalid mangaId');
+  }
+
+  const manga = await this.mangaModel
+    .findById(mangaId)
+    .select(
+      'title coverImage licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy',
+    )
+    .populate('authorId', 'username email')
+    .populate('licenseReviewedBy', 'username')
+    .lean();
+
+  if (!manga) {
+    throw new NotFoundException('Manga not found');
+  }
+
+  return manga;
+}
+async reviewLicense(
+  mangaId: string,
+  reviewerId: string,
+  status: MangaLicenseStatus,
+  rejectReason?: string,
+) {
+  if (!Types.ObjectId.isValid(mangaId)) {
+    throw new BadRequestException('Invalid mangaId');
+  }
+
+  if (!Types.ObjectId.isValid(reviewerId)) {
+    throw new BadRequestException('Invalid reviewerId');
+  }
+
+  if (
+    status !== MangaLicenseStatus.APPROVED &&
+    status !== MangaLicenseStatus.REJECTED
+  ) {
+    throw new BadRequestException('Invalid review status');
+  }
+
+  const manga = await this.mangaModel.findById(mangaId);
+
+  if (!manga) throw new NotFoundException('Manga not found');
+
+  if (manga.licenseStatus !== MangaLicenseStatus.PENDING) {
+    throw new BadRequestException('License is not in pending state');
+  }
+
+  manga.licenseStatus = status;
+  manga.licenseReviewedAt = new Date();
+  manga.licenseReviewedBy = new Types.ObjectId(reviewerId);
+
+  if (status === MangaLicenseStatus.REJECTED) {
+    if (!rejectReason) {
+      throw new BadRequestException('Reject reason is required');
+    }
+    manga.licenseRejectReason = rejectReason;
+  } else {
+    manga.licenseRejectReason = '';
+  }
+
+  await manga.save();
+
+  return {
+    success: true,
+    mangaId,
+    licenseStatus: manga.licenseStatus,
+    reviewedAt: manga.licenseReviewedAt,
+  };
+}
+async getLicenseStatus(mangaId: string) {
+  if (!Types.ObjectId.isValid(mangaId)) {
+    throw new BadRequestException('Invalid mangaId');
+  }
+
+  const manga = await this.mangaModel
+    .findById(mangaId)
+    .select(
+      'licenseStatus licenseRejectReason licenseSubmittedAt licenseReviewedAt',
+    )
+    .lean();
+
+  if (!manga) throw new NotFoundException('Manga not found');
+
+  return manga;
+}
 
 }

@@ -35,6 +35,13 @@ import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 // Nếu bạn đã tạo OptionalAccessTokenGuard (khuyên dùng) thì dùng để public + optional user
 import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
+import { UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import * as multer from 'multer';
+import { UploadMangaLicenseDto } from './dto/upload-manga-license.dto';
+
+import { ReviewLicenseDto } from './dto/review-license.dto';
+
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -234,4 +241,81 @@ export class MangaController {
   async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
     return this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
   }
+
+  @Post(":id/license")
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN) // MVP cho admin làm được luôn
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @UseInterceptors(
+    FilesInterceptor("files", 5, {
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB/file
+      fileFilter: (req, file, cb) => {
+        const ok =
+          file.mimetype === "application/pdf" ||
+          file.mimetype.startsWith("image/");
+        if (!ok) {
+          return cb(
+            new BadRequestException("Only PDF or image files are allowed"),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadLicense(
+    @Param("id") mangaId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() dto: UploadMangaLicenseDto,
+    @Req() req: Request,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException("Missing license files");
+    }
+
+    const user = (req as any).user;
+    const userId = user?.user_id || user?.userId;
+
+    return this.mangaService.uploadLicenseForManga(mangaId, userId, files, dto.note);
+  }
+
+  @Get('admin/licenses/pending')
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+async getPendingLicenses() {
+  return this.mangaService.getPendingLicenses();
+}
+
+@Get('admin/license/:mangaId')
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+async getLicenseDetail(@Param('mangaId') mangaId: string) {
+  return this.mangaService.getLicenseDetail(mangaId);
+}
+@Patch('admin/license/:mangaId/review')
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+async reviewLicense(
+  @Param('mangaId') mangaId: string,
+  @Body() dto: ReviewLicenseDto,
+  @Req() req: Request,
+) {
+  const user = (req as any).user;
+  const reviewerId = user?.user_id || user?.userId;
+
+  return this.mangaService.reviewLicense(
+    mangaId,
+    reviewerId,
+    dto.status,
+    dto.rejectReason,
+  );
+}
+
+@Get(':id/license-status')
+@UseGuards(AccessTokenGuard)
+async getLicenseStatus(@Param('id') mangaId: string) {
+  return this.mangaService.getLicenseStatus(mangaId);
+}
+
 }
