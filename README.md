@@ -3,17 +3,17 @@
 Hệ thống quản lý và cung cấp nội dung truyện trực tuyến, tích hợp AI và thanh toán trực tuyến.
 
 ## 🚀 Tính năng chính
-- [cite_start]**Quản lý nội dung:** CRUD Truyện, Chương, Thể loại và Tác giả. [cite: 1, 9]
-- [cite_start]**Hệ thống Auth:** Authentication & Authorization chặt chẽ. [cite: 15]
-- [cite_start]**Real-time:** Bình luận và phản hồi tức thời qua Socket.IO. [cite: 16]
+- **Quản lý nội dung:** CRUD Truyện, Chương, Thể loại và Tác giả.
+- **Hệ thống Auth:** Authentication & Authorization chặt chẽ.
+- **Real-time:** Bình luận và phản hồi tức thời qua Socket.IO.
 - **AI Integration:** Phân tích nội dung hoặc hỗ trợ tìm kiếm bằng Google Gemini.
 - **Thanh toán:** Tích hợp cổng thanh toán VNPAY.
-- [cite_start]**Thông báo:** Gửi mail (SMTP) và thông báo đẩy qua Firebase. [cite: 17]
+- **Thông báo:** Gửi mail (SMTP) và thông báo đẩy qua Firebase.
 
 ## 🛠 Tech Stack
-- [cite_start]**Framework:** NestJS [cite: 18]
-- [cite_start]**Database:** MongoDB [cite: 18]
-- [cite_start]**Real-time:** Socket.IO [cite: 18]
+- **Framework:** NestJS
+- **Database:** MongoDB
+- **Real-time:** Socket.IO
 - **Khác:** JWT, Firebase Admin SDK, VNPAY SDK.
 
 ## ⚙️ Cấu hình Environment (.env)
