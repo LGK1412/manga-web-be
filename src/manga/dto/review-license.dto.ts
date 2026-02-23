@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { MangaLicenseStatus } from '../../schemas/Manga.schema';
 
 export class ReviewLicenseDto {
@@ -9,4 +9,9 @@ export class ReviewLicenseDto {
   @IsString()
   @MaxLength(500)
   rejectReason?: string;
+
+  // ✅ New: approve xong có publish luôn để user thấy badge + truyện public
+  @IsOptional()
+  @IsBoolean()
+  publishAfterApprove?: boolean;
 }

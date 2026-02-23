@@ -45,7 +45,7 @@ export class MangaService {
   ) {}
 
   // =========================================================
-  // ✅ License upload helpers (NEW - theo code update)
+  // ✅ License upload helpers
   // =========================================================
 
   private genFileName(originalName: string) {
@@ -59,14 +59,11 @@ export class MangaService {
   }
 
   private toAbsFromRel(rel: string) {
-    // rel dạng "assets/licenses/<mangaId>/<file>"
     return join('public', rel.replace(/^\/?/, ''));
   }
 
   /**
    * ✅ Upload license files for a manga (owner-only)
-   * - Save file mới → save DB → cleanup file cũ
-   * - Rollback xoá file mới nếu DB save lỗi
    */
   async uploadLicenseForManga(
     mangaId: string,
@@ -92,7 +89,6 @@ export class MangaService {
 
     if (!manga) throw new NotFoundException('Manga not found');
 
-    // ✅ chỉ owner mới upload
     if (String((manga as any).authorId) !== String(actorId)) {
       throw new BadRequestException('You are not the owner of this manga');
     }
@@ -107,7 +103,6 @@ export class MangaService {
     const newRelFiles: string[] = [];
     const newAbsFiles: string[] = [];
 
-    // 1) ✅ Save file mới trước
     try {
       for (const f of files) {
         if (!f?.buffer || !Buffer.isBuffer(f.buffer)) {
@@ -133,14 +128,13 @@ export class MangaService {
       throw new InternalServerErrorException('Unable to save license files');
     }
 
-    // 2) ✅ Update DB
     try {
       (manga as any).licenseStatus = MangaLicenseStatus.PENDING;
       (manga as any).licenseFiles = newRelFiles;
       (manga as any).licenseNote = note ?? '';
       (manga as any).licenseSubmittedAt = new Date();
 
-      // reset nếu re-upload
+      // reset if re-upload
       (manga as any).licenseRejectReason = '';
       (manga as any).licenseReviewedAt = undefined;
       (manga as any).licenseReviewedBy = undefined;
@@ -151,7 +145,6 @@ export class MangaService {
       throw new InternalServerErrorException('Unable to update manga license');
     }
 
-    // 3) ✅ Cleanup file cũ (best-effort)
     if (oldRelFiles.length > 0) {
       await Promise.allSettled(
         oldRelFiles.map((rel) => this.unlinkSafe(this.toAbsFromRel(rel))),
@@ -171,7 +164,6 @@ export class MangaService {
 
   async createManga(createMangaDto: CreateMangaDto, authorId: Types.ObjectId) {
     try {
-      // Validate styles
       if (createMangaDto.styles?.length) {
         for (const styleId of createMangaDto.styles) {
           const style = await this.stylesService.findById(styleId.toString());
@@ -186,7 +178,6 @@ export class MangaService {
         }
       }
 
-      // Validate genres
       if (createMangaDto.genres?.length) {
         for (const genreId of createMangaDto.genres) {
           const genre = await this.genreService.getGenreById(genreId.toString());
@@ -206,7 +197,6 @@ export class MangaService {
         authorId,
       });
 
-      // Emit thống kê khi tạo truyện
       this.eventEmitter.emit('story_create_count', { userId: authorId });
 
       return await newManga.save();
@@ -227,7 +217,6 @@ export class MangaService {
       throw new BadRequestException('Invalid manga ID');
     }
 
-    // Validate styles nếu có
     if (updateMangaDto.styles?.length) {
       for (const styleId of updateMangaDto.styles) {
         const style = await this.stylesService.findById(styleId.toString());
@@ -310,6 +299,7 @@ export class MangaService {
     return mangas ?? [];
   }
 
+  // ✅ Updated: include licenseStatus so frontend can show tick on cover
   async getAllManga(page = 1, limit = 24) {
     const skip = (page - 1) * limit;
 
@@ -376,6 +366,7 @@ export class MangaService {
           chapters_count: { $size: '$_chapters' },
           latest_chapter: { $arrayElemAt: ['$_chapters', 0] },
           rating_avg: { $avg: '$ratings.rating' },
+          isLicensed: { $eq: ['$licenseStatus', MangaLicenseStatus.APPROVED] },
           styles: {
             $map: {
               input: '$styles',
@@ -414,6 +405,10 @@ export class MangaService {
           'latest_chapter.title': 1,
           'latest_chapter.order': 1,
           'latest_chapter.createdAt': 1,
+
+          // ✅ for badge
+          licenseStatus: 1,
+          isLicensed: 1,
         },
       },
 
@@ -441,6 +436,7 @@ export class MangaService {
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
+  // ✅ Updated detail: include licenseStatus for badge on cover
   async findMangaDetail(mangaId: string, userId: string): Promise<any> {
     if (!Types.ObjectId.isValid(mangaId)) {
       throw new NotFoundException('Manga not found');
@@ -492,6 +488,8 @@ export class MangaService {
       ? { count: summaryAgg[0].count, avgRating: summaryAgg[0].avgRating }
       : { count: 0, avgRating: 0 };
 
+    const licenseStatus = (manga as any).licenseStatus || MangaLicenseStatus.NONE;
+
     return {
       _id: (manga as any)._id.toString(),
       title: (manga as any).title,
@@ -502,6 +500,10 @@ export class MangaService {
       status: (manga as any).status,
       chapters: chaptersWithPurchase,
       ratingSummary,
+
+      // ✅ for verified badge
+      licenseStatus,
+      isLicensed: licenseStatus === MangaLicenseStatus.APPROVED,
     };
   }
 
@@ -617,7 +619,7 @@ export class MangaService {
       .find({ isDeleted: false, isPublish: true })
       .sort(sortObj)
       .limit(limit)
-      .select('title authorId views status')
+      .select('title authorId views status licenseStatus')
       .populate('authorId', 'username')
       .lean();
 
@@ -627,6 +629,8 @@ export class MangaService {
       views: (m as any).views || 0,
       author: (m as any).authorId?.username || 'Unknown',
       status: (m as any).status || 'ongoing',
+      licenseStatus: (m as any).licenseStatus || MangaLicenseStatus.NONE,
+      isLicensed: (m as any).licenseStatus === MangaLicenseStatus.APPROVED,
     }));
   }
 
@@ -772,6 +776,7 @@ export class MangaService {
     }
   }
 
+  // ✅ Updated recommend: include licenseStatus for badge
   async getRecommendStory(user_id: Types.ObjectId) {
     const histories = await this.historyModel
       .find({ user_id: user_id })
@@ -869,6 +874,7 @@ export class MangaService {
           chapters_count: { $size: '$_chapters' },
           latest_chapter: { $arrayElemAt: ['$_chapters', 0] },
           rating_avg: { $avg: '$ratings.rating' },
+          isLicensed: { $eq: ['$licenseStatus', MangaLicenseStatus.APPROVED] },
           styles: {
             $map: {
               input: '$styles',
@@ -907,6 +913,10 @@ export class MangaService {
           'latest_chapter.title': 1,
           'latest_chapter.order': 1,
           'latest_chapter.createdAt': 1,
+
+          // ✅ for badge
+          licenseStatus: 1,
+          isLicensed: 1,
         },
       },
 
@@ -930,106 +940,188 @@ export class MangaService {
     return { data: res?.data ?? [], total: res?.total ?? 0 };
   }
 
+  // ====================== MODERATION / LICENSE QUEUE ======================
 
-  async getPendingLicenses() {
-  return this.mangaModel
-    .find({
-      licenseStatus: MangaLicenseStatus.PENDING,
-    })
-    .select(
-      '_id title coverImage licenseSubmittedAt licenseStatus authorId',
-    )
-    .populate('authorId', 'username email')
-    .sort({ licenseSubmittedAt: -1 })
-    .lean();
-}
-
-async getLicenseDetail(mangaId: string) {
-  if (!Types.ObjectId.isValid(mangaId)) {
-    throw new BadRequestException('Invalid mangaId');
-  }
-
-  const manga = await this.mangaModel
-    .findById(mangaId)
-    .select(
-      'title coverImage licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy',
-    )
-    .populate('authorId', 'username email')
-    .populate('licenseReviewedBy', 'username')
-    .lean();
-
-  if (!manga) {
-    throw new NotFoundException('Manga not found');
-  }
-
-  return manga;
-}
-async reviewLicense(
-  mangaId: string,
-  reviewerId: string,
-  status: MangaLicenseStatus,
-  rejectReason?: string,
-) {
-  if (!Types.ObjectId.isValid(mangaId)) {
-    throw new BadRequestException('Invalid mangaId');
-  }
-
-  if (!Types.ObjectId.isValid(reviewerId)) {
-    throw new BadRequestException('Invalid reviewerId');
-  }
-
-  if (
-    status !== MangaLicenseStatus.APPROVED &&
-    status !== MangaLicenseStatus.REJECTED
+  async getLicenseQueue(
+    status: 'all' | 'none' | 'pending' | 'approved' | 'rejected' = 'pending',
+    q = '',
+    page = 1,
+    limit = 20,
   ) {
-    throw new BadRequestException('Invalid review status');
-  }
-
-  const manga = await this.mangaModel.findById(mangaId);
-
-  if (!manga) throw new NotFoundException('Manga not found');
-
-  if (manga.licenseStatus !== MangaLicenseStatus.PENDING) {
-    throw new BadRequestException('License is not in pending state');
-  }
-
-  manga.licenseStatus = status;
-  manga.licenseReviewedAt = new Date();
-  manga.licenseReviewedBy = new Types.ObjectId(reviewerId);
-
-  if (status === MangaLicenseStatus.REJECTED) {
-    if (!rejectReason) {
-      throw new BadRequestException('Reject reason is required');
+    const match: any = {};
+    if (status !== 'all') {
+      match.licenseStatus = status;
     }
-    manga.licenseRejectReason = rejectReason;
-  } else {
-    manga.licenseRejectReason = '';
+    if (q && q.trim()) {
+      match.title = { $regex: q.trim(), $options: 'i' };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [data, total, grouped] = await Promise.all([
+      this.mangaModel
+        .find(match)
+        .select('_id title coverImage isPublish status licenseStatus licenseSubmittedAt authorId')
+        .populate('authorId', 'username email')
+        .sort({ licenseSubmittedAt: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.mangaModel.countDocuments(match),
+      this.mangaModel.aggregate([
+        {
+          $group: {
+            _id: '$licenseStatus',
+            cnt: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const stats: Record<string, number> = {
+      none: 0,
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+    };
+
+    for (const row of grouped) {
+      stats[row._id || 'none'] = row.cnt;
+    }
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      stats,
+    };
   }
 
-  await manga.save();
+  async getLicenseDetail(mangaId: string) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
 
-  return {
-    success: true,
-    mangaId,
-    licenseStatus: manga.licenseStatus,
-    reviewedAt: manga.licenseReviewedAt,
-  };
-}
-async getLicenseStatus(mangaId: string) {
-  if (!Types.ObjectId.isValid(mangaId)) {
-    throw new BadRequestException('Invalid mangaId');
+    const manga = await this.mangaModel
+      .findById(mangaId)
+      .select(
+        'title coverImage isPublish status licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy authorId',
+      )
+      .populate('authorId', 'username email')
+      .populate('licenseReviewedBy', 'username')
+      .lean();
+
+    if (!manga) {
+      throw new NotFoundException('Manga not found');
+    }
+
+    return manga;
   }
 
-  const manga = await this.mangaModel
-    .findById(mangaId)
-    .select(
-      'licenseStatus licenseRejectReason licenseSubmittedAt licenseReviewedAt',
-    )
-    .lean();
+  /**
+   * ✅ UC-106: review license + optional publish after approve
+   */
+  async reviewLicense(
+    mangaId: string,
+    reviewerId: string,
+    status: MangaLicenseStatus,
+    rejectReason?: string,
+    publishAfterApprove = false,
+  ) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
 
-  if (!manga) throw new NotFoundException('Manga not found');
+    if (!Types.ObjectId.isValid(reviewerId)) {
+      throw new BadRequestException('Invalid reviewerId');
+    }
 
-  return manga;
-}
+    if (
+      status !== MangaLicenseStatus.APPROVED &&
+      status !== MangaLicenseStatus.REJECTED
+    ) {
+      throw new BadRequestException('Invalid review status');
+    }
 
+    const manga = await this.mangaModel.findById(mangaId);
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    if (manga.licenseStatus !== MangaLicenseStatus.PENDING) {
+      throw new BadRequestException('License is not in pending state');
+    }
+
+    manga.licenseStatus = status;
+    manga.licenseReviewedAt = new Date();
+    manga.licenseReviewedBy = new Types.ObjectId(reviewerId);
+
+    if (status === MangaLicenseStatus.REJECTED) {
+      if (!rejectReason || !rejectReason.trim()) {
+        throw new BadRequestException('Reject reason is required');
+      }
+      manga.licenseRejectReason = rejectReason.trim();
+    } else {
+      manga.licenseRejectReason = '';
+
+      // ✅ optional: publish right after approve (makes badge visible in public lists)
+      if (publishAfterApprove) {
+        manga.isPublish = true;
+      }
+    }
+
+    await manga.save();
+
+    return {
+      success: true,
+      mangaId,
+      licenseStatus: manga.licenseStatus,
+      reviewedAt: manga.licenseReviewedAt,
+      isPublish: manga.isPublish,
+    };
+  }
+
+  /**
+   * ✅ Moderation: publish/unpublish story
+   * - Publish requires license APPROVED (recommended & enforced here)
+   */
+  async setPublishStatus(mangaId: string, isPublish: boolean) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const manga = await this.mangaModel.findById(mangaId);
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    // enforce: cannot publish without approved license
+    if (isPublish && manga.licenseStatus !== MangaLicenseStatus.APPROVED) {
+      throw new BadRequestException('Cannot publish: license is not approved');
+    }
+
+    manga.isPublish = Boolean(isPublish);
+    await manga.save();
+
+    return {
+      success: true,
+      mangaId,
+      isPublish: manga.isPublish,
+      licenseStatus: manga.licenseStatus,
+    };
+  }
+
+  async getLicenseStatus(mangaId: string) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const manga = await this.mangaModel
+      .findById(mangaId)
+      .select(
+        'licenseStatus licenseRejectReason licenseSubmittedAt licenseReviewedAt',
+      )
+      .lean();
+
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    return manga;
+  }
 }

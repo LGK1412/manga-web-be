@@ -15,6 +15,7 @@ import {
   Query,
   NotFoundException,
   UseGuards,
+  UploadedFiles,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Types } from 'mongoose';
@@ -33,15 +34,13 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
-// Nếu bạn đã tạo OptionalAccessTokenGuard (khuyên dùng) thì dùng để public + optional user
 import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
-import { UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { UploadMangaLicenseDto } from './dto/upload-manga-license.dto';
 
 import { ReviewLicenseDto } from './dto/review-license.dto';
-
+import { UpdatePublishStatusDto } from './dto/update-publish-status.dto';
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -116,15 +115,10 @@ export class MangaController {
     return this.mangaService.getAllBasic();
   }
 
-  /**
-   * Public: xem chi tiết manga
-   * Nếu có token hợp lệ => req.user có userId để cá nhân hoá (history, fav, etc)
-   */
   @Get('detail/:id')
   @UseGuards(OptionalAccessTokenGuard)
   async getMangaDetail(@Req() req: Request, @Param('id') id: string) {
     const payload = ((req as any).user ?? null) as JwtPayload | null;
-    // JWT payload has user_id, not userId
     const userId = payload ? ((payload as any).user_id || (payload as any).userId) : '';
     return this.mangaService.findMangaDetail(id, userId);
   }
@@ -134,16 +128,11 @@ export class MangaController {
     return this.mangaService.ViewCounter(new Types.ObjectId(id));
   }
 
-  /**
-   * Recommend theo user
-   * Nên bắt login + check mismatch để tránh user xem recommend của người khác
-   */
   @Get('recomment/user/:userId')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getRecommendStory(@Param('userId') userId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    // JWT payload has user_id, not userId
     const tokenUserId = (payload as any).user_id || (payload as any).userId;
     if (userId !== tokenUserId) {
       throw new BadRequestException('User ID mismatch');
@@ -153,10 +142,6 @@ export class MangaController {
 
   // ================= AUTHOR ACTIONS =================
 
-  /**
-   * Tạo manga (AUTHOR/ADMIN)
-   * Giữ route cũ: author/:authorId nhưng check mismatch với token
-   */
   @Post('author/:authorId')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
@@ -169,7 +154,6 @@ export class MangaController {
     @Param('authorId') authorId: string,
   ) {
     const payload = (req as any).user as JwtPayload;
-    // JWT payload has user_id, not userId
     const userId = (payload as any).user_id || (payload as any).userId;
 
     if (userId !== authorId && payload.role !== Role.ADMIN) {
@@ -195,7 +179,6 @@ export class MangaController {
     @Req() req: Request,
   ) {
     const payload = (req as any).user as JwtPayload;
-    // JWT payload has user_id, not userId
     const userId = (payload as any).user_id || (payload as any).userId;
 
     if (file) updateMangaDto.coverImage = file.filename;
@@ -212,9 +195,7 @@ export class MangaController {
   @Roles(Role.AUTHOR, Role.ADMIN)
   async toggleDelete(@Param('mangaId') mangaId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    // JWT payload has user_id, not userId
     const userId = (payload as any).user_id || (payload as any).userId;
-
     return this.mangaService.toggleDelete(mangaId, new Types.ObjectId(userId));
   }
 
@@ -223,14 +204,11 @@ export class MangaController {
   @Roles(Role.AUTHOR, Role.ADMIN)
   async deleteManga(@Param('mangaId') mangaId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    // JWT payload has user_id, not userId
     const userId = (payload as any).user_id || (payload as any).userId;
-
     return this.mangaService.deleteManga(mangaId, new Types.ObjectId(userId));
   }
 
   // ================= AUTHOR PUBLIC INFO =================
-  // NOTE: để route stats trước route author/:authorId để tránh nhầm lẫn
 
   @Get('author/:authorId/stats')
   async getAuthorStats(@Param('authorId') authorId: string) {
@@ -242,21 +220,23 @@ export class MangaController {
     return this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
   }
 
-  @Post(":id/license")
+  // ================= LICENSE (UC-105) =================
+
+  @Post(':id/license')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.AUTHOR, Role.ADMIN) // MVP cho admin làm được luôn
+  @Roles(Role.AUTHOR, Role.ADMIN)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   @UseInterceptors(
-    FilesInterceptor("files", 5, {
+    FilesInterceptor('files', 5, {
       storage: multer.memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB/file
+      limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         const ok =
-          file.mimetype === "application/pdf" ||
-          file.mimetype.startsWith("image/");
+          file.mimetype === 'application/pdf' ||
+          file.mimetype.startsWith('image/');
         if (!ok) {
           return cb(
-            new BadRequestException("Only PDF or image files are allowed"),
+            new BadRequestException('Only PDF or image files are allowed'),
             false,
           );
         }
@@ -265,13 +245,13 @@ export class MangaController {
     }),
   )
   async uploadLicense(
-    @Param("id") mangaId: string,
+    @Param('id') mangaId: string,
     @UploadedFiles() files: Express.Multer.File[],
     @Body() dto: UploadMangaLicenseDto,
     @Req() req: Request,
   ) {
     if (!files || files.length === 0) {
-      throw new BadRequestException("Missing license files");
+      throw new BadRequestException('Missing license files');
     }
 
     const user = (req as any).user;
@@ -280,42 +260,73 @@ export class MangaController {
     return this.mangaService.uploadLicenseForManga(mangaId, userId, files, dto.note);
   }
 
+  // ================= MODERATION (UC-106) =================
+  // ✅ New: queue endpoint for real management page
+  @Get('admin/licenses')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  async getLicenseQueue(
+    @Query('status') status: 'all' | 'none' | 'pending' | 'approved' | 'rejected' = 'pending',
+    @Query('q') q = '',
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    const p = Math.max(1, parseInt(page as string, 10) || 1);
+    const l = Math.max(1, Math.min(100, parseInt(limit as string, 10) || 20));
+    return this.mangaService.getLicenseQueue(status, q, p, l);
+  }
+
+  // ✅ Keep old endpoint for backward compatibility
   @Get('admin/licenses/pending')
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
-async getPendingLicenses() {
-  return this.mangaService.getPendingLicenses();
-}
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  async getPendingLicenses() {
+    const res = await this.mangaService.getLicenseQueue('pending', '', 1, 50);
+    return res.data;
+  }
 
-@Get('admin/license/:mangaId')
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
-async getLicenseDetail(@Param('mangaId') mangaId: string) {
-  return this.mangaService.getLicenseDetail(mangaId);
-}
-@Patch('admin/license/:mangaId/review')
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
-async reviewLicense(
-  @Param('mangaId') mangaId: string,
-  @Body() dto: ReviewLicenseDto,
-  @Req() req: Request,
-) {
-  const user = (req as any).user;
-  const reviewerId = user?.user_id || user?.userId;
+  @Get('admin/license/:mangaId')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  async getLicenseDetail(@Param('mangaId') mangaId: string) {
+    return this.mangaService.getLicenseDetail(mangaId);
+  }
 
-  return this.mangaService.reviewLicense(
-    mangaId,
-    reviewerId,
-    dto.status,
-    dto.rejectReason,
-  );
-}
+  @Patch('admin/license/:mangaId/review')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  async reviewLicense(
+    @Param('mangaId') mangaId: string,
+    @Body() dto: ReviewLicenseDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    const reviewerId = user?.user_id || user?.userId;
 
-@Get(':id/license-status')
-@UseGuards(AccessTokenGuard)
-async getLicenseStatus(@Param('id') mangaId: string) {
-  return this.mangaService.getLicenseStatus(mangaId);
-}
+    return this.mangaService.reviewLicense(
+      mangaId,
+      reviewerId,
+      dto.status,
+      dto.rejectReason,
+      dto.publishAfterApprove ?? false,
+    );
+  }
 
+  // ✅ New: publish control for moderation workspace
+  @Patch('admin/story/:mangaId/publish')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async setPublishStatus(
+    @Param('mangaId') mangaId: string,
+    @Body() dto: UpdatePublishStatusDto,
+  ) {
+    return this.mangaService.setPublishStatus(mangaId, dto.isPublish);
+  }
+
+  @Get(':id/license-status')
+  @UseGuards(AccessTokenGuard)
+  async getLicenseStatus(@Param('id') mangaId: string) {
+    return this.mangaService.getLicenseStatus(mangaId);
+  }
 }
