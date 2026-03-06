@@ -264,7 +264,7 @@ export class MangaController {
   // ✅ New: queue endpoint for real management page
   @Get('admin/licenses')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles( Role.CONTENT_MODERATOR)
   async getLicenseQueue(
     @Query('status') status: 'all' | 'none' | 'pending' | 'approved' | 'rejected' = 'pending',
     @Query('q') q = '',
@@ -279,7 +279,7 @@ export class MangaController {
   // ✅ Keep old endpoint for backward compatibility
   @Get('admin/licenses/pending')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles( Role.CONTENT_MODERATOR)
   async getPendingLicenses() {
     const res = await this.mangaService.getLicenseQueue('pending', '', 1, 50);
     return res.data;
@@ -287,14 +287,14 @@ export class MangaController {
 
   @Get('admin/license/:mangaId')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles( Role.CONTENT_MODERATOR)
   async getLicenseDetail(@Param('mangaId') mangaId: string) {
     return this.mangaService.getLicenseDetail(mangaId);
   }
 
   @Patch('admin/license/:mangaId/review')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles( Role.CONTENT_MODERATOR)
   async reviewLicense(
     @Param('mangaId') mangaId: string,
     @Body() dto: ReviewLicenseDto,
@@ -315,7 +315,7 @@ export class MangaController {
   // ✅ New: publish control for moderation workspace
   @Patch('admin/story/:mangaId/publish')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles( Role.CONTENT_MODERATOR)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async setPublishStatus(
     @Param('mangaId') mangaId: string,

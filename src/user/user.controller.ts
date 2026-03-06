@@ -30,8 +30,8 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
 import { AdminSetRoleDto } from './dto/admin-set-role.dto';
+import { AdminResetUserStatusDto } from './dto/admin-reset-user-status.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
-import { AdminResetUserStatusDto } from "./dto/admin-reset-user-status.dto";
 
 @Controller('api/user')
 export class UserController {
