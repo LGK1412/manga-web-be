@@ -24,7 +24,7 @@ import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
@@ -35,12 +35,12 @@ import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
-import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { UploadMangaLicenseDto } from './dto/upload-manga-license.dto';
-
 import { ReviewLicenseDto } from './dto/review-license.dto';
 import { UpdatePublishStatusDto } from './dto/update-publish-status.dto';
+import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
+import { UpdateEnforcementStatusDto } from './dto/update-enforcement-status.dto';
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -91,6 +91,43 @@ export class MangaController {
   ) {
     const l = Math.max(1, Math.min(50, parseInt(limit as string, 10) || 5));
     return this.mangaService.topStories(l, by);
+  }
+
+  // ================= MANGA MANAGEMENT =================
+
+  @Get('admin/management')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async getManagementList(@Query() query: GetMangaManagementQueryDto) {
+    return this.mangaService.getManagementList(query);
+  }
+
+  @Get('admin/management/:mangaId')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  async getManagementDetail(@Param('mangaId') mangaId: string) {
+    return this.mangaService.getManagementDetail(mangaId);
+  }
+
+  @Patch('admin/story/:mangaId/enforcement')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async setEnforcementStatus(
+    @Param('mangaId') mangaId: string,
+    @Body() dto: UpdateEnforcementStatusDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    const actorId = user?.user_id || user?.userId;
+
+    return this.mangaService.setEnforcementStatus(
+      mangaId,
+      actorId,
+      dto.status,
+      dto.reason,
+    );
   }
 
   // ================= PUBLIC READING =================
@@ -261,10 +298,10 @@ export class MangaController {
   }
 
   // ================= MODERATION (UC-106) =================
-  // ✅ New: queue endpoint for real management page
+
   @Get('admin/licenses')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles( Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async getLicenseQueue(
     @Query('status') status: 'all' | 'none' | 'pending' | 'approved' | 'rejected' = 'pending',
     @Query('q') q = '',
@@ -276,10 +313,9 @@ export class MangaController {
     return this.mangaService.getLicenseQueue(status, q, p, l);
   }
 
-  // ✅ Keep old endpoint for backward compatibility
   @Get('admin/licenses/pending')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles( Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async getPendingLicenses() {
     const res = await this.mangaService.getLicenseQueue('pending', '', 1, 50);
     return res.data;
@@ -287,14 +323,15 @@ export class MangaController {
 
   @Get('admin/license/:mangaId')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles( Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   async getLicenseDetail(@Param('mangaId') mangaId: string) {
     return this.mangaService.getLicenseDetail(mangaId);
   }
 
   @Patch('admin/license/:mangaId/review')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles( Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async reviewLicense(
     @Param('mangaId') mangaId: string,
     @Body() dto: ReviewLicenseDto,
@@ -312,10 +349,9 @@ export class MangaController {
     );
   }
 
-  // ✅ New: publish control for moderation workspace
   @Patch('admin/story/:mangaId/publish')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles( Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async setPublishStatus(
     @Param('mangaId') mangaId: string,

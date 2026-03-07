@@ -10,6 +10,12 @@ export enum MangaLicenseStatus {
   REJECTED = 'rejected',
 }
 
+export enum MangaEnforcementStatus {
+  NORMAL = 'normal',
+  SUSPENDED = 'suspended',
+  BANNED = 'banned',
+}
+
 @Schema({ timestamps: true })
 export class Manga {
   @Prop({ required: true })
@@ -24,7 +30,8 @@ export class Manga {
   @Prop({ required: false })
   coverImage: string;
 
-  @Prop({ default: true })
+  // đổi default thành false để đúng flow staff/mod quản lý publish
+  @Prop({ default: false })
   isPublish: boolean;
 
   @Prop({ default: false })
@@ -45,7 +52,7 @@ export class Manga {
   @Prop({ default: 0 })
   views: number;
 
-  // ====== NEW LICENSE FIELDS ======
+  // ====== LICENSE ======
   @Prop({
     type: String,
     enum: Object.values(MangaLicenseStatus),
@@ -62,7 +69,6 @@ export class Manga {
   @Prop({ type: Date })
   licenseSubmittedAt?: Date;
 
-  // (để UC-106 dùng sau)
   @Prop({ type: Types.ObjectId, ref: 'User' })
   licenseReviewedBy?: Types.ObjectId;
 
@@ -71,6 +77,23 @@ export class Manga {
 
   @Prop({ type: String, default: '' })
   licenseRejectReason?: string;
+
+  // ====== ENFORCEMENT ======
+  @Prop({
+    type: String,
+    enum: Object.values(MangaEnforcementStatus),
+    default: MangaEnforcementStatus.NORMAL,
+  })
+  enforcementStatus: MangaEnforcementStatus;
+
+  @Prop({ type: String, default: '' })
+  enforcementReason: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  enforcementUpdatedBy?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  enforcementUpdatedAt?: Date;
 }
 
 export const MangaSchema = SchemaFactory.createForClass(Manga);

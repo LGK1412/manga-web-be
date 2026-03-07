@@ -10,7 +10,12 @@ import fs from 'fs';
 import { join, extname } from 'path';
 import crypto from 'crypto';
 
-import { Manga, MangaDocument, MangaLicenseStatus } from '../schemas/Manga.schema';
+import {
+  Manga,
+  MangaDocument,
+  MangaLicenseStatus,
+  MangaEnforcementStatus,
+} from '../schemas/Manga.schema';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 import { StylesService } from '../styles/styles.service';
@@ -28,6 +33,7 @@ import {
 import { Rating, RatingDocument } from '../schemas/Rating.schema';
 import { startOfMonth, subMonths } from 'date-fns';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
 
 @Injectable()
 export class MangaService {
@@ -45,7 +51,7 @@ export class MangaService {
   ) {}
 
   // =========================================================
-  // ✅ License upload helpers
+  // helpers
   // =========================================================
 
   private genFileName(originalName: string) {
@@ -60,6 +66,49 @@ export class MangaService {
 
   private toAbsFromRel(rel: string) {
     return join('public', rel.replace(/^\/?/, ''));
+  }
+
+  private normalizeCoverImage(path?: string | null) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+      return path;
+    }
+    return `/assets/coverImages/${path}`;
+  }
+
+  private normalizeAssetPath(path?: string | null) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+      return path;
+    }
+    return `/${path.replace(/^\/+/, '')}`;
+  }
+
+  private resolvePublicationStatus(
+    isPublish: boolean,
+    licenseStatus?: MangaLicenseStatus | string | null,
+  ): 'draft' | 'published' | 'unpublished' {
+    if (isPublish) return 'published';
+    if (
+      !licenseStatus ||
+      licenseStatus === MangaLicenseStatus.NONE ||
+      licenseStatus === MangaLicenseStatus.PENDING
+    ) {
+      return 'draft';
+    }
+    return 'unpublished';
+  }
+
+  private resolveEnforcementStatus(
+    status?: MangaEnforcementStatus | string | null,
+  ): MangaEnforcementStatus {
+    if (
+      status === MangaEnforcementStatus.SUSPENDED ||
+      status === MangaEnforcementStatus.BANNED
+    ) {
+      return status;
+    }
+    return MangaEnforcementStatus.NORMAL;
   }
 
   /**
@@ -84,7 +133,7 @@ export class MangaService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'authorId licenseFiles licenseStatus licenseNote licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy',
+        'authorId isPublish licenseFiles licenseStatus licenseNote licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy',
       );
 
     if (!manga) throw new NotFoundException('Manga not found');
@@ -133,11 +182,12 @@ export class MangaService {
       (manga as any).licenseFiles = newRelFiles;
       (manga as any).licenseNote = note ?? '';
       (manga as any).licenseSubmittedAt = new Date();
-
-      // reset if re-upload
       (manga as any).licenseRejectReason = '';
       (manga as any).licenseReviewedAt = undefined;
       (manga as any).licenseReviewedBy = undefined;
+
+      // re-submit license => tắt public để chờ review lại
+      (manga as any).isPublish = false;
 
       await manga.save();
     } catch {
@@ -155,8 +205,11 @@ export class MangaService {
       success: true,
       mangaId,
       licenseStatus: (manga as any).licenseStatus,
-      files: (manga as any).licenseFiles,
+      files: ((manga as any).licenseFiles || []).map((f: string) =>
+        this.normalizeAssetPath(f),
+      ),
       submittedAt: (manga as any).licenseSubmittedAt,
+      isPublish: (manga as any).isPublish,
     };
   }
 
@@ -195,13 +248,15 @@ export class MangaService {
       const newManga = new this.mangaModel({
         ...createMangaDto,
         authorId,
+        isPublish: false,
+        licenseStatus: MangaLicenseStatus.NONE,
+        enforcementStatus: MangaEnforcementStatus.NORMAL,
       });
 
       this.eventEmitter.emit('story_create_count', { userId: authorId });
 
       return await newManga.save();
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('Error creating manga:', error);
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException('Unable to create new manga');
@@ -299,13 +354,16 @@ export class MangaService {
     return mangas ?? [];
   }
 
-  // ✅ Updated: include licenseStatus so frontend can show tick on cover
   async getAllManga(page = 1, limit = 24) {
     const skip = (page - 1) * limit;
 
     const matchStage = {
       isDeleted: false,
       isPublish: true,
+      $or: [
+        { enforcementStatus: { $exists: false } },
+        { enforcementStatus: MangaEnforcementStatus.NORMAL },
+      ],
     };
 
     const pipeline: any[] = [
@@ -405,8 +463,6 @@ export class MangaService {
           'latest_chapter.title': 1,
           'latest_chapter.order': 1,
           'latest_chapter.createdAt': 1,
-
-          // ✅ for badge
           licenseStatus: 1,
           isLicensed: 1,
         },
@@ -433,17 +489,29 @@ export class MangaService {
       .allowDiskUse(true)
       .exec();
 
-    return { data: res?.data ?? [], total: res?.total ?? 0 };
+    const mapped = (res?.data ?? []).map((item: any) => ({
+      ...item,
+      coverImage: this.normalizeCoverImage(item.coverImage),
+    }));
+
+    return { data: mapped, total: res?.total ?? 0 };
   }
 
-  // ✅ Updated detail: include licenseStatus for badge on cover
   async findMangaDetail(mangaId: string, userId: string): Promise<any> {
     if (!Types.ObjectId.isValid(mangaId)) {
       throw new NotFoundException('Manga not found');
     }
 
     const manga = await this.mangaModel
-      .findById(mangaId)
+      .findOne({
+        _id: new Types.ObjectId(mangaId),
+        isDeleted: false,
+        isPublish: true,
+        $or: [
+          { enforcementStatus: { $exists: false } },
+          { enforcementStatus: MangaEnforcementStatus.NORMAL },
+        ],
+      })
       .populate('authorId', 'username avatar')
       .lean();
 
@@ -494,14 +562,12 @@ export class MangaService {
       _id: (manga as any)._id.toString(),
       title: (manga as any).title,
       summary: (manga as any).summary,
-      coverImage: (manga as any).coverImage,
+      coverImage: this.normalizeCoverImage((manga as any).coverImage),
       author: (manga as any).authorId,
       views: (manga as any).views,
       status: (manga as any).status,
       chapters: chaptersWithPurchase,
       ratingSummary,
-
-      // ✅ for verified badge
       licenseStatus,
       isLicensed: licenseStatus === MangaLicenseStatus.APPROVED,
     };
@@ -509,7 +575,14 @@ export class MangaService {
 
   async getAllBasic() {
     const mangas = await this.mangaModel
-      .find({ isDeleted: false, isPublish: true })
+      .find({
+        isDeleted: false,
+        isPublish: true,
+        $or: [
+          { enforcementStatus: { $exists: false } },
+          { enforcementStatus: MangaEnforcementStatus.NORMAL },
+        ],
+      })
       .select('_id title')
       .sort({ title: 1 })
       .lean();
@@ -518,6 +591,393 @@ export class MangaService {
 
   async getAuthorByMangaIdForCommentChapter(id: string | Types.ObjectId) {
     return this.mangaModel.findById(id).populate('authorId').exec();
+  }
+
+  // ====================== MANAGEMENT ======================
+
+  async getManagementList(query: GetMangaManagementQueryDto) {
+    const {
+      q = '',
+      licenseStatus = 'all',
+      publicationStatus = 'all',
+      enforcementStatus = 'all',
+      authorId,
+      page = 1,
+      limit = 20,
+    } = query;
+
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+
+    const pipeline: any[] = [
+      {
+        $match: {
+          isDeleted: { $ne: true },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'authorId',
+          foreignField: '_id',
+          as: 'author',
+        },
+      },
+      {
+        $unwind: {
+          path: '$author',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: 'chapters',
+          let: { mangaId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$manga_id', '$$mangaId'] },
+                    { $ne: ['$isDeleted', true] },
+                  ],
+                },
+              },
+            },
+            { $count: 'count' },
+          ],
+          as: '_chapterCount',
+        },
+      },
+      {
+        $addFields: {
+          authorName: { $ifNull: ['$author.username', 'Unknown'] },
+          chaptersCount: {
+            $ifNull: [{ $arrayElemAt: ['$_chapterCount.count', 0] }, 0],
+          },
+          enforcementStatus: {
+            $ifNull: ['$enforcementStatus', MangaEnforcementStatus.NORMAL],
+          },
+          publicationStatus: {
+            $cond: [
+              '$isPublish',
+              'published',
+              {
+                $cond: [
+                  {
+                    $in: [
+                      '$licenseStatus',
+                      [MangaLicenseStatus.NONE, MangaLicenseStatus.PENDING],
+                    ],
+                  },
+                  'draft',
+                  'unpublished',
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const matchAfterComputed: any = {};
+
+    if (licenseStatus !== 'all') {
+      matchAfterComputed.licenseStatus = licenseStatus;
+    }
+
+    if (publicationStatus !== 'all') {
+      matchAfterComputed.publicationStatus = publicationStatus;
+    }
+
+    if (enforcementStatus !== 'all') {
+      matchAfterComputed.enforcementStatus = enforcementStatus;
+    }
+
+    if (authorId && Types.ObjectId.isValid(authorId)) {
+      matchAfterComputed.authorId = new Types.ObjectId(authorId);
+    }
+
+    if (q.trim()) {
+      matchAfterComputed.$or = [
+        { title: { $regex: q.trim(), $options: 'i' } },
+        { authorName: { $regex: q.trim(), $options: 'i' } },
+      ];
+    }
+
+    if (Object.keys(matchAfterComputed).length > 0) {
+      pipeline.push({ $match: matchAfterComputed });
+    }
+
+    pipeline.push(
+      { $sort: { updatedAt: -1, createdAt: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: safeLimit },
+            {
+              $project: {
+                _id: 1,
+                title: 1,
+                summary: 1,
+                coverImage: 1,
+                authorId: 1,
+                author: '$authorName',
+                licenseStatus: 1,
+                publicationStatus: 1,
+                enforcementStatus: 1,
+                enforcementReason: {
+                  $ifNull: ['$enforcementReason', ''],
+                },
+                status: 1,
+                views: 1,
+                chaptersCount: 1,
+                updatedAt: 1,
+                licenseSubmittedAt: 1,
+                licenseReviewedAt: 1,
+                isPublish: 1,
+              },
+            },
+          ],
+          total: [{ $count: 'count' }],
+        },
+      },
+      {
+        $project: {
+          data: 1,
+          total: { $ifNull: [{ $arrayElemAt: ['$total.count', 0] }, 0] },
+        },
+      },
+    );
+
+    const [result, statsAgg] = await Promise.all([
+      this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec(),
+      this.mangaModel.aggregate([
+        {
+          $match: {
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $addFields: {
+            enforcementStatus: {
+              $ifNull: ['$enforcementStatus', MangaEnforcementStatus.NORMAL],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            pendingLicense: {
+              $sum: {
+                $cond: [{ $eq: ['$licenseStatus', MangaLicenseStatus.PENDING] }, 1, 0],
+              },
+            },
+            published: {
+              $sum: {
+                $cond: [{ $eq: ['$isPublish', true] }, 1, 0],
+              },
+            },
+            enforcementIssues: {
+              $sum: {
+                $cond: [
+                  { $ne: ['$enforcementStatus', MangaEnforcementStatus.NORMAL] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const rows = result?.[0]?.data ?? [];
+    const total = result?.[0]?.total ?? 0;
+    const statsRow = statsAgg?.[0] || {
+      total: 0,
+      pendingLicense: 0,
+      published: 0,
+      enforcementIssues: 0,
+    };
+
+    return {
+      data: rows.map((item: any) => ({
+        ...item,
+        id: item._id.toString(),
+        coverImage: this.normalizeCoverImage(item.coverImage),
+      })),
+      total,
+      page: safePage,
+      limit: safeLimit,
+      stats: {
+        total: statsRow.total,
+        pendingLicense: statsRow.pendingLicense,
+        published: statsRow.published,
+        enforcementIssues: statsRow.enforcementIssues,
+      },
+    };
+  }
+
+  async getManagementDetail(mangaId: string) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    const manga = await this.mangaModel
+      .findById(mangaId)
+      .populate('authorId', 'username email avatar')
+      .populate('styles', 'name')
+      .populate('genres', 'name')
+      .populate('licenseReviewedBy', 'username email')
+      .populate('enforcementUpdatedBy', 'username email')
+      .lean();
+
+    if (!manga) {
+      throw new NotFoundException('Manga not found');
+    }
+
+    const [chaptersCount, ratingAgg] = await Promise.all([
+      this.chapterModel.countDocuments({
+        manga_id: new Types.ObjectId(mangaId),
+        isDeleted: { $ne: true },
+      }),
+      this.ratingModel.aggregate([
+        { $match: { mangaId: new Types.ObjectId(mangaId) } },
+        {
+          $group: {
+            _id: '$mangaId',
+            avgRating: { $avg: '$rating' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const ratingSummary = ratingAgg[0]
+      ? { avgRating: ratingAgg[0].avgRating, count: ratingAgg[0].count }
+      : { avgRating: 0, count: 0 };
+
+    const licenseStatus =
+      (manga as any).licenseStatus || MangaLicenseStatus.NONE;
+    const enforcementStatus = this.resolveEnforcementStatus(
+      (manga as any).enforcementStatus,
+    );
+
+    return {
+      id: (manga as any)._id.toString(),
+      title: (manga as any).title,
+      summary: (manga as any).summary || '',
+      coverImage: this.normalizeCoverImage((manga as any).coverImage),
+      author: (manga as any).authorId
+        ? {
+            _id: (manga as any).authorId._id?.toString?.() || '',
+            username: (manga as any).authorId.username || 'Unknown',
+            email: (manga as any).authorId.email || '',
+            avatar: (manga as any).authorId.avatar || '',
+          }
+        : null,
+      styles: Array.isArray((manga as any).styles)
+        ? (manga as any).styles.map((s: any) => ({
+            _id: s._id?.toString?.() || '',
+            name: s.name,
+          }))
+        : [],
+      genres: Array.isArray((manga as any).genres)
+        ? (manga as any).genres.map((g: any) => ({
+            _id: g._id?.toString?.() || '',
+            name: g.name,
+          }))
+        : [],
+      views: (manga as any).views || 0,
+      status: (manga as any).status || 'ongoing',
+      chaptersCount,
+      ratingSummary,
+      updatedAt: (manga as any).updatedAt,
+      createdAt: (manga as any).createdAt,
+
+      licenseStatus,
+      licenseFiles: Array.isArray((manga as any).licenseFiles)
+        ? (manga as any).licenseFiles.map((f: string) => this.normalizeAssetPath(f))
+        : [],
+      licenseNote: (manga as any).licenseNote || '',
+      licenseSubmittedAt: (manga as any).licenseSubmittedAt || null,
+      licenseReviewedAt: (manga as any).licenseReviewedAt || null,
+      licenseReviewedBy: (manga as any).licenseReviewedBy
+        ? {
+            _id: (manga as any).licenseReviewedBy._id?.toString?.() || '',
+            username: (manga as any).licenseReviewedBy.username || 'Unknown',
+            email: (manga as any).licenseReviewedBy.email || '',
+          }
+        : null,
+      licenseRejectReason: (manga as any).licenseRejectReason || '',
+
+      isPublish: Boolean((manga as any).isPublish),
+      publicationStatus: this.resolvePublicationStatus(
+        Boolean((manga as any).isPublish),
+        licenseStatus,
+      ),
+
+      enforcementStatus,
+      enforcementReason: (manga as any).enforcementReason || '',
+      enforcementUpdatedAt: (manga as any).enforcementUpdatedAt || null,
+      enforcementUpdatedBy: (manga as any).enforcementUpdatedBy
+        ? {
+            _id: (manga as any).enforcementUpdatedBy._id?.toString?.() || '',
+            username: (manga as any).enforcementUpdatedBy.username || 'Unknown',
+            email: (manga as any).enforcementUpdatedBy.email || '',
+          }
+        : null,
+    };
+  }
+
+  async setEnforcementStatus(
+    mangaId: string,
+    actorId: string,
+    status: MangaEnforcementStatus,
+    reason?: string,
+  ) {
+    if (!Types.ObjectId.isValid(mangaId)) {
+      throw new BadRequestException('Invalid mangaId');
+    }
+
+    if (!Types.ObjectId.isValid(actorId)) {
+      throw new BadRequestException('Invalid actorId');
+    }
+
+    const manga = await this.mangaModel.findById(mangaId);
+    if (!manga) throw new NotFoundException('Manga not found');
+
+    if (
+      (status === MangaEnforcementStatus.SUSPENDED ||
+        status === MangaEnforcementStatus.BANNED) &&
+      !reason?.trim()
+    ) {
+      throw new BadRequestException('Reason is required');
+    }
+
+    manga.enforcementStatus = status;
+    manga.enforcementReason =
+      status === MangaEnforcementStatus.NORMAL ? '' : reason?.trim() || '';
+    manga.enforcementUpdatedBy = new Types.ObjectId(actorId);
+    manga.enforcementUpdatedAt = new Date();
+
+    if (status !== MangaEnforcementStatus.NORMAL) {
+      manga.isPublish = false;
+    }
+
+    await manga.save();
+
+    return {
+      success: true,
+      mangaId,
+      enforcementStatus: manga.enforcementStatus,
+      enforcementReason: manga.enforcementReason,
+      isPublish: manga.isPublish,
+    };
   }
 
   // ====================== DASHBOARD / STATS ======================
@@ -616,7 +1076,14 @@ export class MangaService {
     const sortObj: Record<string, 1 | -1> = { [sortField]: -1 };
 
     const items = await this.mangaModel
-      .find({ isDeleted: false, isPublish: true })
+      .find({
+        isDeleted: false,
+        isPublish: true,
+        $or: [
+          { enforcementStatus: { $exists: false } },
+          { enforcementStatus: MangaEnforcementStatus.NORMAL },
+        ],
+      })
       .sort(sortObj)
       .limit(limit)
       .select('title authorId views status licenseStatus')
@@ -638,7 +1105,16 @@ export class MangaService {
 
   async getRandomManga() {
     const pipeline: any[] = [
-      { $match: { isDeleted: false, isPublish: true } },
+      {
+        $match: {
+          isDeleted: false,
+          isPublish: true,
+          $or: [
+            { enforcementStatus: { $exists: false } },
+            { enforcementStatus: MangaEnforcementStatus.NORMAL },
+          ],
+        },
+      },
       {
         $lookup: {
           from: 'chapters',
@@ -776,7 +1252,6 @@ export class MangaService {
     }
   }
 
-  // ✅ Updated recommend: include licenseStatus for badge
   async getRecommendStory(user_id: Types.ObjectId) {
     const histories = await this.historyModel
       .find({ user_id: user_id })
@@ -813,8 +1288,16 @@ export class MangaService {
           isPublish: true,
           _id: { $nin: readMangaIds },
           $or: [
-            { genres: { $in: genreIds.map((id) => new Types.ObjectId(id)) } },
-            { styles: { $in: styleIds.map((id) => new Types.ObjectId(id)) } },
+            { enforcementStatus: { $exists: false } },
+            { enforcementStatus: MangaEnforcementStatus.NORMAL },
+          ],
+          $and: [
+            {
+              $or: [
+                { genres: { $in: genreIds.map((id) => new Types.ObjectId(id)) } },
+                { styles: { $in: styleIds.map((id) => new Types.ObjectId(id)) } },
+              ],
+            },
           ],
         },
       },
@@ -913,8 +1396,6 @@ export class MangaService {
           'latest_chapter.title': 1,
           'latest_chapter.order': 1,
           'latest_chapter.createdAt': 1,
-
-          // ✅ for badge
           licenseStatus: 1,
           isLicensed: 1,
         },
@@ -937,7 +1418,11 @@ export class MangaService {
     ];
 
     const [res] = await this.mangaModel.aggregate(pipeline).allowDiskUse(true).exec();
-    return { data: res?.data ?? [], total: res?.total ?? 0 };
+    const mapped = (res?.data ?? []).map((item: any) => ({
+      ...item,
+      coverImage: this.normalizeCoverImage(item.coverImage),
+    }));
+    return { data: mapped, total: res?.total ?? 0 };
   }
 
   // ====================== MODERATION / LICENSE QUEUE ======================
@@ -948,10 +1433,14 @@ export class MangaService {
     page = 1,
     limit = 20,
   ) {
-    const match: any = {};
+    const match: any = {
+      isDeleted: { $ne: true },
+    };
+
     if (status !== 'all') {
       match.licenseStatus = status;
     }
+
     if (q && q.trim()) {
       match.title = { $regex: q.trim(), $options: 'i' };
     }
@@ -961,7 +1450,9 @@ export class MangaService {
     const [data, total, grouped] = await Promise.all([
       this.mangaModel
         .find(match)
-        .select('_id title coverImage isPublish status licenseStatus licenseSubmittedAt authorId')
+        .select(
+          '_id title coverImage isPublish status licenseStatus licenseSubmittedAt enforcementStatus authorId',
+        )
         .populate('authorId', 'username email')
         .sort({ licenseSubmittedAt: -1, updatedAt: -1 })
         .skip(skip)
@@ -990,7 +1481,11 @@ export class MangaService {
     }
 
     return {
-      data,
+      data: data.map((item: any) => ({
+        ...item,
+        coverImage: this.normalizeCoverImage(item.coverImage),
+        enforcementStatus: this.resolveEnforcementStatus(item.enforcementStatus),
+      })),
       total,
       page,
       limit,
@@ -1006,22 +1501,26 @@ export class MangaService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'title coverImage isPublish status licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy authorId',
+        'title coverImage isPublish status licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy authorId enforcementStatus enforcementReason',
       )
       .populate('authorId', 'username email')
-      .populate('licenseReviewedBy', 'username')
+      .populate('licenseReviewedBy', 'username email')
       .lean();
 
     if (!manga) {
       throw new NotFoundException('Manga not found');
     }
 
-    return manga;
+    return {
+      ...manga,
+      coverImage: this.normalizeCoverImage((manga as any).coverImage),
+      licenseFiles: Array.isArray((manga as any).licenseFiles)
+        ? (manga as any).licenseFiles.map((f: string) => this.normalizeAssetPath(f))
+        : [],
+      enforcementStatus: this.resolveEnforcementStatus((manga as any).enforcementStatus),
+    };
   }
 
-  /**
-   * ✅ UC-106: review license + optional publish after approve
-   */
   async reviewLicense(
     mangaId: string,
     reviewerId: string,
@@ -1060,11 +1559,21 @@ export class MangaService {
         throw new BadRequestException('Reject reason is required');
       }
       manga.licenseRejectReason = rejectReason.trim();
+      manga.isPublish = false;
     } else {
       manga.licenseRejectReason = '';
 
-      // ✅ optional: publish right after approve (makes badge visible in public lists)
       if (publishAfterApprove) {
+        const enforcementStatus = this.resolveEnforcementStatus(
+          manga.enforcementStatus,
+        );
+
+        if (enforcementStatus !== MangaEnforcementStatus.NORMAL) {
+          throw new BadRequestException(
+            'Cannot publish after approve because story is suspended or banned',
+          );
+        }
+
         manga.isPublish = true;
       }
     }
@@ -1080,10 +1589,6 @@ export class MangaService {
     };
   }
 
-  /**
-   * ✅ Moderation: publish/unpublish story
-   * - Publish requires license APPROVED (recommended & enforced here)
-   */
   async setPublishStatus(mangaId: string, isPublish: boolean) {
     if (!Types.ObjectId.isValid(mangaId)) {
       throw new BadRequestException('Invalid mangaId');
@@ -1092,9 +1597,18 @@ export class MangaService {
     const manga = await this.mangaModel.findById(mangaId);
     if (!manga) throw new NotFoundException('Manga not found');
 
-    // enforce: cannot publish without approved license
+    const enforcementStatus = this.resolveEnforcementStatus(
+      manga.enforcementStatus,
+    );
+
     if (isPublish && manga.licenseStatus !== MangaLicenseStatus.APPROVED) {
       throw new BadRequestException('Cannot publish: license is not approved');
+    }
+
+    if (isPublish && enforcementStatus !== MangaEnforcementStatus.NORMAL) {
+      throw new BadRequestException(
+        'Cannot publish: manga is suspended or banned',
+      );
     }
 
     manga.isPublish = Boolean(isPublish);
@@ -1104,7 +1618,12 @@ export class MangaService {
       success: true,
       mangaId,
       isPublish: manga.isPublish,
+      publicationStatus: this.resolvePublicationStatus(
+        manga.isPublish,
+        manga.licenseStatus,
+      ),
       licenseStatus: manga.licenseStatus,
+      enforcementStatus,
     };
   }
 
