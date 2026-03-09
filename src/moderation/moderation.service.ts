@@ -285,7 +285,6 @@ async listQueue(params: { status?: string; limit?: number }) {
     { $sort: { risk_score: -1, updatedAt: -1 } },
     { $limit: limit },
 
-    // --- Join -> Chapter (ép kiểu chapter_id nếu là string) ---
     {
       $lookup: {
         from: 'chapters',
@@ -314,7 +313,6 @@ async listQueue(params: { status?: string; limit?: number }) {
     },
     { $unwind: { path: '$ch', preserveNullAndEmptyArrays: true } },
 
-    // --- Join -> Manga từ ch.manga_id (cũng ép kiểu) ---
     {
       $lookup: {
         from: 'mangas',
@@ -336,14 +334,13 @@ async listQueue(params: { status?: string; limit?: number }) {
               },
             },
           },
-          { $project: { authorId: 1 } },
+          { $project: { authorId: 1, title: 1, name: 1 } },
         ],
         as: 'manga',
       },
     },
     { $unwind: { path: '$manga', preserveNullAndEmptyArrays: true } },
 
-    // --- Join -> User từ manga.authorId (cũng ép kiểu) ---
     {
       $lookup: {
         from: 'users',
@@ -372,7 +369,6 @@ async listQueue(params: { status?: string; limit?: number }) {
     },
     { $unwind: { path: '$author', preserveNullAndEmptyArrays: true } },
 
-    // --- Shape cho FE ---
     {
       $project: {
         _id: 0,
@@ -383,12 +379,13 @@ async listQueue(params: { status?: string; limit?: number }) {
         updatedAt: '$updatedAt',
 
         chapterTitle: { $ifNull: ['$ch.title', '-'] },
-        authorName: {
-          $ifNull: [
-            '$author.username',
-            { $ifNull: ['$author.email', '-'] },
-          ],
+        mangaTitle: {
+          $ifNull: ['$manga.title', { $ifNull: ['$manga.name', '-'] }],
         },
+        authorName: {
+          $ifNull: ['$author.username', { $ifNull: ['$author.email', '-'] }],
+        },
+        authorEmail: { $ifNull: ['$author.email', ''] },
       },
     },
   ]);
@@ -405,19 +402,15 @@ async listQueue(params: { status?: string; limit?: number }) {
   const agg = await this.cmModel.aggregate([
     { $match: { chapter_id: new Types.ObjectId(chapterId) } },
 
-    // Join -> Chapter
     { $lookup: { from: 'chapters', localField: 'chapter_id', foreignField: '_id', as: 'ch' } },
     { $unwind: { path: '$ch', preserveNullAndEmptyArrays: true } },
 
-    // Join -> Manga
     { $lookup: { from: 'mangas', localField: 'ch.manga_id', foreignField: '_id', as: 'manga' } },
     { $unwind: { path: '$manga', preserveNullAndEmptyArrays: true } },
 
-    // Join -> User (author)
     { $lookup: { from: 'users', localField: 'manga.authorId', foreignField: '_id', as: 'author' } },
     { $unwind: { path: '$author', preserveNullAndEmptyArrays: true } },
 
-    // Join -> TextChapters (lấy HTML để hiển thị)
     { $lookup: { from: 'textchapters', localField: 'chapter_id', foreignField: 'chapter_id', as: 'texts' } },
 
     {
@@ -433,14 +426,14 @@ async listQueue(params: { status?: string; limit?: number }) {
         updatedAt: 1,
 
         chapterTitle: { $ifNull: ['$ch.title', 'Untitled'] },
-        authorName: {
-          $ifNull: [
-            '$author.username',
-            { $ifNull: ['$author.email', '-'] }
-          ]
+        mangaTitle: {
+          $ifNull: ['$manga.title', { $ifNull: ['$manga.name', '-'] }],
         },
+        authorName: {
+          $ifNull: ['$author.username', { $ifNull: ['$author.email', '-'] }]
+        },
+        authorEmail: { $ifNull: ['$author.email', '' ] },
 
-        // lấy content đầu tiên, nếu có
         contentHtml: {
           $let: {
             vars: { firstText: { $arrayElemAt: ['$texts', 0] } },
