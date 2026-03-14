@@ -17,7 +17,7 @@ export class AdminNotificationService {
     private readonly noti: NotificationService,
 
     private readonly users: UserService
-  ) {}
+  ) { }
 
   // ================= SEND =================
   async sendToUser({ title, body, receiver_id, sender_id }: SendArgs) {

@@ -210,10 +210,12 @@ export class UserController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getPoint(@Req() req: Request) {
-    const user = req['user'];
+    const userId = req['user'].user_id;
+    const user = await this.userService.findUserById(userId);
     return {
       point: user.point,
       author_point: user.author_point,
+      locked_point: user.locked_point,
       game_point: user.game_point,
       role: user.role,
     };

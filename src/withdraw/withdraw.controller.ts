@@ -17,7 +17,6 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/withdraw')
 export class WithdrawController {
@@ -33,19 +32,10 @@ export class WithdrawController {
   async createWithdraw(
     @Req() req: Request,
     @Body('withdraw_point') withdraw_point: number,
-    @Body('bankCode') bankCode: string,
-    @Body('bankAccount') bankAccount: string,
-    @Body('accountHolder') accountHolder: string,
   ) {
-    const user = req['user'];
+    const userId = req['user'].user_id;
 
-    return this.withdrawService.createWithdraw(
-      user.user_id,
-      withdraw_point,
-      bankCode,
-      bankAccount,
-      accountHolder,
-    );
+    return this.withdrawService.createWithdraw(userId, withdraw_point);
   }
 
   /**
@@ -92,31 +82,32 @@ export class WithdrawController {
   }
 
   /**
-   * Admin lấy lịch sử rút của 1 author bất kỳ (có phân trang)
-   * Nếu bạn không cần endpoint này thì có thể xoá.
-   */
-  @Get('author/:authorId')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  async getUserWithdraws(
-    @Param('authorId') authorId: string,
-    @Query('page') page = '1',
-    @Query('limit') limit = '5',
-  ) {
-    return this.withdrawService.getUserWithdraws(
-      authorId,
-      parseInt(page, 10),
-      parseInt(limit, 10),
-    );
-  }
-
-  /**
    * Admin lấy danh sách tất cả yêu cầu rút
    */
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  async getAllWithdraws() {
-    return this.withdrawService.getAllWithdraws();
+  async getAllWithdraws(
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.withdrawService.getWithdraws({
+      month: month ? +month : undefined,
+      year: year ? +year : undefined,
+      status,
+      search,
+    });
   }
+
+  @Get('detail/:id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async getDetailWithdraw(
+    @Param('id') withdrawId: string,
+  ) {
+    return this.withdrawService.getDetailWithdraw(withdrawId);
+  }
+
 }

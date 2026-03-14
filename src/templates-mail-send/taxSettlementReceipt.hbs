@@ -1,0 +1,57 @@
+<div style="font-family: Arial, sans-serif; background:#f6f6f6; padding:30px;">
+    <div style="max-width:600px;margin:auto;background:#fff;padding:24px;border-radius:8px;">
+
+        <h2 style="margin-bottom:8px;">
+            Tax Settlement Completed
+        </h2>
+
+        <p>
+            The monthly tax settlement has been successfully processed.
+            Proof documents are attached to this email.
+        </p>
+
+        <hr />
+
+        <table style="width:100%; font-size:14px; line-height:1.6">
+            <tr>
+                <td><b>Settlement ID</b></td>
+                <td>{{settlementId}}</td>
+            </tr>
+
+            <tr>
+                <td><b>Receipt Number</b></td>
+                <td>{{receiptNumber}}</td>
+            </tr>
+
+            <tr>
+                <td><b>Total Tax</b></td>
+                <td>{{totalTax}} VND</td>
+            </tr>
+
+            <tr>
+                <td><b>Withdraw Count</b></td>
+                <td>{{withdrawCount}}</td>
+            </tr>
+
+            <tr>
+                <td><b>Author Count</b></td>
+                <td>{{authorCount}}</td>
+            </tr>
+
+            <tr>
+                <td><b>Paid At</b></td>
+                <td>{{paidAt}}</td>
+            </tr>
+        </table>
+
+        <hr />
+
+        <p style="font-size:13px;color:#666;">
+            This email contains legal accounting documents. Please store safely.
+        </p>
+
+        <p style="margin-top:20px;">
+            — {{platformName}} Finance System
+        </p>
+    </div>
+</div>
