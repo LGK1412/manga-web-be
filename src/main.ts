@@ -28,6 +28,14 @@ async function bootstrap() {
 
   app.use('/donation-items', express.static(join(process.cwd(), 'public', 'donation-items')));
 
+  app.use('/payoutInfo', express.static(join(process.cwd(), 'public', 'payoutInfo')));
+
+  app.use('/proofFiles', express.static(join(process.cwd(), 'public', 'proofFiles')));
+
+  app.use('/bankBatchRef', express.static(join(process.cwd(), 'public', 'bankBatchRef')));
+
+  app.use('/payout-identity', express.static(join(process.cwd(), 'public', 'payout-identity')));
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

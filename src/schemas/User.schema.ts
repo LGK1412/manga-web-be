@@ -76,6 +76,9 @@ export class User {
   author_point: number;
 
   @Prop({ required: false, default: 0 })
+  locked_point: number;
+
+  @Prop({ required: false, default: 0 })
   game_point: number;
 
   @Prop({

@@ -4,15 +4,17 @@ import { WithdrawController } from './withdraw.controller';
 import { UserModule } from 'src/user/user.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Withdraw, WithdrawSchema } from 'src/schemas/Withdrawal.schema';
-import { TaxSettlementModule } from 'src/tax-settlement/tax-settlement.module';
+import { TaxRule, TaxRuleSchema } from 'src/schemas/tax-rule.schema';
+import { AuthorPayoutProfile, AuthorPayoutProfileSchema } from 'src/schemas/author-payout-profile.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Withdraw.name, schema: WithdrawSchema },
+      { name: TaxRule.name, schema: TaxRuleSchema },
+      { name: AuthorPayoutProfile.name, schema: AuthorPayoutProfileSchema }
     ]),
     UserModule,
-    TaxSettlementModule
   ],
   controllers: [WithdrawController],
   providers: [WithdrawService],

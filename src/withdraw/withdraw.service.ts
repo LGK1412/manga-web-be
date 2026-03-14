@@ -1,10 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Withdraw, WithdrawDocument } from 'src/schemas/Withdrawal.schema';
 import { User, UserDocument } from 'src/schemas/User.schema';
-import { TaxSettlementService } from 'src/tax-settlement/tax-settlement.service';
-import { MailerService } from '@nestjs-modules/mailer';
+import { TaxRule, TaxRuleDocument } from 'src/schemas/tax-rule.schema';
+import { AuthorPayoutProfileDocument } from 'src/schemas/author-payout-profile.schema';
 
 @Injectable()
 export class WithdrawService {
@@ -13,8 +13,10 @@ export class WithdrawService {
     private readonly withdrawModel: Model<WithdrawDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
-    private readonly taxSettlementService: TaxSettlementService,
-    private readonly mailerService: MailerService
+    @InjectModel(TaxRule.name)
+    private readonly taxRuleModel: Model<TaxRuleDocument>,
+    @InjectModel('AuthorPayoutProfile')
+    private profileModel: Model<AuthorPayoutProfileDocument>,
   ) { }
 
   private readonly RATE = 150; // 1 point = 150 VND
@@ -22,95 +24,104 @@ export class WithdrawService {
   /**
    * Tạo yêu cầu rút tiền
    */
-  async createWithdraw(
-    authorId: string,
-    withdraw_point: number,
-    bankCode: string,
-    bankAccount: string,
-    accountHolder: string,
-  ) {
+  async createWithdraw(authorId: string, withdraw_point: number) {
+    const now = new Date();
+
     const author = await this.userModel.findById(authorId);
     if (!author) throw new NotFoundException('author not found');
 
-    if (withdraw_point <= 0) {
+    if (withdraw_point <= 0)
       throw new BadRequestException('Withdrawal points must be greater than 0');
-    }
 
-    if (author.author_point < withdraw_point) {
-      throw new BadRequestException('Insufficient points to withdraw');
-    }
+    const available = author.author_point - author.locked_point;
 
-    // Tính tổng điểm đang pending
-    const pendingSum = await this.withdrawModel.aggregate([
-      { $match: { authorId: new Types.ObjectId(authorId), status: "pending" } },
-      { $group: { _id: null, total: { $sum: "$withdraw_point" } } }
-    ]);
+    if (available < withdraw_point)
+      throw new BadRequestException(`Available points: ${available}`);
 
-    const pendingTotal = pendingSum.length > 0 ? pendingSum[0].total : 0;
+    /* ========= LOAD VERIFIED PROFILE ========= */
 
-    // Check available points
-    const availablePoints = author.author_point - pendingTotal;
-    if (availablePoints < withdraw_point) {
-      throw new BadRequestException(
-        `Insufficient available points. You currently have ${availablePoints} available points.`
-      );
-    }
-
-    const amount = withdraw_point * this.RATE;
-
-    // Tạo yêu cầu rút
-    const withdraw = new this.withdrawModel({
-      authorId: author._id,
-      withdraw_point,
-      amount,
-      bankCode,
-      bankAccount,
-      accountHolder,
-      status: 'pending',
+    const profile = await this.profileModel.findOne({
+      userId: authorId,
+      kycStatus: 'verified',
+      isActive: true,
     });
 
-    await withdraw.save();
+    if (!profile)
+      throw new ForbiddenException('KYC not approved');
 
-    return withdraw;
+    /* ========= LOCK POINT ========= */
+
+    author.locked_point += withdraw_point;
+    await author.save();
+
+    /* ========= CALCULATE MONEY ========= */
+
+    const grossAmount = withdraw_point * this.RATE;
+
+    const rule = await this.taxRuleModel
+      .findOne({
+        subject: 'AUTHOR',
+        isActive: true,
+        effectiveFrom: { $lte: now },
+        $or: [{ effectiveTo: null }, { effectiveTo: { $gte: now } }],
+        minPayout: { $lte: grossAmount },
+      })
+      .sort({ minPayout: -1 });
+
+    const taxRate = rule?.rate ?? 0;
+    const taxAmount = Math.floor(grossAmount * taxRate);
+
+    /* ========= SNAPSHOT PROFILE ========= */
+
+    return this.withdrawModel.create({
+      authorId: author._id,
+      withdraw_point,
+
+      // ===== snapshot legal info =====
+      fullName: profile.fullName,
+      citizenId: profile.citizenId,
+      dateOfBirth: profile.dateOfBirth,
+      address: profile.address,
+      taxCode: profile.taxCode,
+
+      // ===== bank =====
+      bankName: profile.bankName,
+      bankAccount: profile.bankAccount,
+      bankAccountName: profile.bankAccountName,
+
+      // ===== docs =====
+      identityImages: profile.identityImages,
+
+      // ===== tax =====
+      taxRuleId: rule?._id,
+      taxRate,
+      taxAmount,
+      taxLegalRef: rule?.legalRef ?? 'No tax',
+
+      // ===== money =====
+      grossAmount,
+      netAmount: grossAmount - taxAmount,
+
+      status: 'pending',
+    });
   }
 
   /**
    * Admin duyệt rút tiền
    */
   async approveWithdraw(withdrawId: string) {
-    const withdraw = await this.withdrawModel.findById(withdrawId).populate('authorId');
+    const withdraw = await this.withdrawModel.findById(withdrawId);
     if (!withdraw) throw new NotFoundException('Withdraw request not found');
 
-    if (withdraw.status !== 'pending') {
-      throw new BadRequestException('This request has already been processed');
-    }
+    if (withdraw.status !== 'pending')
+      throw new BadRequestException('Already processed');
 
-    const author = await this.userModel.findById(withdraw.authorId._id);
-    if (!author) throw new NotFoundException('author not found');
+    withdraw.status = 'approved';
+    withdraw.approvedAt = new Date();
 
-    if (author.author_point < withdraw.withdraw_point) {
-      throw new BadRequestException('Author does not have enough points to approve withdrawal');
-    }
-
-    // Trừ điểm
-    author.author_point -= withdraw.withdraw_point;
-    await author.save();
-
-    // Cập nhật trạng thái
-    withdraw.status = 'completed';
     await withdraw.save();
 
-    const taxSettlement = await this.taxSettlementService.createAuthorTaxSettlement(
-      author._id.toString(), withdrawId, withdraw.withdraw_point,
-    )
-
-    try {
-      await this.sendWithdrawReceiptEmail(withdraw, taxSettlement)
-    } catch (err) {
-      throw new BadRequestException(
-        `Unable to send email to user: ${err.message}`,
-      );
-    }
+    // await this.withdrawReportService.sendWithdrawReceiptEmail(withdraw, 'approved');
 
     return withdraw;
   }
@@ -122,9 +133,13 @@ export class WithdrawService {
     const withdraw = await this.withdrawModel.findById(withdrawId);
     if (!withdraw) throw new NotFoundException('Withdraw request not found');
 
-    if (withdraw.status !== 'pending') {
-      throw new BadRequestException('This request has already been processed');
-    }
+    if (withdraw.status !== 'pending')
+      throw new BadRequestException('Already processed');
+
+    const author = await this.userModel.findById(withdraw.authorId);
+    if (!author) throw new NotFoundException('author not found');
+    author.locked_point -= withdraw.withdraw_point;
+    await author.save();
 
     withdraw.status = 'rejected';
     if (note) withdraw['note'] = note;
@@ -152,43 +167,84 @@ export class WithdrawService {
     };
   }
 
-  /** * Lấy danh sách tất cả yêu cầu rút (cho admin) */
-  async getAllWithdraws() {
-    return this.withdrawModel.find()
-      .populate('authorId')
+  async getWithdraws(filter: {
+    month?: number;
+    year?: number;
+    status?: string;
+    search?: string;
+  }) {
+    const { month, year, status, search } = filter;
+
+    const query: any = {};
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (month || year) {
+      const now = new Date();
+      const y = year ?? now.getFullYear();
+
+      const from = new Date(y, month ? month - 1 : 0, 1);
+      const to = month
+        ? new Date(y, month, 1)
+        : new Date(y + 1, 0, 1);
+
+      query.createdAt = { $gte: from, $lt: to };
+    }
+
+    if (search) {
+      const authors = await this.userModel
+        .find({
+          $or: [
+            { username: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+          ],
+        })
+        .select('_id')
+        .lean();
+
+      query.authorId = { $in: authors.map(a => a._id) };
+    }
+
+    return this.withdrawModel
+      .find(query)
+      .select(`
+      authorId
+      taxCode
+      withdraw_point
+      taxRate
+      bankName
+      bankAccount
+      bankAccountName
+      grossAmount
+      taxAmount
+      netAmount
+      status
+      approvedAt
+      createdAt
+      settledAt
+      paidAt
+    `)
+      .populate({
+        path: 'authorId',
+        select: 'username email fullName',
+        options: { lean: true },
+      })
+      .lean()
+
       .sort({ createdAt: -1 });
   }
 
-  private async sendWithdrawReceiptEmail(
-    withdraw: WithdrawDocument,
-    taxSettlement: any,
-  ) {
-    const author = await this.userModel.findById(withdraw.authorId);
-    if (!author || !author.email) return;
+  async getDetailWithdraw(withdrawId: string) {
+    return this.withdrawModel
+      .findById(withdrawId)
 
-    const last4Digits = withdraw.bankAccount.slice(-4);
-
-    await this.mailerService.sendMail({
-      to: author.email,
-      subject: 'Withdrawal Receipt',
-      template: './withdrawalReceipt', // file .hbs
-      context: {
-        authorName: author.username,
-        withdrawId: withdraw._id,
-        date: new Date().toLocaleString('vi-VN'),
-
-        points: withdraw.withdraw_point,
-        gross: taxSettlement.grossAmount.toLocaleString(),
-        tax: taxSettlement.taxAmount.toLocaleString(),
-        net: taxSettlement.netAmount.toLocaleString(),
-
-        bankCode: withdraw.bankCode,
-        last4Digits,
-        accountHolder: withdraw.accountHolder,
-
-        PlatformName: 'MangaWord',
-      },
-    });
+      .populate({
+        path: 'authorId',
+        select: 'username email fullName',
+        options: { lean: true },
+      })
+      .lean();
   }
-
 }

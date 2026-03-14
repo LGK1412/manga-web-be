@@ -39,7 +39,7 @@ export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   // ================= ADMIN =================
 
@@ -210,10 +210,12 @@ export class UserController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getPoint(@Req() req: Request) {
-    const user = req['user'];
+    const userId = req['user'].user_id;
+    const user = await this.userService.findUserById(userId);
     return {
       point: user.point,
       author_point: user.author_point,
+      locked_point: user.locked_point,
       game_point: user.game_point,
       role: user.role,
     };
@@ -308,13 +310,13 @@ export class UserController {
   }
 
   @Patch("/admin/reset-user-status")
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN)
-@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-async adminResetUserStatus(@Body() dto: AdminResetUserStatusDto, @Req() req: Request) {
-  const admin = (req as any).user;
-  const adminId = admin?.userId || admin?.user_id;
-  return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
-}
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async adminResetUserStatus(@Body() dto: AdminResetUserStatusDto, @Req() req: Request) {
+    const admin = (req as any).user;
+    const adminId = admin?.userId || admin?.user_id;
+    return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
+  }
 
 }

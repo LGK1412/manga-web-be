@@ -127,6 +127,7 @@ export class AuthService {
             bio: existingUser.bio,
             point: existingUser.point,
             author_point: existingUser.author_point,
+            locked_point: existingUser.locked_point,
             game_point: existingUser.game_point,
             lastBonus: existingUser.lastBonus
         }

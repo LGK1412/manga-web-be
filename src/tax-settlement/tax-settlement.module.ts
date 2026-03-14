@@ -1,21 +1,18 @@
 import { Module } from '@nestjs/common';
 import { TaxSettlementService } from './tax-settlement.service';
 import { TaxSettlementController } from './tax-settlement.controller';
-import { TaxSettlement, TaxSettlementSchema } from 'src/schemas/taxSettlement.schema';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Donation, DonationSchema } from 'src/schemas/donation.shema';
-import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purchase.schema';
+import { User, UserSchema } from 'src/schemas/User.schema';
+import { Withdraw, WithdrawSchema } from 'src/schemas/Withdrawal.schema';
+import { TaxSettlement, TaxSettlementSchema } from 'src/schemas/tax-settlement.schema';
 
 @Module({
-  imports: [
-    MongooseModule.forFeature([
-      { name: TaxSettlement.name, schema: TaxSettlementSchema },
-      { name: Donation.name, schema: DonationSchema },
-      { name: ChapterPurchase.name, schema: ChapterPurchaseSchema }
-    ]),
-  ],
+  imports: [MongooseModule.forFeature([
+    { name: User.name, schema: UserSchema },
+    { name: Withdraw.name, schema: WithdrawSchema },
+    { name: TaxSettlement.name, schema: TaxSettlementSchema }
+  ])],
   controllers: [TaxSettlementController],
   providers: [TaxSettlementService],
-  exports: [TaxSettlementService]
 })
 export class TaxSettlementModule { }
