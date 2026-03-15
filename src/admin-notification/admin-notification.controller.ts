@@ -25,7 +25,7 @@ import { Role } from "src/common/enums/role.enum";
 
 @Controller("/api/admin/notifications")
 @UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
 export class AdminNotificationController {
   constructor(
     private readonly svc: AdminNotificationService,

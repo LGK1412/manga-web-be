@@ -7,12 +7,20 @@ import {
   Param,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { GenreService } from './genre.service';
 import { CreateGenreDto } from './dto/CreateGenre.Schema';
 import { UpdateGenreDto } from './dto/UpdateGenre.Schema';
 
+import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
+
 @Controller('api/genre')
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.CONTENT_MODERATOR)
 export class GenreController {
   constructor(private readonly genreService: GenreService) {}
 

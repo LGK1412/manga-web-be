@@ -29,7 +29,7 @@ export class AuditLogController {
    * ✅ Admin + Content Moderator được xem logs
    */
   @Get()
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN)
   async list(
     @Query('search') search?: string,
     @Query('role') role?: string,
@@ -54,7 +54,7 @@ export class AuditLogController {
    * ✅ Admin + Content Moderator xem detail 1 log
    */
   @Get(':id')
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR)
+  @Roles(Role.ADMIN)
   async getOne(@Param('id') id: string) {
     return this.audit.findOne(id);
   }
