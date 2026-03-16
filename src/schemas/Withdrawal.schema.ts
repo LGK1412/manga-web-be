@@ -47,12 +47,6 @@ export class Withdraw {
     @Prop([String])
     identityImages: string[]; // ảnh CCCD mặt trước/sau 
 
-    @Prop([String])
-    taxDocuments: string[]; // file MST, hợp đồng, chứng từ khác
-
-    @Prop()
-    contractFile: string; // hợp đồng cộng tác (pdf)
-
     // ==== Quy đổi thành tiền ====
     @Prop({ required: true })
     grossAmount: number;

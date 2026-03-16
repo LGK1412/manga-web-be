@@ -43,7 +43,7 @@ export class WithdrawController {
    */
   @Patch(':id/approve')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async approveWithdraw(@Param('id') withdrawId: string) {
     return this.withdrawService.approveWithdraw(withdrawId);
   }
@@ -53,7 +53,7 @@ export class WithdrawController {
    */
   @Patch(':id/reject')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async rejectWithdraw(
     @Param('id') withdrawId: string,
     @Body('note') note?: string,
@@ -86,7 +86,7 @@ export class WithdrawController {
    */
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async getAllWithdraws(
     @Query('month') month?: string,
     @Query('year') year?: string,
@@ -103,7 +103,7 @@ export class WithdrawController {
 
   @Get('detail/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async getDetailWithdraw(
     @Param('id') withdrawId: string,
   ) {
