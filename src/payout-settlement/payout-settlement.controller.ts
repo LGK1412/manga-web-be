@@ -18,7 +18,7 @@ export class PayoutSettlementController {
 
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async findAllPayout(
     @Query('page') page = 1,
     @Query('limit') limit = 10,
@@ -38,7 +38,7 @@ export class PayoutSettlementController {
   // Thêm mark as pay
   @Patch('pay/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('bankBatchRef', 10, {
       storage: diskStorage({
@@ -78,7 +78,7 @@ export class PayoutSettlementController {
 
   @Get('export')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async exportPayoutSettlement(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -126,7 +126,7 @@ export class PayoutSettlementController {
 
   @Get('download/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async downloadPayoutExcel(
     @Param('id') id: string,
     @Res() res: express.Response,
@@ -154,7 +154,7 @@ export class PayoutSettlementController {
 
   @Patch('cancel/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async cancel(
     @Param('id') id: string,
     @Body('note') note: string,
@@ -165,7 +165,7 @@ export class PayoutSettlementController {
 
   @Patch('update-paid/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('proofFiles', 10, {
       storage: diskStorage({

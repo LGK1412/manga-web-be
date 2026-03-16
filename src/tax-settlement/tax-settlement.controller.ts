@@ -37,14 +37,14 @@ export class TaxSettlementController {
 
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async findAllTax(@Query() query: any) {
     return this.taxSettlementService.findAll(query);
   }
 
   @Post('export')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async exportAndDownload(
     @Body('from') from: string,
     @Body('to') to: string,
@@ -123,7 +123,7 @@ export class TaxSettlementController {
   // 3. Download lại từ lịch sử
   @Get('download/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async downloadAgain(
     @Param('id') id: string,
     @Res() res: express.Response,
@@ -201,7 +201,7 @@ export class TaxSettlementController {
 
   @Patch('pay/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('proofFiles', 10, {
       storage: diskStorage({
@@ -244,7 +244,7 @@ export class TaxSettlementController {
 
   @Patch('cancel/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async cancel(
     @Param('id') id: string,
     @Body('note') note: string,
@@ -255,7 +255,7 @@ export class TaxSettlementController {
 
   @Patch('update-paid/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('proofFiles', 10, {
       storage: diskStorage({
