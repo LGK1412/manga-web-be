@@ -18,7 +18,7 @@ import { Role } from 'src/common/enums/role.enum';
 
 @Controller('api/styles')
 @UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.CONTENT_MODERATOR)
+@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR)
 export class StylesController {
   constructor(private readonly stylesService: StylesService) {}
 
