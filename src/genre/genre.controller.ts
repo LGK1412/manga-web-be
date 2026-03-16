@@ -20,7 +20,7 @@ import { Role } from 'src/common/enums/role.enum';
 
 @Controller('api/genre')
 @UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR)
+@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
 export class GenreController {
   constructor(private readonly genreService: GenreService) {}
 
