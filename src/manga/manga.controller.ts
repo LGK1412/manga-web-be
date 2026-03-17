@@ -166,8 +166,8 @@ export class MangaController {
   }
 
   @Get('recomment/user/:userId')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.USER, Role.AUTHOR)
+  @UseGuards(AccessTokenGuard)
+  
   async getRecommendStory(@Param('userId') userId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     const tokenUserId = (payload as any).user_id || (payload as any).userId;

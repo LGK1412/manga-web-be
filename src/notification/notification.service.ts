@@ -18,13 +18,30 @@ export class NotificationService {
     private readonly userModel: Model<User>
   ) {}
 
+  private getUserId(payload: any): string {
+    const uid = payload?.userId ?? payload?.user_id ?? payload?.sub;
+    if (!uid) {
+      throw new BadRequestException("Missing userId in token payload");
+    }
+    return String(uid);
+  }
+
   // ===================== USER CHECK =====================
   async checkUser(id: string) {
+    if (!id || typeof id !== "string" || id.trim() === "") {
+      throw new BadRequestException("Invalid user ID");
+    }
+
     const user = await this.userModel.findById(id);
     if (!user) throw new BadRequestException("User does not exist");
 
-    if (user.role !== "user" && user.role !== "author") {
-      throw new BadRequestException("User does not have permission");
+    const role = String(user.role ?? "")
+      .trim()
+      .toLowerCase();
+
+    // ✅ Tất cả role đều được, riêng admin thì không
+    if (role === "admin") {
+      throw new BadRequestException("Admin does not have permission");
     }
 
     if (user.status === "ban") {
@@ -82,19 +99,21 @@ export class NotificationService {
 
   // ===================== USER APIs =====================
   async getAllNotiForUser(receiver_id: string, payload: any) {
-    await this.checkUser(payload.user_id);
-    return this.notificationModel
-      .find({ receiver_id })
-      .sort({ createdAt: -1 });
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
+
+    return this.notificationModel.find({ receiver_id }).sort({ createdAt: -1 });
   }
 
   async markAsRead(id: string, payload: any) {
-    await this.checkUser(payload.user_id);
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
 
     const noti = await this.notificationModel.findOne({
       _id: id,
-      receiver_id: payload.user_id,
+      receiver_id: uid,
     });
+
     if (!noti) throw new NotFoundException("Notification not found");
 
     noti.is_read = true;
@@ -103,21 +122,24 @@ export class NotificationService {
   }
 
   async markAllAsRead(payload: any) {
-    await this.checkUser(payload.user_id);
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
 
     return this.notificationModel.updateMany(
-      { receiver_id: payload.user_id, is_read: false },
+      { receiver_id: uid, is_read: false },
       { $set: { is_read: true } }
     );
   }
 
   async saveNoti(id: string, payload: any) {
-    await this.checkUser(payload.user_id);
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
 
     const noti = await this.notificationModel.findOne({
       _id: id,
-      receiver_id: payload.user_id,
+      receiver_id: uid,
     });
+
     if (!noti) throw new NotFoundException("Notification not found");
 
     noti.is_save = !noti.is_save;
@@ -128,18 +150,18 @@ export class NotificationService {
   }
 
   async deleteNoti(id: string, payload: any) {
-    await this.checkUser(payload.user_id);
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
+
     return this.notificationModel.findOneAndDelete({
       _id: id,
-      receiver_id: payload.user_id,
+      receiver_id: uid,
     });
   }
 
   // ===================== ADMIN APIs =====================
   async getNotiForSender(sender_id: string) {
-    return this.notificationModel
-      .find({ sender_id })
-      .sort({ createdAt: -1 });
+    return this.notificationModel.find({ sender_id }).sort({ createdAt: -1 });
   }
 
   async markAsReadByAdmin(noti_id: string, receiver_id: string) {
@@ -147,6 +169,7 @@ export class NotificationService {
       _id: noti_id,
       receiver_id,
     });
+
     if (!noti) throw new NotFoundException("Notification not found");
 
     noti.is_read = true;
@@ -165,6 +188,7 @@ export class NotificationService {
       _id: noti_id,
       receiver_id,
     });
+
     if (!noti) throw new NotFoundException("Notification not found");
 
     noti.is_save = !noti.is_save;
