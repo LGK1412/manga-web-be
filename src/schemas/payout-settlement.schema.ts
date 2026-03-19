@@ -80,8 +80,3 @@ export class PayoutSettlement {
 }
 export type PayoutSettlementDocument = HydratedDocument<PayoutSettlement>;
 export const PayoutSettlementSchema = SchemaFactory.createForClass(PayoutSettlement)
-
-PayoutSettlementSchema.index(
-    { periodFrom: 1, periodTo: 1 },
-    { unique: true }
-);

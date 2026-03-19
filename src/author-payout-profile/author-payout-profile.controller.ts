@@ -128,14 +128,14 @@ export class AuthorPayoutProfileController {
 
   @Get('admin/list')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async adminGetList(@Query() query: AdminListProfileQueryDto) {
     return await this.authorPayoutProfileService.adminGetProfiles(query);
   }
 
   @Patch('admin/approve/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async adminApprove(@Param('id') id: string, @Req() req: Request) {
     const adminId = req['user'].user_id;
     return await this.authorPayoutProfileService.approveProfile(id, adminId);
@@ -143,7 +143,7 @@ export class AuthorPayoutProfileController {
 
   @Patch('admin/reject/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.FINANCIAL_MANAGER)
   async adminReject(
     @Param('id') id: string,
     @Body('reason') reason: string,

@@ -148,9 +148,7 @@ export class TopupService {
     }
 
     async getUserTransactions(userId: string) {
-        if (!Types.ObjectId.isValid(userId)) return [];
-
-        return this.transactionModel
+        return await this.transactionModel
             .find({ userId: new Types.ObjectId(userId) })
             .sort({ createdAt: -1 })
             .select('packageId price pointReceived status txnRef createdAt')

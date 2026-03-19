@@ -35,12 +35,8 @@ const multerOptions = {
 
 @Controller('api/image-chapter')
 export class ImageChapterController {
-  constructor(private readonly imageChapterService: ImageChapterService) {}
+  constructor(private readonly imageChapterService: ImageChapterService) { }
 
-  /**
-   * Public: lấy chapter theo id
-   * NOTE: đặt trước :mangaId để tránh route bị nuốt
-   */
   @Get('id/:id')
   async getChapterById(@Param('id') chapterId: string) {
     if (!Types.ObjectId.isValid(chapterId)) {
@@ -55,10 +51,9 @@ export class ImageChapterController {
     return { success: true, data: result };
   }
 
-  /**
-   * Public: lấy tất cả chapter theo mangaId
-   */
   @Get(':mangaId')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR)
   async getChaptersByManga(@Param('mangaId') mangaId: string) {
     if (!Types.ObjectId.isValid(mangaId)) {
       throw new BadRequestException('Invalid mangaId');
@@ -71,11 +66,7 @@ export class ImageChapterController {
     return { success: true, data: result };
   }
 
-  /**
-   * AUTHOR/ADMIN tạo image chapter
-   */
   @Post()
-  @HttpCode(201)
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
   @UseInterceptors(FilesInterceptor('images', undefined, multerOptions))
@@ -96,9 +87,6 @@ export class ImageChapterController {
     return this.imageChapterService.createChapterWithImages(parsedDto, files);
   }
 
-  /**
-   * AUTHOR/ADMIN update image chapter
-   */
   @Patch(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
@@ -124,11 +112,11 @@ export class ImageChapterController {
           body.is_completed === 'true' || body.is_completed === true,
         existing_images: body.existing_images
           ? JSON.parse(body.existing_images).map((img: any, index: number) => {
-              if (typeof img === 'string') {
-                return { url: img, order: index };
-              }
-              return img;
-            })
+            if (typeof img === 'string') {
+              return { url: img, order: index };
+            }
+            return img;
+          })
           : undefined,
       };
     } catch {
@@ -144,9 +132,6 @@ export class ImageChapterController {
     return { success: true, data: result };
   }
 
-  /**
-   * AUTHOR/ADMIN xoá image chapter
-   */
   @Delete(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)

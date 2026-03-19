@@ -10,16 +10,14 @@ import {
   UseGuards,
   UsePipes,
   ValidationPipe,
-
-  // ✅ THÊM
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import fs from 'fs';
 import { FileInterceptor } from '@nestjs/platform-express';
-import multer, { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import multer from 'multer';
+import { join } from 'path';
 
 import { UserService } from './user.service';
 import { JwtService } from '@nestjs/jwt';
@@ -198,7 +196,7 @@ export class UserController {
     const result = await this.userService.updateProfile(user, updateData);
 
     if (file && result.success) {
-      const filename = file.filename ;
+      const filename = file.filename;
       const filePath = join('public/assets/avatars', filename);
       await fs.promises.writeFile(filePath, file.buffer);
     }

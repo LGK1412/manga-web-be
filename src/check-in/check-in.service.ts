@@ -36,8 +36,8 @@ export class CheckinService {
     const weekStart = this.getWeekStart(timezone);
 
     const record = await this.checkinModel.findOneAndUpdate(
-      { userId, weekStart },
-      { $setOnInsert: { userId, weekStart, checkins: [false, false, false, false, false, false, false] } },
+      { userId: new Types.ObjectId(userId), weekStart },
+      { $setOnInsert: { userId: new Types.ObjectId(userId), weekStart, checkins: [false, false, false, false, false, false, false] } },
       { new: true, upsert: true }
     );
 

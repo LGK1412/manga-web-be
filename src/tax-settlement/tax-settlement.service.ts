@@ -8,17 +8,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 function startOfDayVN(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setHours(d.getHours() - 7);
-  return d;
+  return new Date(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    0 - 7, 0, 0, 0
+  ));
 }
 
 function endOfDayVN(date: Date) {
-  const d = new Date(date);
-  d.setHours(24, 0, 0, 0);
-  d.setHours(d.getHours() - 7);
-  return d;
+  return new Date(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23 - 7, 59, 59, 999
+  ));
 }
 
 @Injectable()
@@ -87,6 +91,23 @@ export class TaxSettlementService {
   }
 
   async exportTaxSettlement(periodFrom: Date, periodTo: Date, reportType: 'QUARTERLY' | 'ANNUAL', year: number) {
+    const duplicateQuery: any = {
+      reportType,
+      year,
+      status: { $in: ['exported', 'paid'] },
+    };
+
+    if (reportType === 'QUARTERLY') {
+      duplicateQuery.periodFrom = { $gte: startOfDayVN(periodFrom) };
+      duplicateQuery.periodTo = { $lte: endOfDayVN(periodTo) };
+    }
+
+    const existingSettlement = await this.taxSettlementModel.findOne(duplicateQuery);
+
+    if (existingSettlement) {
+      const timeLabel = reportType === 'QUARTERLY' ? `quarter` : `year`;
+      throw new BadRequestException(`A settlement record for this ${timeLabel} already exists or has been paid.`);
+    }
     const withdraws = await this.withdrawModel
       .find({
         status: 'paid',
@@ -96,7 +117,7 @@ export class TaxSettlementService {
       .lean();
 
     if (!withdraws.length) {
-      throw new BadRequestException('Không tìm thấy giao dịch nào cần kê khai.');
+      throw new BadRequestException('No withdraws requiring declaration were found.');
     }
 
     const settlement = await this.initTaxSettlementRecord(withdraws, reportType, year, periodFrom, periodTo);
