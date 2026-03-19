@@ -5,7 +5,6 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/topup')
 export class TopupController {
@@ -15,8 +14,8 @@ export class TopupController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getPackages(@Req() req: Request) {
-    const user = req['user'];
-    return this.topupService.getPackagesWithBonus(user.user_id);
+    const userId = req['user'].user_id;
+    return this.topupService.getPackagesWithBonus(userId);
   }
 
   @Get('bonus-status')
@@ -27,14 +26,11 @@ export class TopupController {
     return this.topupService.hasMonthlyBonus(user.user_id);
   }
 
-  /**
-   * Logged-in: Lấy lịch sử giao dịch nạp của user hiện tại
-   */
   @Get('transactions')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getUserTransactions(@Req() req: Request) {
-    const user = req['user'];
-    return await this.topupService.getUserTransactions(user.user_id);
+    const userId = req['user'].user_id;
+    return await this.topupService.getUserTransactions(userId);
   }
 }

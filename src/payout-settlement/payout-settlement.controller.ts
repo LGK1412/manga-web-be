@@ -97,13 +97,13 @@ export class PayoutSettlementController {
     );
 
     if (!result) {
-      throw new NotFoundException('Không có dữ liệu rút tiền trong khoảng thời gian này');
+      return res.status(204).send();
     }
 
     const { fileName, filePath } = result;
 
     if (!existsSync(filePath)) {
-      throw new NotFoundException('Lỗi hệ thống: File đã được tạo trong DB nhưng chưa được lưu trên server');
+      throw new NotFoundException('Error message: File has been created in the DB but not saved on the server.');
     }
 
     res.set({
@@ -117,7 +117,7 @@ export class PayoutSettlementController {
     fileStream.on('error', (error) => {
       console.error('Stream error:', error);
       if (!res.headersSent) {
-        res.status(500).send('Lỗi trong quá trình gửi file');
+        res.status(500).send('Error while sending file');
       }
     });
 

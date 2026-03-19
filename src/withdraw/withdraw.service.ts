@@ -21,43 +21,8 @@ export class WithdrawService {
 
   private readonly RATE = 150; // 1 point = 150 VND
 
-  /**
-   * Tạo yêu cầu rút tiền
-   */
-  async createWithdraw(authorId: string, withdraw_point: number) {
+  private async calculateTax(grossAmount: number) {
     const now = new Date();
-
-    const author = await this.userModel.findById(authorId);
-    if (!author) throw new NotFoundException('author not found');
-
-    if (withdraw_point <= 0)
-      throw new BadRequestException('Withdrawal points must be greater than 0');
-
-    const available = author.author_point - author.locked_point;
-
-    if (available < withdraw_point)
-      throw new BadRequestException(`Available points: ${available}`);
-
-    /* ========= LOAD VERIFIED PROFILE ========= */
-
-    const profile = await this.profileModel.findOne({
-      userId: authorId,
-      kycStatus: 'verified',
-      isActive: true,
-    });
-
-    if (!profile)
-      throw new ForbiddenException('KYC not approved');
-
-    /* ========= LOCK POINT ========= */
-
-    author.locked_point += withdraw_point;
-    await author.save();
-
-    /* ========= CALCULATE MONEY ========= */
-
-    const grossAmount = withdraw_point * this.RATE;
-
     const rule = await this.taxRuleModel
       .findOne({
         subject: 'AUTHOR',
@@ -71,44 +36,69 @@ export class WithdrawService {
     const taxRate = rule?.rate ?? 0;
     const taxAmount = Math.floor(grossAmount * taxRate);
 
-    /* ========= SNAPSHOT PROFILE ========= */
+    return {
+      taxRuleId: rule?._id,
+      taxRate,
+      taxAmount,
+      taxLegalRef: rule?.legalRef ?? 'No tax',
+    };
+  }
+
+  async previewWithdraw(withdraw_point: number) {
+    const grossAmount = withdraw_point * this.RATE;
+    const taxData = await this.calculateTax(grossAmount);
+
+    return {
+      withdraw_point,
+      grossAmount,
+      ...taxData,
+      netAmount: grossAmount - taxData.taxAmount,
+    };
+  }
+
+  // 3. Hàm Create đã được rút gọn logic tính thuế
+  async createWithdraw(authorId: string, withdraw_point: number) {
+    const author = await this.userModel.findById(authorId);
+    if (!author) throw new NotFoundException('Author not found');
+
+    const available = author.author_point - author.locked_point;
+    if (available < withdraw_point)
+      throw new BadRequestException(`Available points: ${available}`);
+
+    const profile = await this.profileModel.findOne({
+      userId: new Types.ObjectId(authorId),
+      kycStatus: 'verified',
+      isActive: true,
+    });
+    if (!profile) throw new ForbiddenException('KYC not approved');
+
+    // Tính toán tiền và thuế bằng hàm chung
+    const grossAmount = withdraw_point * this.RATE;
+    const taxData = await this.calculateTax(grossAmount);
+
+    // Lock point
+    author.locked_point += withdraw_point;
+    await author.save();
 
     return this.withdrawModel.create({
       authorId: author._id,
       withdraw_point,
-
-      // ===== snapshot legal info =====
       fullName: profile.fullName,
       citizenId: profile.citizenId,
       dateOfBirth: profile.dateOfBirth,
       address: profile.address,
       taxCode: profile.taxCode,
-
-      // ===== bank =====
       bankName: profile.bankName,
       bankAccount: profile.bankAccount,
       bankAccountName: profile.bankAccountName,
-
-      // ===== docs =====
       identityImages: profile.identityImages,
-
-      // ===== tax =====
-      taxRuleId: rule?._id,
-      taxRate,
-      taxAmount,
-      taxLegalRef: rule?.legalRef ?? 'No tax',
-
-      // ===== money =====
+      ...taxData,
       grossAmount,
-      netAmount: grossAmount - taxAmount,
-
+      netAmount: grossAmount - taxData.taxAmount,
       status: 'pending',
     });
   }
 
-  /**
-   * Admin duyệt rút tiền
-   */
   async approveWithdraw(withdrawId: string) {
     const withdraw = await this.withdrawModel.findById(withdrawId);
     if (!withdraw) throw new NotFoundException('Withdraw request not found');

@@ -114,7 +114,6 @@ export class VnpayService {
 
         const isSuccess = isValid && responseCode === '00' && transactionStatus === '00';
 
-        let userId: string | undefined;
         let txnRef: string | undefined;
         if (vnpParams['vnp_TxnRef']) {
             txnRef = vnpParams['vnp_TxnRef'];

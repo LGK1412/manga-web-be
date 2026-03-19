@@ -452,9 +452,7 @@ export class AuthService {
             if (!userPayload || !userPayload.user_id) {
                 throw new UnauthorizedException('Invalid user information');
             }
-
             const userId = userPayload.user_id;
-
             const user = await this.userModel
                 .findById(userId)
                 .select('_id username email role avatar bio point author_point game_point')
@@ -473,6 +471,7 @@ export class AuthService {
                 bio: user.bio || '',
                 point: user.point || 0,
                 author_point: user.author_point || 0,
+                locked_point: user.locked_point || 0,
                 game_point: user.game_point || 0,
             };
         } catch (error) {

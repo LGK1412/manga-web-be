@@ -89,9 +89,6 @@ export class ImageChapterService {
     const { v4: uuidv4 } = await import('uuid')
     const { title, manga_id, price, order, is_published, is_completed } = dto
 
-    /* -------------------------------------------------- */
-    /* 1. PREPARE CHAPTER DATA                            */
-    /* -------------------------------------------------- */
     const chapterOrder = order && order > 0 ? order : 1
 
     console.log('[1] Create chapter with:')
@@ -103,9 +100,6 @@ export class ImageChapterService {
       is_published: is_published ?? false,
     })
 
-    /* -------------------------------------------------- */
-    /* 2. CREATE CHAPTER                                  */
-    /* -------------------------------------------------- */
     const chapter = await this.chapterModel.create({
       title,
       manga_id: new Types.ObjectId(manga_id),
@@ -116,9 +110,6 @@ export class ImageChapterService {
 
     console.log('[2] Chapter created:', chapter._id.toString())
 
-    /* -------------------------------------------------- */
-    /* 3. PREPARE IMAGE DIRECTORY                         */
-    /* -------------------------------------------------- */
     const baseDir = path.join(
       process.cwd(),
       'public',
@@ -134,9 +125,6 @@ export class ImageChapterService {
       console.log('[3] Directory already exists:', chapterDir)
     }
 
-    /* -------------------------------------------------- */
-    /* 4. PROCESS UPLOADED IMAGES                         */
-    /* -------------------------------------------------- */
     const savedImages: string[] = []
 
     if (!files || files.length === 0) {
@@ -177,9 +165,6 @@ export class ImageChapterService {
 
     console.log('[4] Saved images:', savedImages)
 
-    /* -------------------------------------------------- */
-    /* 5. CREATE / UPDATE IMAGE CHAPTER                   */
-    /* -------------------------------------------------- */
     let imageChapter = await this.imageChapterModel.findOne({
       chapter_id: chapter._id,
     })
@@ -199,9 +184,6 @@ export class ImageChapterService {
         is_completed: is_completed ?? false,
       })
 
-      /* -------------------------------------------------- */
-      /* 6. EMIT EVENT (CHAPTER CREATE COUNT)               */
-      /* -------------------------------------------------- */
       const manga = await this.mangaModel
         .findById(manga_id)
         .select('authorId')
