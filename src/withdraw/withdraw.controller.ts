@@ -22,10 +22,15 @@ import { Role } from 'src/common/enums/role.enum';
 export class WithdrawController {
   constructor(private readonly withdrawService: WithdrawService) { }
 
-  /**
-   * Author tạo yêu cầu rút tiền (CHỈ AUTHOR)
-   * Lấy author/user từ token, KHÔNG nhận authorId từ body.
-   */
+  @Get('preview')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR)
+  async preview(@Query('points') points: string) {
+    const numPoints = Number(points);
+    if (!numPoints || numPoints <= 0) return null;
+    return this.withdrawService.previewWithdraw(numPoints);
+  }
+
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR)
@@ -34,13 +39,9 @@ export class WithdrawController {
     @Body('withdraw_point') withdraw_point: number,
   ) {
     const userId = req['user'].user_id;
-
     return this.withdrawService.createWithdraw(userId, withdraw_point);
   }
 
-  /**
-   * Admin duyệt rút tiền
-   */
   @Patch(':id/approve')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
@@ -48,9 +49,6 @@ export class WithdrawController {
     return this.withdrawService.approveWithdraw(withdrawId);
   }
 
-  /**
-   * Admin từ chối rút tiền
-   */
   @Patch(':id/reject')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)

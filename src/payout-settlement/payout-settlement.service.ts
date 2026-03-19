@@ -10,17 +10,21 @@ import * as path from 'path';
 import { existsSync, unlinkSync } from 'fs';
 
 function startOfDayVN(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setHours(d.getHours() - 7); // convert to UTC
-  return d;
+  return new Date(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    0 - 7, 0, 0, 0
+  ));
 }
 
 function endOfDayVN(date: Date) {
-  const d = new Date(date);
-  d.setHours(24, 0, 0, 0);
-  d.setHours(d.getHours() - 7);
-  return d;
+  return new Date(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23 - 7, 59, 59, 999
+  ));
 }
 
 @Injectable()
@@ -193,8 +197,6 @@ export class PayoutSettlementService {
 
       current.totalNet += w.netAmount;
       current.withdrawIds.push(w._id);
-
-      // snapshot bank info mới nhất
       current.bankName = w.bankName;
       current.bankAccount = w.bankAccount;
       current.bankAccountName = w.bankAccountName;
@@ -223,7 +225,6 @@ export class PayoutSettlementService {
       status: 'exported',
     }]);
 
-    // Update trạng thái các withdraw thành settled
     await this.withdrawModel.updateMany(
       { _id: { $in: withdraws.map(w => w._id) } },
       {
@@ -243,7 +244,6 @@ export class PayoutSettlementService {
   ): Promise<string> {
     const workbook = new ExcelJS.Workbook();
 
-    // SHEET 1: BANK_TRANSFER (Dùng để nộp ngân hàng - Chuyển tiền)
     const bankSheet = workbook.addWorksheet('BANK_TRANSFER');
     bankSheet.columns = [
       { header: 'STT', key: 'stt', width: 5 },
@@ -265,7 +265,6 @@ export class PayoutSettlementService {
       });
     });
 
-    // SHEET 2: WITHDRAW_DETAILS (Dùng để đối soát nội bộ)
     const detailSheet = workbook.addWorksheet('WITHDRAW_DETAILS');
     detailSheet.columns = [
       { header: 'Mã rút tiền', key: 'id', width: 25 },
@@ -281,7 +280,7 @@ export class PayoutSettlementService {
       detailSheet.addRow({
         id: w._id.toString(),
         author: w.authorId?.username || 'N/A',
-        taxCode: w.taxCode || 'N/A', // Thông tin lấy từ snapshot trong withdraw
+        taxCode: w.taxCode || 'N/A',
         gross: w.grossAmount,
         tax: w.taxAmount,
         net: w.netAmount,
@@ -289,10 +288,8 @@ export class PayoutSettlementService {
       });
     });
 
-    // Định dạng tiền tệ cho cả 2 sheet
     [bankSheet, detailSheet].forEach(sheet => {
       sheet.getRow(1).font = { bold: true };
-      // Tìm các cột liên quan đến tiền để format số
       const moneyCols = ['amount', 'gross', 'tax', 'net'];
       sheet.columns.forEach(col => {
         if (moneyCols.includes(col.key as string)) {
@@ -303,7 +300,6 @@ export class PayoutSettlementService {
 
     const baseDir = path.join(process.cwd(), 'public', 'payout-files', settlement.id);
 
-    // Tự động tạo thư mục nếu chưa có
     if (!existsSync(baseDir)) {
       require('fs').mkdirSync(baseDir, { recursive: true });
     }
@@ -317,26 +313,20 @@ export class PayoutSettlementService {
   async exportPayoutSettlement(periodFrom: Date, periodTo: Date) {
     const withdraws = await this.fetchWithdraws({
       status: 'approved',
-      approvedAt: { $gte: startOfDayVN(periodFrom), $lt: endOfDayVN(periodTo) },
+      approvedAt: { $gte: startOfDayVN(periodFrom), $lte: endOfDayVN(periodTo) },
     });
 
     if (!withdraws.length) return null;
 
-    // Định dạng tên file theo yêu cầu: payout-settlement_YYYY-MM-DD_YYYY-MM-DD.xlsx
     const fileName = `payout-settlement_${this.formatDate(periodFrom)}_${this.formatDate(periodTo)}.xlsx`;
-
-    // 1. Tạo bản ghi trong DB trước để lấy ID
     const settlement = await this.createPayoutSettlement(withdraws, periodFrom, periodTo, fileName);
-
-    // 2. Lưu file vào ổ đĩa dựa trên ID vừa tạo
     const filePath = await this.buildWorkbook(withdraws, settlement, fileName);
-
     return { settlement, fileName, filePath };
   }
 
   async cancelPayoutSettlement(id: string, note: string) {
     const payout = await this.payoutSettlementModel.findById(id);
-    if (!payout) throw new NotFoundException('Không tìm thấy bản ghi');
+    if (!payout) throw new NotFoundException('Cannot find payout settlement');
 
     const withdrawIds = payout.items.flatMap(i => i.withdrawIds);
 
@@ -355,7 +345,6 @@ export class PayoutSettlementService {
       );
     }
 
-    // 4. Cập nhật trạng thái bản ghi Settlement
     payout.status = 'cancelled';
     payout.note = note;
 

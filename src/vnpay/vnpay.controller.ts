@@ -23,7 +23,6 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('api/vnpay')
 export class VnpayController {
@@ -32,20 +31,15 @@ export class VnpayController {
     private readonly topupService: TopupService,
   ) { }
 
-  /**
-   * Tạo payment url
-   * NOTE: vẫn giữ :id để khỏi sửa FE, nhưng userId thật lấy từ JWT và check mismatch.
-   */
-  @Post('create-payment-url/:id')
+  @Post('create-payment-url')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   @UsePipes(new ValidationPipe({ transform: true }))
   async createPaymentUrl(
     @Body() body: CreatePaymentDto,
     @Req() req: Request,
-    @Param('id') userId: string,
   ) {
-
+    const userId = req['user'].user_id;
     const ipAddr =
       (req.headers['x-forwarded-for'] as string) ||
       req.socket.remoteAddress ||
@@ -122,4 +116,5 @@ export class VnpayController {
       `${process.env.CLIENT_URL}/?payment=success&txn=${result.txnRef}`,
     );
   }
+
 }
