@@ -16,6 +16,127 @@ export enum MangaEnforcementStatus {
   BANNED = 'banned',
 }
 
+export enum StoryOriginType {
+  ORIGINAL = 'original',
+  TRANSLATED = 'translated',
+  ADAPTED = 'adapted',
+  REPOST = 'repost',
+  CC_LICENSED = 'cc_licensed',
+  PUBLIC_DOMAIN = 'public_domain',
+  UNKNOWN = 'unknown',
+}
+
+export enum StoryMonetizationType {
+  FREE = 'free',
+  PAID = 'paid',
+}
+
+export enum RightsBasis {
+  SELF_DECLARATION = 'self_declaration',
+  OWNER_AUTHORIZATION = 'owner_authorization',
+  PUBLISHER_CONTRACT = 'publisher_contract',
+  OPEN_LICENSE = 'open_license',
+  PUBLIC_DOMAIN = 'public_domain',
+  UNKNOWN = 'unknown',
+}
+
+export enum RightsReviewStatus {
+  NOT_REQUIRED = 'not_required',
+  DECLARED = 'declared',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  UNDER_CLAIM = 'under_claim',
+}
+
+export enum CopyrightClaimStatus {
+  NONE = 'none',
+  OPEN = 'open',
+  RESOLVED = 'resolved',
+}
+
+@Schema({ _id: false })
+export class MangaRights {
+  @Prop({
+    type: String,
+    enum: Object.values(StoryOriginType),
+    default: StoryOriginType.UNKNOWN,
+  })
+  originType: StoryOriginType;
+
+  @Prop({
+    type: String,
+    enum: Object.values(StoryMonetizationType),
+    default: StoryMonetizationType.FREE,
+  })
+  monetizationType: StoryMonetizationType;
+
+  @Prop({
+    type: String,
+    enum: Object.values(RightsBasis),
+    default: RightsBasis.UNKNOWN,
+  })
+  basis: RightsBasis;
+
+  @Prop({ type: Boolean, default: false })
+  declarationAccepted: boolean;
+
+  @Prop({ type: Date, default: null })
+  declarationAcceptedAt?: Date | null;
+
+  @Prop({ type: String, default: 'v1' })
+  declarationVersion: string;
+
+  @Prop({ type: String, default: '' })
+  sourceTitle: string;
+
+  @Prop({ type: String, default: '' })
+  sourceUrl: string;
+
+  @Prop({ type: String, default: '' })
+  licenseName: string;
+
+  @Prop({ type: String, default: '' })
+  licenseUrl: string;
+
+  @Prop({ type: [String], default: [] })
+  proofFiles: string[];
+
+  @Prop({ type: String, default: '' })
+  proofNote: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(RightsReviewStatus),
+    default: RightsReviewStatus.NOT_REQUIRED,
+  })
+  reviewStatus: RightsReviewStatus;
+
+  @Prop({ type: Date, default: null })
+  reviewedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  reviewedBy?: Types.ObjectId | null;
+
+  @Prop({ type: String, default: '' })
+  rejectReason: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(CopyrightClaimStatus),
+    default: CopyrightClaimStatus.NONE,
+  })
+  claimStatus: CopyrightClaimStatus;
+
+  @Prop({ type: Date, default: null })
+  claimOpenedAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  claimResolvedAt?: Date | null;
+}
+
+export const MangaRightsSchema = SchemaFactory.createForClass(MangaRights);
+
 @Schema({ timestamps: true })
 export class Manga {
   @Prop({ required: true })
@@ -30,7 +151,6 @@ export class Manga {
   @Prop({ required: false })
   coverImage: string;
 
-  // đổi default thành false để đúng flow staff/mod quản lý publish
   @Prop({ default: false })
   isPublish: boolean;
 
@@ -52,7 +172,7 @@ export class Manga {
   @Prop({ default: 0 })
   views: number;
 
-  // ====== LICENSE ======
+  // ====== LEGACY LICENSE ======
   @Prop({
     type: String,
     enum: Object.values(MangaLicenseStatus),
@@ -77,6 +197,13 @@ export class Manga {
 
   @Prop({ type: String, default: '' })
   licenseRejectReason?: string;
+
+  // ====== RIGHTS (NEW) ======
+  @Prop({ type: MangaRightsSchema, default: {} })
+  rights: MangaRights;
+
+  @Prop({ type: Boolean, default: false })
+  verifiedBadge: boolean;
 
   // ====== ENFORCEMENT ======
   @Prop({

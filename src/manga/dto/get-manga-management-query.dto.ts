@@ -27,6 +27,54 @@ export class GetMangaManagementQueryDto {
   enforcementStatus?: 'all' | 'normal' | 'suspended' | 'banned' = 'all';
 
   @IsOptional()
+  @IsIn([
+    'all',
+    'original',
+    'translated',
+    'adapted',
+    'repost',
+    'cc_licensed',
+    'public_domain',
+    'unknown',
+  ])
+  originType?:
+    | 'all'
+    | 'original'
+    | 'translated'
+    | 'adapted'
+    | 'repost'
+    | 'cc_licensed'
+    | 'public_domain'
+    | 'unknown' = 'all';
+
+  @IsOptional()
+  @IsIn(['all', 'free', 'paid'])
+  monetizationType?: 'all' | 'free' | 'paid' = 'all';
+
+  @IsOptional()
+  @IsIn([
+    'all',
+    'not_required',
+    'declared',
+    'pending',
+    'approved',
+    'rejected',
+    'under_claim',
+  ])
+  rightsStatus?:
+    | 'all'
+    | 'not_required'
+    | 'declared'
+    | 'pending'
+    | 'approved'
+    | 'rejected'
+    | 'under_claim' = 'all';
+
+  @IsOptional()
+  @IsIn(['all', 'none', 'open', 'resolved'])
+  claimStatus?: 'all' | 'none' | 'open' | 'resolved' = 'all';
+
+  @IsOptional()
   @IsMongoId()
   authorId?: string;
 

@@ -42,6 +42,9 @@ import { UpdatePublishStatusDto } from './dto/update-publish-status.dto';
 import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
 import { UpdateEnforcementStatusDto } from './dto/update-enforcement-status.dto';
 
+import { UpdateStoryRightsDto } from './dto/update-story-rights.dto';
+import { AcceptRightsDeclarationDto } from './dto/accept-rights-declaration.dto';
+
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
   storage: diskStorage({
@@ -204,6 +207,17 @@ export class MangaController {
     return this.mangaService.createManga(createMangaDto, new Types.ObjectId(authorId));
   }
 
+    @Get('author/story/:id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  async getAuthorStoryDetail(@Param('id') mangaId: string, @Req() req: Request) {
+    const payload = (req as any).user as JwtPayload;
+    const actorId = (payload as any)?.user_id || (payload as any)?.userId;
+    const actorRole = (payload as any)?.role;
+
+    return this.mangaService.getAuthorStoryDetail(mangaId, actorId, actorRole);
+  }
+
   @Patch('update/:mangaId')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
@@ -364,5 +378,58 @@ export class MangaController {
   @UseGuards(AccessTokenGuard)
   async getLicenseStatus(@Param('id') mangaId: string) {
     return this.mangaService.getLicenseStatus(mangaId);
+  }
+
+    @Patch(':id/rights')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async updateStoryRights(
+    @Param('id') mangaId: string,
+    @Body() dto: UpdateStoryRightsDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user as JwtPayload;
+    const actorId = (user as any)?.user_id || (user as any)?.userId;
+    const actorRole = (user as any)?.role;
+
+    return this.mangaService.updateStoryRights(
+      mangaId,
+      actorId,
+      dto,
+      actorRole,
+    );
+  }
+
+  @Patch(':id/rights/declaration')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async acceptRightsDeclaration(
+    @Param('id') mangaId: string,
+    @Body() dto: AcceptRightsDeclarationDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user as JwtPayload;
+    const actorId = (user as any)?.user_id || (user as any)?.userId;
+    const actorRole = (user as any)?.role;
+
+    return this.mangaService.acceptRightsDeclaration(
+      mangaId,
+      actorId,
+      dto,
+      actorRole,
+    );
+  }
+
+  @Get(':id/rights')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR, Role.ADMIN)
+  async getStoryRights(@Param('id') mangaId: string, @Req() req: Request) {
+    const user = (req as any).user as JwtPayload;
+    const actorId = (user as any)?.user_id || (user as any)?.userId;
+    const actorRole = (user as any)?.role;
+
+    return this.mangaService.getStoryRights(mangaId, actorId, actorRole);
   }
 }
