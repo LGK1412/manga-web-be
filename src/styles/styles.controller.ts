@@ -32,6 +32,11 @@ export class StylesController {
     return this.stylesService.findAll();
   }
 
+  @Get('all')
+  findAllAlias() {
+    return this.stylesService.findAll();
+  }
+
   @Get('active')
   findActive() {
     return this.stylesService.findActive();
