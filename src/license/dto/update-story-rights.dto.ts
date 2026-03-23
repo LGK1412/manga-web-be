@@ -4,7 +4,7 @@ import {
   RightsBasis,
   StoryMonetizationType,
   StoryOriginType,
-} from 'src/schemas/Manga.schema';
+} from '../../schemas/Manga.schema';
 
 const trimOrUndefined = ({ value }: { value: unknown }) => {
   if (typeof value !== 'string') return value;

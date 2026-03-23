@@ -10,6 +10,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { MangaModule } from './manga/manga.module';
+import { LicenseModule } from './license/license.module';
 import { GenreModule } from './genre/genre.module';
 import { StylesModule } from './styles/styles.module';
 import { ChapterModule } from './textChapter/text-chapter.module';
@@ -48,22 +49,19 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
 
 @Module({
   imports: [
-    // ===== Global Config =====
     ConfigModule.forRoot({
       isGlobal: true,
     }),
 
-    // ✅ JWT Global (fix lỗi JwtService injection trong Guard)
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: { expiresIn: '10m' },
       }),
-      global: true, // ✅ để JwtService available ở mọi module context
+      global: true,
     }),
 
-    // ===== MongoDB =====
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -72,7 +70,6 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
       }),
     }),
 
-    // ===== Mailer =====
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -100,21 +97,19 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
       }),
     }),
 
-    // ===== Event Emitter =====
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
 
-    // ===== Core Modules =====
     UserModule,
     AuthModule,
     MangaModule,
+    LicenseModule,
     GenreModule,
     StylesModule,
     ChapterModule,
     ImageChapterModule,
     ChapterServiceOnlyNormalChapterInforModule,
 
-    // ===== Business Features =====
     VnpayModule,
     TopupModule,
     CommentModule,
@@ -130,7 +125,6 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
     PoliciesModule,
     ReportModule,
 
-    // ===== Optional Advanced Features =====
     DonationModule,
     AchievementModule,
     SpellCheckModule,
@@ -141,8 +135,8 @@ import { TaxSettlementModule } from './tax-settlement/tax-settlement.module';
     AuditLogModule,
     AuthorPayoutProfileModule,
     PayoutSettlementModule,
-    TaxSettlementModule
+    TaxSettlementModule,
   ],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

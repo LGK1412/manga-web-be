@@ -15,7 +15,6 @@ import {
   Query,
   NotFoundException,
   UseGuards,
-  UploadedFiles,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Types } from 'mongoose';
@@ -24,7 +23,7 @@ import { MangaService } from './manga.service';
 import { CreateMangaDto } from './dto/CreateManga.dto';
 import { UpdateMangaDto } from './dto/UpdateManga.dto';
 
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
@@ -35,15 +34,9 @@ import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-token.guard';
-import * as multer from 'multer';
-import { UploadMangaLicenseDto } from './dto/upload-manga-license.dto';
-import { ReviewLicenseDto } from './dto/review-license.dto';
 import { UpdatePublishStatusDto } from './dto/update-publish-status.dto';
 import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
 import { UpdateEnforcementStatusDto } from './dto/update-enforcement-status.dto';
-
-import { UpdateStoryRightsDto } from './dto/update-story-rights.dto';
-import { AcceptRightsDeclarationDto } from './dto/accept-rights-declaration.dto';
 
 // Reusable FileInterceptor config
 const coverImageInterceptor = FileInterceptor('coverImage', {
@@ -133,6 +126,17 @@ export class MangaController {
     );
   }
 
+  @Patch('admin/story/:mangaId/publish')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async setPublishStatus(
+    @Param('mangaId') mangaId: string,
+    @Body() dto: UpdatePublishStatusDto,
+  ) {
+    return this.mangaService.setPublishStatus(mangaId, dto.isPublish);
+  }
+
   // ================= PUBLIC READING =================
 
   @Get('random')
@@ -170,7 +174,6 @@ export class MangaController {
 
   @Get('recomment/user/:userId')
   @UseGuards(AccessTokenGuard)
-  
   async getRecommendStory(@Param('userId') userId: string, @Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
     const tokenUserId = (payload as any).user_id || (payload as any).userId;
@@ -207,7 +210,7 @@ export class MangaController {
     return this.mangaService.createManga(createMangaDto, new Types.ObjectId(authorId));
   }
 
-    @Get('author/story/:id')
+  @Get('author/story/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
   async getAuthorStoryDetail(@Param('id') mangaId: string, @Req() req: Request) {
@@ -269,167 +272,5 @@ export class MangaController {
   @Get('author/:authorId')
   async getAllMangasByAuthorId(@Param('authorId') authorId: string) {
     return this.mangaService.getAllMangasByAuthor(new Types.ObjectId(authorId));
-  }
-
-  // ================= LICENSE (UC-105) =================
-
-  @Post(':id/license')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.AUTHOR, Role.ADMIN)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  @UseInterceptors(
-    FilesInterceptor('files', 5, {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const ok =
-          file.mimetype === 'application/pdf' ||
-          file.mimetype.startsWith('image/');
-        if (!ok) {
-          return cb(
-            new BadRequestException('Only PDF or image files are allowed'),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-    }),
-  )
-  async uploadLicense(
-    @Param('id') mangaId: string,
-    @UploadedFiles() files: Express.Multer.File[],
-    @Body() dto: UploadMangaLicenseDto,
-    @Req() req: Request,
-  ) {
-    if (!files || files.length === 0) {
-      throw new BadRequestException('Missing license files');
-    }
-
-    const user = (req as any).user;
-    const userId = user?.user_id || user?.userId;
-
-    return this.mangaService.uploadLicenseForManga(mangaId, userId, files, dto.note);
-  }
-
-  // ================= MODERATION (UC-106) =================
-
-  @Get('admin/licenses')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  async getLicenseQueue(
-    @Query('status') status: 'all' | 'none' | 'pending' | 'approved' | 'rejected' = 'pending',
-    @Query('q') q = '',
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-  ) {
-    const p = Math.max(1, parseInt(page as string, 10) || 1);
-    const l = Math.max(1, Math.min(100, parseInt(limit as string, 10) || 20));
-    return this.mangaService.getLicenseQueue(status, q, p, l);
-  }
-
-  @Get('admin/licenses/pending')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  async getPendingLicenses() {
-    const res = await this.mangaService.getLicenseQueue('pending', '', 1, 50);
-    return res.data;
-  }
-
-  @Get('admin/license/:mangaId')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  async getLicenseDetail(@Param('mangaId') mangaId: string) {
-    return this.mangaService.getLicenseDetail(mangaId);
-  }
-
-  @Patch('admin/license/:mangaId/review')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async reviewLicense(
-    @Param('mangaId') mangaId: string,
-    @Body() dto: ReviewLicenseDto,
-    @Req() req: Request,
-  ) {
-    const user = (req as any).user;
-    const reviewerId = user?.user_id || user?.userId;
-
-    return this.mangaService.reviewLicense(
-      mangaId,
-      reviewerId,
-      dto.status,
-      dto.rejectReason,
-      dto.publishAfterApprove ?? false,
-    );
-  }
-
-  @Patch('admin/story/:mangaId/publish')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async setPublishStatus(
-    @Param('mangaId') mangaId: string,
-    @Body() dto: UpdatePublishStatusDto,
-  ) {
-    return this.mangaService.setPublishStatus(mangaId, dto.isPublish);
-  }
-
-  @Get(':id/license-status')
-  @UseGuards(AccessTokenGuard)
-  async getLicenseStatus(@Param('id') mangaId: string) {
-    return this.mangaService.getLicenseStatus(mangaId);
-  }
-
-    @Patch(':id/rights')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.AUTHOR, Role.ADMIN)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async updateStoryRights(
-    @Param('id') mangaId: string,
-    @Body() dto: UpdateStoryRightsDto,
-    @Req() req: Request,
-  ) {
-    const user = (req as any).user as JwtPayload;
-    const actorId = (user as any)?.user_id || (user as any)?.userId;
-    const actorRole = (user as any)?.role;
-
-    return this.mangaService.updateStoryRights(
-      mangaId,
-      actorId,
-      dto,
-      actorRole,
-    );
-  }
-
-  @Patch(':id/rights/declaration')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.AUTHOR, Role.ADMIN)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async acceptRightsDeclaration(
-    @Param('id') mangaId: string,
-    @Body() dto: AcceptRightsDeclarationDto,
-    @Req() req: Request,
-  ) {
-    const user = (req as any).user as JwtPayload;
-    const actorId = (user as any)?.user_id || (user as any)?.userId;
-    const actorRole = (user as any)?.role;
-
-    return this.mangaService.acceptRightsDeclaration(
-      mangaId,
-      actorId,
-      dto,
-      actorRole,
-    );
-  }
-
-  @Get(':id/rights')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.AUTHOR, Role.ADMIN)
-  async getStoryRights(@Param('id') mangaId: string, @Req() req: Request) {
-    const user = (req as any).user as JwtPayload;
-    const actorId = (user as any)?.user_id || (user as any)?.userId;
-    const actorRole = (user as any)?.role;
-
-    return this.mangaService.getStoryRights(mangaId, actorId, actorRole);
   }
 }

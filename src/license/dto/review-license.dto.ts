@@ -10,7 +10,6 @@ export class ReviewLicenseDto {
   @MaxLength(500)
   rejectReason?: string;
 
-  // ✅ New: approve xong có publish luôn để user thấy badge + truyện public
   @IsOptional()
   @IsBoolean()
   publishAfterApprove?: boolean;
