@@ -29,6 +29,7 @@ import {
   AuthorRequestStatusResponse,
   EligibilityCriteria,
 } from "./dto/author-request.dto";
+import { UserManagementListQueryDto } from "./dto/user-management-list-query.dto";
 import { NotificationService } from "src/notification/notification.service";
 import { Role } from "src/common/enums/role.enum";
 
@@ -278,6 +279,90 @@ export class UserService {
     return { success: true, message: "User muted" };
   }
 
+  private async executeBulkUserAction(
+    userIds: string[],
+    executor: (userId: string) => Promise<any>,
+  ) {
+    const uniqueUserIds = Array.from(
+      new Set(
+        userIds
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (uniqueUserIds.length === 0) {
+      throw new BadRequestException("userIds must not be empty");
+    }
+
+    const results = await Promise.allSettled(
+      uniqueUserIds.map(async (userId) => {
+        await executor(userId);
+        return userId;
+      }),
+    );
+
+    const succeededIds: string[] = [];
+    const failures: Array<{ userId: string; message: string }> = [];
+
+    results.forEach((result, index) => {
+      const userId = uniqueUserIds[index];
+
+      if (result.status === "fulfilled") {
+        succeededIds.push(result.value);
+        return;
+      }
+
+      const reason =
+        (result.reason instanceof Error && result.reason.message) ||
+        result.reason?.message ||
+        "Action failed";
+
+      failures.push({
+        userId,
+        message: String(reason),
+      });
+    });
+
+    return {
+      success: failures.length === 0,
+      successCount: succeededIds.length,
+      failedCount: failures.length,
+      succeededIds,
+      failures,
+    };
+  }
+
+  async bulkModeratorBanUsers(
+    actorId: string,
+    targetUserIds: string[],
+    reason?: string,
+  ) {
+    return this.executeBulkUserAction(targetUserIds, (userId) =>
+      this.moderatorBanUser(actorId, userId, reason),
+    );
+  }
+
+  async bulkCommunityMuteUsers(
+    actorId: string,
+    targetUserIds: string[],
+    reason?: string,
+  ) {
+    return this.executeBulkUserAction(targetUserIds, (userId) =>
+      this.communityMuteUser(actorId, userId, reason),
+    );
+  }
+
+  async bulkAdminResetUserStatus(
+    adminId: string,
+    targetUserIds: string[],
+    reason?: string,
+  ) {
+    return this.executeBulkUserAction(targetUserIds, (userId) =>
+      this.adminResetUserStatus(adminId, userId, reason),
+    );
+  }
+
 
   // ---------------- Auth-related helpers -------------------- //
 
@@ -336,6 +421,287 @@ export class UserService {
 
   async findByEmail(email: string) {
     return await this.userModel.findOne({ email }).select("+password +google_id");
+  }
+
+  async recordSuccessfulLogin(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException("Invalid userId");
+    }
+
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { lastLoginAt: new Date() } },
+    );
+  }
+
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  private normalizeManagementStatus(status?: string) {
+    const normalized = String(status || "")
+      .trim()
+      .toLowerCase();
+
+    switch (normalized) {
+      case "normal":
+        return UserStatus.NORMAL;
+      case "muted":
+      case "mute":
+        return UserStatus.MUTE;
+      case "banned":
+      case "ban":
+        return UserStatus.BAN;
+      default:
+        return null;
+    }
+  }
+
+  private buildManagementMatch(query: UserManagementListQueryDto) {
+    const match: Record<string, any> = {};
+    const search = String(query.search || "").trim();
+    const role = String(query.role || "all").trim();
+    const preset = query.preset || "all";
+    const normalizedStatus = this.normalizeManagementStatus(query.status);
+
+    if (search) {
+      const safeSearch = this.escapeRegex(search);
+      match.$or = [
+        { username: { $regex: safeSearch, $options: "i" } },
+        { email: { $regex: safeSearch, $options: "i" } },
+      ];
+    }
+
+    if (role && role !== "all") {
+      match.role = role;
+    }
+
+    if (normalizedStatus) {
+      match.status = normalizedStatus;
+    }
+
+    if (preset === "staff") {
+      match.role = {
+        $in: [
+          Role.ADMIN,
+          Role.CONTENT_MODERATOR,
+          Role.COMMUNITY_MANAGER,
+          Role.FINANCIAL_MANAGER,
+        ],
+      };
+    }
+
+    if (preset === "new-7d") {
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      match.createdAt = { $gte: sevenDaysAgo };
+    }
+
+    return match;
+  }
+
+  private buildManagementSort(
+    sortBy: UserManagementListQueryDto["sortBy"],
+    sortDir: UserManagementListQueryDto["sortDir"],
+  ): Record<string, 1 | -1> {
+    const direction: 1 | -1 = sortDir === "desc" ? -1 : 1;
+
+    switch (sortBy) {
+      case "name":
+        return { username: direction, _id: 1 };
+      case "email":
+        return { email: direction, _id: 1 };
+      case "status":
+        return { statusPriority: direction, username: 1, _id: 1 };
+      case "joinDate":
+        return { createdAt: direction, _id: 1 };
+      case "lastActivityAt":
+        return { lastActivityAt: direction, _id: 1 };
+      case "role":
+      default:
+        return { rolePriority: direction, username: 1, _id: 1 };
+    }
+  }
+
+  async listUsersForManagement(query: UserManagementListQueryDto) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100);
+    const skip = (page - 1) * limit;
+    const match = this.buildManagementMatch(query);
+    const sort = this.buildManagementSort(query.sortBy, query.sortDir);
+    const earliestDate = new Date(0);
+
+    const [rows, total, totalUsers, authors, staffUsers] = await Promise.all([
+      this.userModel.aggregate([
+        { $match: match },
+        {
+          $addFields: {
+            provider: {
+              $switch: {
+                branches: [
+                  {
+                    case: {
+                      $and: [
+                        { $ne: [{ $ifNull: ["$google_id", null] }, null] },
+                        { $ne: ["$google_id", ""] },
+                      ],
+                    },
+                    then: "google",
+                  },
+                  {
+                    case: {
+                      $and: [
+                        { $ne: [{ $ifNull: ["$password", null] }, null] },
+                        { $ne: ["$password", ""] },
+                      ],
+                    },
+                    then: "local",
+                  },
+                ],
+                default: "unknown",
+              },
+            },
+            isEmailVerified: "$verified",
+            lastActivityAt: {
+              $cond: [
+                {
+                  $gt: [
+                    { $ifNull: ["$lastLoginAt", earliestDate] },
+                    { $ifNull: ["$updatedAt", earliestDate] },
+                  ],
+                },
+                "$lastLoginAt",
+                "$updatedAt",
+              ],
+            },
+            rolePriority: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ["$role", Role.ADMIN] }, then: 0 },
+                  {
+                    case: { $eq: ["$role", Role.FINANCIAL_MANAGER] },
+                    then: 1,
+                  },
+                  {
+                    case: { $eq: ["$role", Role.COMMUNITY_MANAGER] },
+                    then: 2,
+                  },
+                  {
+                    case: { $eq: ["$role", Role.CONTENT_MODERATOR] },
+                    then: 3,
+                  },
+                  { case: { $eq: ["$role", Role.AUTHOR] }, then: 4 },
+                  { case: { $eq: ["$role", Role.USER] }, then: 5 },
+                ],
+                default: 999,
+              },
+            },
+            statusPriority: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ["$status", UserStatus.BAN] }, then: 0 },
+                  { case: { $eq: ["$status", UserStatus.MUTE] }, then: 1 },
+                  { case: { $eq: ["$status", UserStatus.NORMAL] }, then: 2 },
+                ],
+                default: 999,
+              },
+            },
+          },
+        },
+        { $sort: sort },
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: this.mangaModel.collection.name,
+            let: { userId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ["$authorId", "$$userId"] },
+                      { $ne: ["$isDeleted", true] },
+                    ],
+                  },
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: "stories",
+          },
+        },
+        {
+          $lookup: {
+            from: this.chapterModel.collection.name,
+            let: { mangaIds: "$stories._id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $in: ["$manga_id", "$$mangaIds"],
+                  },
+                },
+              },
+              { $count: "count" },
+            ],
+            as: "chapterCountResult",
+          },
+        },
+        {
+          $addFields: {
+            storyCount: { $size: "$stories" },
+            chapterCount: {
+              $ifNull: [{ $arrayElemAt: ["$chapterCountResult.count", 0] }, 0],
+            },
+          },
+        },
+        {
+          $project: {
+            username: 1,
+            email: 1,
+            role: 1,
+            status: 1,
+            avatar: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            lastLoginAt: 1,
+            lastActivityAt: 1,
+            provider: 1,
+            isEmailVerified: 1,
+            reportCount: { $literal: null },
+            storyCount: 1,
+            chapterCount: 1,
+          },
+        },
+      ]),
+      this.userModel.countDocuments(match),
+      this.userModel.countDocuments(),
+      this.userModel.countDocuments({ role: Role.AUTHOR }),
+      this.userModel.countDocuments({
+        role: {
+          $in: [
+            Role.ADMIN,
+            Role.CONTENT_MODERATOR,
+            Role.COMMUNITY_MANAGER,
+            Role.FINANCIAL_MANAGER,
+          ],
+        },
+      }),
+    ]);
+
+    return {
+      rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      summary: {
+        totalUsers,
+        authors,
+        staffUsers,
+      },
+    };
   }
 
   async findByUsername(username: string) {
@@ -456,7 +822,93 @@ export class UserService {
 
   // ✅ admin: lấy tất cả users (không cần token nữa)
   async getAllUsers() {
-    return this.userModel.find().select("-password -google_id");
+    const [users, storyCounts, chapterCounts] = await Promise.all([
+      this.userModel
+        .find()
+        .select(
+          "+password +google_id username email role status avatar verified createdAt updatedAt lastLoginAt",
+        )
+        .lean(),
+      this.mangaModel.aggregate([
+        {
+          $match: {
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: "$authorId",
+            storyCount: { $sum: 1 },
+          },
+        },
+      ]),
+      this.chapterModel.aggregate([
+        {
+          $lookup: {
+            from: this.mangaModel.collection.name,
+            localField: "manga_id",
+            foreignField: "_id",
+            as: "manga",
+          },
+        },
+        { $unwind: "$manga" },
+        {
+          $match: {
+            "manga.isDeleted": { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: "$manga.authorId",
+            chapterCount: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const storyCountMap = new Map(
+      storyCounts.map((item: any) => [
+        String(item?._id),
+        Number(item?.storyCount ?? 0),
+      ]),
+    );
+
+    const chapterCountMap = new Map(
+      chapterCounts.map((item: any) => [
+        String(item?._id),
+        Number(item?.chapterCount ?? 0),
+      ]),
+    );
+
+    return users.map((user: any) => {
+      const provider = user?.google_id
+        ? "google"
+        : user?.password
+          ? "local"
+          : "unknown";
+
+      const { password, google_id, ...safeUser } = user;
+      const userId = String(user?._id);
+      const lastLoginAt = user?.lastLoginAt ?? null;
+      const updatedAt = user?.updatedAt ?? null;
+      const lastActivityAt =
+        lastLoginAt && updatedAt
+          ? new Date(lastLoginAt).getTime() > new Date(updatedAt).getTime()
+            ? lastLoginAt
+            : updatedAt
+          : lastLoginAt ?? updatedAt;
+
+      return {
+        ...safeUser,
+        provider,
+        isEmailVerified: Boolean(user?.verified),
+        lastLoginAt,
+        lastActivityAt,
+        reportCount: null,
+        storyCount: storyCountMap.get(userId) ?? 0,
+        chapterCount: chapterCountMap.get(userId) ?? 0,
+      };
+    });
   }
 
   /**
@@ -492,7 +944,9 @@ export class UserService {
       throw new BadRequestException("Invalid userId");
     }
 
-    const target = await this.userModel.findById(targetUserId).select("role");
+    const target = await this.userModel
+      .findById(targetUserId)
+      .select("role username email");
     if (!target) throw new NotFoundException("User not found");
 
     // Prevent admin from removing their own admin role
@@ -505,8 +959,26 @@ export class UserService {
       throw new BadRequestException("Cannot downgrade AUTHOR back to USER");
     }
 
+    const before = { role: String(target.role) };
+
     target.role = role;
     await target.save();
+
+    const actorSnap = await this.getActorSnapshot(adminId);
+
+    await this.auditLogService.createLog({
+      actor_id: adminId,
+      actor_name: actorSnap.actor_name,
+      actor_email: actorSnap.actor_email,
+      actor_role: AuditActorRole.ADMIN,
+      action: "admin_set_role",
+      target_type: AuditTargetType.USER,
+      target_id: targetUserId,
+      summary: `Admin changed role: ${target.username} (${target.email}) -> ${role}`,
+      risk: "medium",
+      before,
+      after: { role },
+    });
 
     return { success: true, message: "Role updated successfully", role };
   }
@@ -1308,6 +1780,23 @@ export class UserService {
     });
 
     return { success: true, message: "Reset to NORMAL" };
+  }
+
+  async getUserModerationHistory(userId: string, limit = 20) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException("Invalid userId");
+    }
+
+    const target = await this.userModel.findById(userId).select("_id").lean();
+    if (!target) {
+      throw new NotFoundException("User does not exist");
+    }
+
+    return this.auditLogService.findByTarget(
+      AuditTargetType.USER,
+      userId,
+      limit,
+    );
   }
 
 }

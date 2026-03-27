@@ -112,6 +112,9 @@ export class User {
 
   @Prop({ required: false, default: false })
   authorAutoApproved: boolean;
+
+  @Prop({ type: Date, default: null })
+  lastLoginAt?: Date | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

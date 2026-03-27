@@ -134,6 +134,24 @@ export class AuditLogService {
     return doc;
   }
 
+  async findByTarget(
+    targetType: AuditTargetType,
+    targetId: string,
+    limit = 20,
+  ) {
+    const rows = await this.auditModel
+      .find({
+        target_type: targetType,
+        target_id: new Types.ObjectId(targetId),
+      })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(limit, 1), 50))
+      .populate({ path: 'actor_id', select: 'username email role' })
+      .lean();
+
+    return rows;
+  }
+
   async markSeen(logId: string, adminId: string) {
     const updated = await this.auditModel.findByIdAndUpdate(
       logId,

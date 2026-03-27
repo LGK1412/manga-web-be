@@ -112,6 +112,12 @@ export class AuthService {
             lastBonus: existingUser.lastBonus
         }
 
+        try {
+            await this.userService.recordSuccessfulLogin(existingUser._id.toString());
+        } catch (error) {
+            console.warn('[AuthService] Failed to update lastLoginAt for local login:', error);
+        }
+
         const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d' })
 
         return { accessToken, tokenPayload };
@@ -292,6 +298,12 @@ export class AuthService {
                 role: user.role,
                 avatar: user.avatar,
                 bio: user.bio
+            }
+
+            try {
+                await this.userService.recordSuccessfulLogin(user._id.toString());
+            } catch (error) {
+                console.warn('[AuthService] Failed to update lastLoginAt for Google login:', error);
             }
 
             const accessToken = this.jwtService.sign(tokenPayload, { expiresIn: '360d', })
