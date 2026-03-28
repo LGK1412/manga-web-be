@@ -52,6 +52,7 @@ export interface ReportWithTargetDetail {
     username: string
     email: string
     role: string
+    avatar?: string
   }
   target_type: string
   target_id: MangaTarget | ChapterTarget | CommentTarget | ReplyTarget
@@ -156,7 +157,7 @@ export class ReportService {
 
     const reports = await this.reportModel
       .find(match)
-      .populate({ path: 'reporter_id', select: 'username email role' })
+      .populate({ path: 'reporter_id', select: 'username email role avatar' })
       .populate({
         path: 'target_id',
         select: 'title authorId content manga_id user_id isPublish isDeleted status comment_id',
@@ -179,7 +180,7 @@ export class ReportService {
   async findOneForRole(id: string, role?: string): Promise<ReportWithTargetDetail | null> {
     const report = await this.reportModel
       .findById(id)
-      .populate({ path: 'reporter_id', select: 'username email role' })
+      .populate({ path: 'reporter_id', select: 'username email role avatar' })
       .populate({ path: 'target_id', options: { strictPopulate: false } })
       .exec()
 

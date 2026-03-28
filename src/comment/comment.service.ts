@@ -313,15 +313,25 @@ export class CommentService {
 
   // ================== ADMIN / COMMUNITY ==================
   async getAllComments() {
-    return await this.commentModel
+    const comments = await this.commentModel
       .find()
       .populate({
         path: 'chapter_id',
         populate: { path: 'manga_id', select: 'title' },
         select: 'title manga_id',
       })
-      .populate('user_id', 'username email role')
+      .populate('user_id', 'username email role avatar')
       .sort({ createdAt: -1 });
+
+    const replySummary = await this.replyService.getReplySummaryByCommentIds(
+      comments.map((comment) => String((comment as any)._id)),
+    );
+
+    return comments.map((comment: any) => ({
+      ...comment.toObject(),
+      replyCount: replySummary[String(comment._id)]?.replyCount || 0,
+      replyUsernames: replySummary[String(comment._id)]?.usernames || [],
+    }));
   }
 
   async filterComments({
@@ -343,15 +353,25 @@ export class CommentService {
       filter.chapter_id = { $in: chapterIds };
     }
 
-    return await this.commentModel
+    const comments = await this.commentModel
       .find(filter)
       .populate({
         path: 'chapter_id',
         populate: { path: 'manga_id', select: 'title' },
         select: 'title manga_id',
       })
-      .populate('user_id', 'username email role')
+      .populate('user_id', 'username email role avatar')
       .sort({ createdAt: -1 });
+
+    const replySummary = await this.replyService.getReplySummaryByCommentIds(
+      comments.map((comment) => String((comment as any)._id)),
+    );
+
+    return comments.map((comment: any) => ({
+      ...comment.toObject(),
+      replyCount: replySummary[String(comment._id)]?.replyCount || 0,
+      replyUsernames: replySummary[String(comment._id)]?.usernames || [],
+    }));
   }
 
   // ✅ UPDATED: toggle + audit log
@@ -374,9 +394,7 @@ export class CommentService {
       action: comment.is_delete ? 'comment_hidden' : 'comment_restored',
       target_type: AuditTargetType.COMMENT,
       target_id: id,
-      summary: comment.is_delete
-        ? `Hide comment ${id}`
-        : `Restore comment ${id}`,
+      summary: comment.is_delete ? 'Comment hidden' : 'Comment restored',
       risk: 'low',
       before,
       after,

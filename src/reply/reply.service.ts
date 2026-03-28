@@ -251,7 +251,7 @@ export class ReplyService {
       action: reply.is_delete ? 'reply_hidden' : 'reply_restored',
       target_type: AuditTargetType.REPLY,
       target_id: id,
-      summary: reply.is_delete ? `Hide reply ${id}` : `Restore reply ${id}`,
+      summary: reply.is_delete ? 'Reply hidden' : 'Reply restored',
       risk: 'low',
       before,
       after,
@@ -289,6 +289,48 @@ export class ReplyService {
       replyData.map((r) => [
         r._id.toString(),
         { replyCount: r.replyCount, usernames: r.usernames },
+      ]),
+    );
+  }
+
+  async getReplySummaryByCommentIds(commentIds: Array<string | Types.ObjectId>) {
+    const normalizedIds = commentIds
+      .map((id) => String(id))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    if (normalizedIds.length === 0) return {};
+
+    const replyData = await this.replyModel.aggregate([
+      {
+        $match: {
+          comment_id: { $in: normalizedIds },
+          is_delete: false,
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'user',
+          pipeline: [{ $project: { username: 1, _id: 0 } }],
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $group: {
+          _id: '$comment_id',
+          replyCount: { $sum: 1 },
+          usernames: { $addToSet: '$user.username' },
+        },
+      },
+    ]);
+
+    return Object.fromEntries(
+      replyData.map((reply) => [
+        reply._id.toString(),
+        { replyCount: reply.replyCount, usernames: reply.usernames },
       ]),
     );
   }
