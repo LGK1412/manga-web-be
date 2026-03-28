@@ -110,7 +110,7 @@ export class AuditLogService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate({ path: 'actor_id', select: 'username email role' })
+        .populate({ path: 'actor_id', select: 'username email role avatar' })
         .lean(),
       this.auditModel.countDocuments(filter),
     ]);
@@ -127,7 +127,7 @@ export class AuditLogService {
   async findOne(id: string) {
     const doc = await this.auditModel
       .findById(id)
-      .populate({ path: 'actor_id', select: 'username email role' })
+      .populate({ path: 'actor_id', select: 'username email role avatar' })
       .lean();
 
     if (!doc) throw new NotFoundException('Log not found');
@@ -146,7 +146,7 @@ export class AuditLogService {
       })
       .sort({ createdAt: -1 })
       .limit(Math.min(Math.max(limit, 1), 50))
-      .populate({ path: 'actor_id', select: 'username email role' })
+      .populate({ path: 'actor_id', select: 'username email role avatar' })
       .lean();
 
     return rows;
