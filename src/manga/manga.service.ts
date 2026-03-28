@@ -654,6 +654,8 @@ export class MangaService {
       publicationStatus = 'all',
       enforcementStatus = 'all',
       authorId,
+      sortBy = 'updatedAt',
+      sortOrder = 'desc',
       page = 1,
       limit = 20,
     } = query;
@@ -731,6 +733,41 @@ export class MangaService {
           },
         },
       },
+      {
+        $addFields: {
+          licenseSortOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$licenseStatus', MangaLicenseStatus.PENDING] }, then: 0 },
+                { case: { $eq: ['$licenseStatus', MangaLicenseStatus.REJECTED] }, then: 1 },
+                { case: { $eq: ['$licenseStatus', MangaLicenseStatus.NONE] }, then: 2 },
+                { case: { $eq: ['$licenseStatus', MangaLicenseStatus.APPROVED] }, then: 3 },
+              ],
+              default: 4,
+            },
+          },
+          publicationSortOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$publicationStatus', 'draft'] }, then: 0 },
+                { case: { $eq: ['$publicationStatus', 'unpublished'] }, then: 1 },
+                { case: { $eq: ['$publicationStatus', 'published'] }, then: 2 },
+              ],
+              default: 3,
+            },
+          },
+          enforcementSortOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$enforcementStatus', MangaEnforcementStatus.BANNED] }, then: 0 },
+                { case: { $eq: ['$enforcementStatus', MangaEnforcementStatus.SUSPENDED] }, then: 1 },
+                { case: { $eq: ['$enforcementStatus', MangaEnforcementStatus.NORMAL] }, then: 2 },
+              ],
+              default: 3,
+            },
+          },
+        },
+      },
     ];
 
     const matchAfterComputed: any = {};
@@ -762,8 +799,33 @@ export class MangaService {
       pipeline.push({ $match: matchAfterComputed });
     }
 
+    const normalizedSortOrder: 1 | -1 = sortOrder === 'asc' ? 1 : -1;
+    const sortStage: Record<string, 1 | -1> = { updatedAt: -1, createdAt: -1 };
+
+    switch (sortBy) {
+      case 'title':
+        sortStage.title = normalizedSortOrder;
+        sortStage.updatedAt = -1;
+        break;
+      case 'licenseStatus':
+        sortStage.licenseSortOrder = normalizedSortOrder;
+        break;
+      case 'publicationStatus':
+        sortStage.publicationSortOrder = normalizedSortOrder;
+        break;
+      case 'enforcementStatus':
+        sortStage.enforcementSortOrder = normalizedSortOrder;
+        break;
+      case 'chaptersCount':
+        sortStage.chaptersCount = normalizedSortOrder;
+        break;
+      default:
+        sortStage.updatedAt = normalizedSortOrder;
+        break;
+    }
+
     pipeline.push(
-      { $sort: { updatedAt: -1, createdAt: -1 } },
+      { $sort: sortStage },
       {
         $facet: {
           data: [

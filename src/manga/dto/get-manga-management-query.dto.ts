@@ -79,6 +79,27 @@ export class GetMangaManagementQueryDto {
   authorId?: string;
 
   @IsOptional()
+  @IsIn([
+    'title',
+    'licenseStatus',
+    'publicationStatus',
+    'enforcementStatus',
+    'chaptersCount',
+    'updatedAt',
+  ])
+  sortBy?:
+    | 'title'
+    | 'licenseStatus'
+    | 'publicationStatus'
+    | 'enforcementStatus'
+    | 'chaptersCount'
+    | 'updatedAt' = 'updatedAt';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

@@ -72,6 +72,7 @@ export interface ReportWithTargetDetail {
       user_Id: Types.ObjectId | null
       username: string
       email: string
+      avatar?: string
     } | null
   }
 }
@@ -200,18 +201,19 @@ export class ReportService {
         const manga = reportAny.target_id as MangaTarget
         const author = await this.userModel
           .findById(manga.authorId)
-          .select('username email')
+          .select('username email avatar')
           .lean()
 
         reportAny.target_detail = {
           title: manga.title,
           target_human: author
-            ? {
-                user_Id: manga.authorId,
-                username: author.username,
-                email: author.email,
-              }
-            : null,
+              ? {
+                  user_Id: manga.authorId,
+                  username: author.username,
+                  email: author.email,
+                  avatar: author.avatar,
+                }
+              : null,
         }
       } else if (reportAny.target_type === 'Chapter') {
         const chapter = reportAny.target_id as ChapterTarget
@@ -226,7 +228,7 @@ export class ReportService {
         if (manga) {
           const author = await this.userModel
             .findById(manga.authorId)
-            .select('username email')
+            .select('username email avatar')
             .lean()
 
           reportAny.target_detail = {
@@ -236,6 +238,7 @@ export class ReportService {
                   user_Id: (manga as any).authorId,
                   username: author.username,
                   email: author.email,
+                  avatar: author.avatar,
                 }
               : null,
           }
@@ -246,7 +249,7 @@ export class ReportService {
         const comment = reportAny.target_id as CommentTarget
         const user = await this.userModel
           .findById(comment.user_id)
-          .select('username email')
+          .select('username email avatar')
           .lean()
 
         reportAny.target_detail = {
@@ -256,6 +259,7 @@ export class ReportService {
                 user_Id: comment.user_id,
                 username: user.username,
                 email: user.email,
+                avatar: user.avatar,
               }
             : {
                 user_Id: null as unknown as Types.ObjectId,
@@ -267,7 +271,7 @@ export class ReportService {
         const reply = reportAny.target_id as ReplyTarget
         const user = await this.userModel
           .findById(reply.user_id)
-          .select('username email')
+          .select('username email avatar')
           .lean()
 
         reportAny.target_detail = {
@@ -277,6 +281,7 @@ export class ReportService {
                 user_Id: reply.user_id,
                 username: user.username,
                 email: user.email,
+                avatar: user.avatar,
               }
             : {
                 user_Id: null as unknown as Types.ObjectId,
