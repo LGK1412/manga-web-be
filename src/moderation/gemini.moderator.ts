@@ -5,15 +5,35 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export type ModerationFinding = {
   policy: string;
+  policy_slug?: string;
+  policy_title?: string;
   reason: string;
   evidence?: string;
   severity?: 'low' | 'medium' | 'high';
+  advice?: {
+    moderator: {
+      next_step: 'approve' | 'request_changes' | 'reject' | 'escalate';
+      reason: string;
+      checks: string[];
+    };
+    author: {
+      revision_goal: string;
+      revision_steps: string[];
+      note_draft?: string;
+    };
+  };
 };
 
 export type GeminiCheckInput = {
   chapterTitle: string;
   chapterHtml: string;
-  policies: Array<{ title: string; content: string; mainType?: string; subCategory?: string }>;
+  policies: Array<{
+    title: string;
+    slug?: string;
+    content: string;
+    mainType?: string;
+    subCategory?: string;
+  }>;
   policyVersion: string;
 };
 
@@ -33,23 +53,79 @@ export class GeminiModerator {
   private readonly modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
   private getModel() {
-    if (!this.apiKey) throw new InternalServerErrorException('GEMINI_API_KEY is missing in .env');
+    if (!this.apiKey) {
+      throw new InternalServerErrorException('GEMINI_API_KEY is missing in .env');
+    }
+
     const genAI = new GoogleGenerativeAI(this.apiKey);
     return genAI.getGenerativeModel({ model: this.modelName });
   }
 
   private htmlToReadableText(html: string) {
     const clean = sanitizeHtml(html, {
-      allowedTags: sanitizeHtml.defaults.allowedTags.concat(['b', 'i', 'em', 'strong', 'u', 'br', 'p', 'ul', 'ol', 'li']),
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+        'b',
+        'i',
+        'em',
+        'strong',
+        'u',
+        'br',
+        'p',
+        'ul',
+        'ol',
+        'li',
+      ]),
       allowedAttributes: { a: ['href', 'name', 'target'], '*': ['style'] },
       disallowedTagsMode: 'discard',
     });
+
     const text = clean.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     return { cleanHtml: clean, plainText: text };
   }
 
-  private computeHash(s: string) {
-    return createHash('sha256').update(s, 'utf8').digest('hex');
+  private computeHash(source: string) {
+    return createHash('sha256').update(source, 'utf8').digest('hex');
+  }
+
+  private parseStringList(value: unknown) {
+    return Array.isArray(value)
+      ? value
+          .map((item) => String(item ?? '').trim())
+          .filter(Boolean)
+      : [];
+  }
+
+  private parseAdvice(rawAdvice: any): ModerationFinding['advice'] | undefined {
+    const nextStep =
+      rawAdvice?.moderator?.next_step === 'approve' ||
+      rawAdvice?.moderator?.next_step === 'request_changes' ||
+      rawAdvice?.moderator?.next_step === 'reject' ||
+      rawAdvice?.moderator?.next_step === 'escalate'
+        ? rawAdvice.moderator.next_step
+        : undefined;
+
+    const moderatorReason = String(rawAdvice?.moderator?.reason ?? '').trim();
+    const moderatorChecks = this.parseStringList(rawAdvice?.moderator?.checks);
+    const authorRevisionGoal = String(rawAdvice?.author?.revision_goal ?? '').trim();
+    const authorRevisionSteps = this.parseStringList(rawAdvice?.author?.revision_steps);
+    const authorNoteDraft = String(rawAdvice?.author?.note_draft ?? '').trim();
+
+    if (!nextStep || !moderatorReason || !authorRevisionGoal) {
+      return undefined;
+    }
+
+    return {
+      moderator: {
+        next_step: nextStep,
+        reason: moderatorReason,
+        checks: moderatorChecks.slice(0, 4),
+      },
+      author: {
+        revision_goal: authorRevisionGoal,
+        revision_steps: authorRevisionSteps.slice(0, 4),
+        note_draft: authorNoteDraft || undefined,
+      },
+    };
   }
 
   async check(input: GeminiCheckInput): Promise<GeminiCheckOutput> {
@@ -60,16 +136,26 @@ export class GeminiModerator {
 
     const policyText = policies
       .map(
-        (p, idx) =>
-          `#${idx + 1}\nTitle: ${p.title}\nType: ${p.mainType || '-'} / ${p.subCategory || '-'}\nContent:\n${p.content}\n`,
+        (policy, index) =>
+          [
+            `#${index + 1}`,
+            `Title: ${policy.title}`,
+            `Slug: ${policy.slug || 'general'}`,
+            `Type: ${policy.mainType || '-'} / ${policy.subCategory || '-'}`,
+            'Content:',
+            policy.content,
+            '',
+          ].join('\n'),
       )
       .join('\n----------------------\n');
 
     const systemInstruction = `
-Bạn là hệ thống kiểm duyệt nội dung. Nhiệm vụ: ĐÁNH GIÁ nội dung chương theo các policy cho trước.
+You are a content moderation system. Review the chapter against the provided policies.
 
-YÊU CẦU:
-- Chỉ trả về JSON hợp lệ KHÔNG kèm chú thích, không Markdown.
+Requirements:
+- Return valid JSON only. No markdown. No commentary.
+- Write every returned string in English, including "reason", "evidence", moderator advice, author guidance, labels, and note drafts.
+- If the source content or policy text is in another language, translate your output to natural English.
 - JSON schema:
 {
   "status": "AI_PASSED" | "AI_WARN" | "AI_BLOCK",
@@ -78,40 +164,74 @@ YÊU CẦU:
   "ai_findings": [
     {
       "policy": string,
+      "policy_slug": string,
+      "policy_title": string,
       "reason": string,
       "evidence": string,
-      "severity": "low" | "medium" | "high"
+      "severity": "low" | "medium" | "high",
+      "advice": {
+        "moderator": {
+          "next_step": "approve" | "request_changes" | "reject" | "escalate",
+          "reason": string,
+          "checks": string[]
+        },
+        "author": {
+          "revision_goal": string,
+          "revision_steps": string[],
+          "note_draft": string
+        }
+      }
     }
   ]
 }
 
-HƯỚNG DẪN PHÂN LOẠI:
-- AI_BLOCK: vi phạm rõ ràng, nặng, chắc chắn phải chặn.
-- AI_WARN: có dấu hiệu rủi ro/cần người duyệt xem lại.
-- AI_PASSED: không vi phạm chính sách.
+Classification guide:
+- AI_BLOCK: clear or severe policy violation.
+- AI_WARN: risky or ambiguous content that needs moderator review.
+- AI_PASSED: no clear policy issue found.
 
-Chỉ xuất JSON đúng schema ở trên.
+Policy matching rules:
+- "policy_slug" must be one exact slug from the provided policy list.
+- "policy_title" must match the title for that slug.
+- If no policy is clearly matched, use "general" for "policy_slug" and "General Review" for "policy_title".
+
+Advice rules:
+- The "moderator" advice is for internal staff, not for the author.
+- The "author" advice is for revision guidance that can be sent to the author.
+- "moderator.next_step" should be:
+  - "approve" only if the finding is effectively safe in context.
+  - "request_changes" if the issue is fixable through revision.
+  - "reject" if the content is clearly incompatible with posting policy.
+  - "escalate" if age, consent, protected-group, or policy interpretation is ambiguous.
+- Keep "moderator.reason" concrete and decision-oriented.
+- Keep "moderator.checks" as short review checkpoints.
+- Keep "author.revision_goal" concise and outcome-focused.
+- Keep "author.revision_steps" concrete and editable by the author.
+- Keep "author.note_draft" ready to copy into a moderation note.
+
+Return only JSON that matches the schema above.
 `.trim();
 
     const userPrompt = `
-=== CHÍNH SÁCH (Policy) ===
+=== POLICY LIST ===
 ${policyText}
 
-=== THÔNG TIN CHƯƠNG ===
-Title: ${chapterTitle}
+=== CHAPTER TITLE ===
+${chapterTitle}
 
-=== NỘI DUNG (HTML) ===
+=== CHAPTER HTML ===
 ${cleanHtml}
 
-=== NỘI DUNG (TEXT) ===
+=== CHAPTER TEXT ===
 ${plainText}
 `.trim();
 
     let rawText = '';
     try {
       const model = this.getModel();
-      // Gọi bằng một chuỗi để tương thích SDK
-      const result = await model.generateContent(`${systemInstruction}\n\n${userPrompt}`);
+      const result = await model.generateContent(
+        `${systemInstruction}\n\n${userPrompt}`,
+      );
       rawText =
         typeof result?.response?.text === 'function'
           ? result.response.text()
@@ -164,21 +284,41 @@ ${plainText}
     }
 
     const status =
-      parsed?.status === 'AI_BLOCK' || parsed?.status === 'AI_WARN' || parsed?.status === 'AI_PASSED'
+      parsed?.status === 'AI_BLOCK' ||
+      parsed?.status === 'AI_WARN' ||
+      parsed?.status === 'AI_PASSED'
         ? parsed.status
         : 'AI_WARN';
 
     const risk =
-      typeof parsed?.risk_score === 'number' ? Math.max(0, Math.min(100, parsed!.risk_score!)) : 50;
+      typeof parsed?.risk_score === 'number'
+        ? Math.max(0, Math.min(100, parsed.risk_score))
+        : 50;
 
-    const labels = Array.isArray(parsed?.labels) ? parsed!.labels!.map(String) : [];
+    const labels = Array.isArray(parsed?.labels)
+      ? parsed.labels.map(String)
+      : [];
 
     const findings = Array.isArray(parsed?.ai_findings)
-      ? parsed!.ai_findings!.map((f: any) => ({
-          policy: String(f?.policy ?? ''),
-          reason: String(f?.reason ?? ''),
-          evidence: f?.evidence ? String(f.evidence) : undefined,
-          severity: f?.severity === 'high' || f?.severity === 'medium' || f?.severity === 'low' ? f.severity : 'low',
+      ? parsed.ai_findings.map((finding: any) => ({
+          policy: String(
+            finding?.policy ?? finding?.policy_title ?? finding?.policy_slug ?? '',
+          ),
+          policy_slug: finding?.policy_slug
+            ? String(finding.policy_slug)
+            : undefined,
+          policy_title: finding?.policy_title
+            ? String(finding.policy_title)
+            : undefined,
+          reason: String(finding?.reason ?? ''),
+          evidence: finding?.evidence ? String(finding.evidence) : undefined,
+          severity:
+            finding?.severity === 'high' ||
+            finding?.severity === 'medium' ||
+            finding?.severity === 'low'
+              ? finding.severity
+              : 'low',
+          advice: this.parseAdvice(finding?.advice),
         }))
       : [];
 

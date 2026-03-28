@@ -8,6 +8,7 @@ import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { ChapterModeration, ChapterModerationSchema } from '../schemas/chapter-moderation.schema';
 import { ModerationAction, ModerationActionSchema } from '../schemas/moderation-action.schema';
 import { Policies, PoliciesSchema } from '../schemas/Policies.schema';
+import { Manga, MangaSchema } from '../schemas/Manga.schema';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ModerationListener } from './moderation.listeners';
 
@@ -19,6 +20,7 @@ import { ModerationListener } from './moderation.listeners';
       { name: ChapterModeration.name, schema: ChapterModerationSchema },
       { name: ModerationAction.name, schema: ModerationActionSchema },
       { name: Policies.name, schema: PoliciesSchema },
+      { name: Manga.name, schema: MangaSchema },
     ]),
   ],
   controllers: [ModerationController],

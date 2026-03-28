@@ -431,6 +431,7 @@ export class UserService {
     await this.userModel.updateOne(
       { _id: userId },
       { $set: { lastLoginAt: new Date() } },
+      { timestamps: false },
     );
   }
 
@@ -529,7 +530,6 @@ export class UserService {
     const skip = (page - 1) * limit;
     const match = this.buildManagementMatch(query);
     const sort = this.buildManagementSort(query.sortBy, query.sortDir);
-    const earliestDate = new Date(0);
 
     const [rows, total, totalUsers, authors, staffUsers] = await Promise.all([
       this.userModel.aggregate([
@@ -562,18 +562,7 @@ export class UserService {
               },
             },
             isEmailVerified: "$verified",
-            lastActivityAt: {
-              $cond: [
-                {
-                  $gt: [
-                    { $ifNull: ["$lastLoginAt", earliestDate] },
-                    { $ifNull: ["$updatedAt", earliestDate] },
-                  ],
-                },
-                "$lastLoginAt",
-                "$updatedAt",
-              ],
-            },
+            lastActivityAt: { $ifNull: ["$lastLoginAt", "$updatedAt"] },
             rolePriority: {
               $switch: {
                 branches: [
@@ -891,12 +880,7 @@ export class UserService {
       const userId = String(user?._id);
       const lastLoginAt = user?.lastLoginAt ?? null;
       const updatedAt = user?.updatedAt ?? null;
-      const lastActivityAt =
-        lastLoginAt && updatedAt
-          ? new Date(lastLoginAt).getTime() > new Date(updatedAt).getTime()
-            ? lastLoginAt
-            : updatedAt
-          : lastLoginAt ?? updatedAt;
+      const lastActivityAt = lastLoginAt ?? updatedAt;
 
       return {
         ...safeUser,

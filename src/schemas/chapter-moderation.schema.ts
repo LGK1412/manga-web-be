@@ -1,6 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
+export type ModerationResolutionStatus =
+  | 'OPEN'
+  | 'APPROVED'
+  | 'CHANGES_REQUESTED'
+  | 'REJECTED';
+
 @Schema({ timestamps: true })
 export class ChapterModeration {
   @Prop({ type: Types.ObjectId, ref: 'Chapter', required: true, unique: true })
@@ -21,16 +27,67 @@ export class ChapterModeration {
   @Prop({ type: String, default: null })
   ai_model: string;             // ví dụ: "classifier_v2.4"
 
-  @Prop({ type: [{ sectionId: String, verdict: String, rationale: String, spans: [{ start: Number, end: Number }] }], default: [] })
+  @Prop({
+    type: [{
+      sectionId: String,
+      verdict: String,
+      rationale: String,
+      policySlug: String,
+      policyTitle: String,
+      severity: String,
+      advice: {
+        moderator: {
+          nextStep: String,
+          reason: String,
+          checks: [String],
+        },
+        author: {
+          revisionGoal: String,
+          revisionSteps: [String],
+          noteDraft: String,
+        },
+      },
+      spans: [{ start: Number, end: Number }],
+    }],
+    default: [],
+  })
   ai_findings: Array<{
     sectionId: string;
     verdict: 'pass'|'warn'|'block';
     rationale: string;
+    policySlug?: string;
+    policyTitle?: string;
+    severity?: 'low'|'medium'|'high';
+    advice?: {
+      moderator: {
+        nextStep: 'approve'|'request_changes'|'reject'|'escalate';
+        reason: string;
+        checks: string[];
+      };
+      author: {
+        revisionGoal: string;
+        revisionSteps: string[];
+        noteDraft?: string;
+      };
+    };
     spans?: { start: number; end: number }[];
   }>;
 
   @Prop({ type: String, required: true })
   content_hash: string;         // hash nội dung tại thời điểm FE check
+
+  @Prop({
+    type: String,
+    enum: ['OPEN', 'APPROVED', 'CHANGES_REQUESTED', 'REJECTED'],
+    default: 'OPEN',
+  })
+  resolution_status: ModerationResolutionStatus;
+
+  @Prop({ type: String, default: null })
+  resolution_note?: string | null;
+
+  @Prop({ type: Date, default: null })
+  resolved_at?: Date | null;
 
   @Prop({ type: Object, default: {} })
   snapshot?: Record<string, any>; // optional meta
@@ -40,4 +97,5 @@ export const ChapterModerationSchema = SchemaFactory.createForClass(ChapterModer
 
 // indexes
 ChapterModerationSchema.index({ status: 1, risk_score: -1 });
+ChapterModerationSchema.index({ resolution_status: 1, updatedAt: -1 });
 ChapterModerationSchema.index({ policy_version: 1 });

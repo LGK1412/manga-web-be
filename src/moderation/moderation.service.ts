@@ -1,32 +1,163 @@
 // src/moderation/moderation.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import sanitizeHtml from 'sanitize-html';
 import { Chapter } from '../schemas/chapter.schema';
-import { ChapterModeration } from '../schemas/chapter-moderation.schema';
+import {
+  ChapterModeration,
+  type ModerationResolutionStatus,
+} from '../schemas/chapter-moderation.schema';
 import { ModerationAction } from '../schemas/moderation-action.schema';
 import { AiResultDto } from './dto/ai-result.dto';
 import { SubmitDto } from './dto/submit.dto';
 import { DecideDto } from './dto/decide.dto';
 import { RecheckDto } from './dto/recheck.dto';
 import { InvalidateDto } from './dto/invalidate.dto';
-import { GeminiModerator } from './gemini.moderator';
+import { GeminiModerator, type ModerationFinding } from './gemini.moderator';
 import { Policies, PoliciesDocument } from '../schemas/Policies.schema';
+import { Manga, MangaDocument } from '../schemas/Manga.schema';
 
 // ✅ Verdict cho FindingDto: 'pass' | 'warn' | 'block'
 type FindingVerdict = 'pass' | 'warn' | 'block';
+type FindingSeverity = 'low' | 'medium' | 'high';
+type PolicyLookup = {
+  title: string;
+  slug?: string;
+};
+type FindingAdvice = {
+  moderator: {
+    nextStep: 'approve' | 'request_changes' | 'reject' | 'escalate';
+    reason: string;
+    checks: string[];
+  };
+  author: {
+    revisionGoal: string;
+    revisionSteps: string[];
+    noteDraft?: string;
+  };
+};
+
+function toResolutionStatus(
+  action: DecideDto['action'],
+): ModerationResolutionStatus {
+  if (action === 'approve') return 'APPROVED';
+  if (action === 'reject') return 'REJECTED';
+  return 'CHANGES_REQUESTED';
+}
+
+function sanitizeModerationHtml(html: string) {
+  return sanitizeHtml(html || '', {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+      'div',
+      'span',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'blockquote',
+    ]),
+    allowedAttributes: {
+      a: ['href', 'name', 'target', 'rel'],
+    },
+    disallowedTagsMode: 'discard',
+  });
+}
 
 // Giữ nguyên verdict tổng thể của Chapter: 'PASSED' | 'WARN' | 'BLOCK'
 function toFindingVerdict(
-  overall: 'AI_PASSED' | 'AI_WARN' | 'AI_BLOCK',
-  severity?: 'low' | 'medium' | 'high',
+  severity?: FindingSeverity,
+  overall?: 'AI_PASSED' | 'AI_WARN' | 'AI_BLOCK',
 ): FindingVerdict {
+  if (severity === 'high') return 'block';
+  if (severity === 'medium' || severity === 'low') return 'warn';
   if (overall === 'AI_BLOCK') return 'block';
   if (overall === 'AI_WARN') return 'warn';
-  // overall = 'AI_PASSED'
-  if (severity === 'high') return 'block';
-  if (severity === 'medium') return 'warn';
   return 'pass';
+}
+
+function normalizePolicyKey(value?: string) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeSeverity(value?: string): FindingSeverity | undefined {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+
+  return undefined;
+}
+
+function resolvePolicyMetadata(
+  finding: ModerationFinding,
+  policies: PolicyLookup[],
+) {
+  const slugKey = normalizePolicyKey(finding.policy_slug);
+  const titleKey = normalizePolicyKey(finding.policy_title || finding.policy);
+
+  const exactSlugMatch = slugKey
+    ? policies.find((policy) => normalizePolicyKey(policy.slug) === slugKey)
+    : undefined;
+
+  if (exactSlugMatch) {
+    return exactSlugMatch;
+  }
+
+  if (!titleKey) {
+    return undefined;
+  }
+
+  return policies.find(
+    (policy) =>
+      normalizePolicyKey(policy.title) === titleKey ||
+      normalizePolicyKey(policy.slug) === titleKey,
+  );
+}
+
+function normalizeStringList(value?: string[]) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+}
+
+function normalizeAdvice(
+  advice?: ModerationFinding['advice'],
+): FindingAdvice | undefined {
+  const nextStep = advice?.moderator?.next_step;
+  const moderatorReason = String(advice?.moderator?.reason || '').trim();
+  const moderatorChecks = normalizeStringList(advice?.moderator?.checks).slice(0, 4);
+  const revisionGoal = String(advice?.author?.revision_goal || '').trim();
+  const revisionSteps = normalizeStringList(advice?.author?.revision_steps).slice(0, 4);
+  const noteDraft = String(advice?.author?.note_draft || '').trim();
+
+  if (
+    nextStep !== 'approve' &&
+    nextStep !== 'request_changes' &&
+    nextStep !== 'reject' &&
+    nextStep !== 'escalate'
+  ) {
+    return undefined;
+  }
+
+  if (!moderatorReason || !revisionGoal) {
+    return undefined;
+  }
+
+  return {
+    moderator: {
+      nextStep,
+      reason: moderatorReason,
+      checks: moderatorChecks,
+    },
+    author: {
+      revisionGoal,
+      revisionSteps,
+      noteDraft: noteDraft || undefined,
+    },
+  };
 }
 
 @Injectable()
@@ -36,7 +167,9 @@ export class ModerationService {
     @InjectModel(ChapterModeration.name) private cmModel: Model<ChapterModeration>,
     @InjectModel(ModerationAction.name) private logModel: Model<ModerationAction>,
     @InjectModel(Policies.name) private policiesModel: Model<PoliciesDocument>,
+    @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     private readonly gemini: GeminiModerator,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async submit(dto: SubmitDto, actorId?: string) {
@@ -55,6 +188,9 @@ export class ModerationService {
           ai_model: null,
           ai_findings: [],
           content_hash: dto.contentHash ?? chapter.last_content_hash ?? '',
+          resolution_status: 'OPEN',
+          resolution_note: null,
+          resolved_at: null,
         },
       },
       { upsert: true },
@@ -86,6 +222,9 @@ export class ModerationService {
           ai_model: dto.ai_model,
           ai_findings: dto.ai_findings,
           content_hash: dto.content_hash,
+          resolution_status: 'OPEN',
+          resolution_note: null,
+          resolved_at: null,
         },
       },
       { upsert: true },
@@ -121,23 +260,48 @@ export class ModerationService {
     const chapter = await this.chapterModel.findById(dto.chapterId);
     if (!chapter) throw new NotFoundException('Chapter not found');
 
-    if (dto.action === 'approve') {
-      await this.chapterModel.updateOne({ _id: chapter._id }, { $set: { is_published: true } });
-    } else if (dto.action === 'reject') {
-      await this.chapterModel.updateOne({ _id: chapter._id }, { $set: { is_published: false } });
-    } else if (dto.action === 'request_changes') {
-      // optional
+    const resolutionStatus = toResolutionStatus(dto.action);
+    const shouldPublish = dto.action === 'approve';
+    const shouldEmitPublished = shouldPublish && !chapter.is_published;
+    const actorId =
+      adminId && Types.ObjectId.isValid(adminId)
+        ? new Types.ObjectId(adminId)
+        : undefined;
+
+    await this.chapterModel.updateOne(
+      { _id: chapter._id },
+      { $set: { is_published: shouldPublish } },
+    );
+
+    await this.cmModel.updateOne(
+      { chapter_id: chapter._id },
+      {
+        $set: {
+          resolution_status: resolutionStatus,
+          resolution_note: dto.note?.trim() || null,
+          resolved_at: new Date(),
+        },
+      },
+    );
+
+    if (shouldEmitPublished) {
+      const manga = await this.mangaModel.findById(chapter.manga_id).select('authorId').lean();
+      const authorId = manga?.authorId ? String(manga.authorId) : '';
+
+      if (authorId) {
+        this.eventEmitter.emit('chapter_published', { userId: authorId });
+      }
     }
 
     await this.logModel.create({
       chapter_id: chapter._id,
-      actor_id: new Types.ObjectId(adminId),
+      actor_id: actorId,
       action: dto.action,
       note: dto.note,
       policy_version: chapter.policy_version,
     });
 
-    return { ok: true };
+    return { ok: true, resolution_status: resolutionStatus };
   }
 
   async recheck(dto: RecheckDto, adminId: string) {
@@ -155,14 +319,22 @@ export class ModerationService {
         labels: [],
         risk_score: 0,
         ai_model: null,
+        resolution_status: 'OPEN',
+        resolution_note: null,
+        resolved_at: null,
       },
     },
     { upsert: true },
   );
 
+  const actorId =
+    adminId && Types.ObjectId.isValid(adminId)
+      ? new Types.ObjectId(adminId)
+      : undefined;
+
   await this.logModel.create({
     chapter_id: chapter._id,
-    actor_id: new Types.ObjectId(adminId),
+    actor_id: actorId,
     action: 'recheck',
     policy_version: dto.policyVersion ?? chapter.policy_version ?? '1.0.0',
   });
@@ -202,8 +374,28 @@ export class ModerationService {
           ai_verdict: null,
           risk_score: null,
           last_content_hash: dto.contentHash,
+          is_published: false,
         },
       },
+    );
+
+    await this.cmModel.updateOne(
+      { chapter_id: chapter._id },
+      {
+        $set: {
+          policy_version: chapter.policy_version ?? '1.0.0',
+          status: 'AI_PENDING',
+          risk_score: 0,
+          labels: [],
+          ai_findings: [],
+          ai_model: null,
+          content_hash: dto.contentHash ?? chapter.last_content_hash ?? '',
+          resolution_status: 'OPEN',
+          resolution_note: null,
+          resolved_at: null,
+        },
+      },
+      { upsert: true },
     );
 
     await this.logModel.create({
@@ -241,7 +433,7 @@ export class ModerationService {
 
     const policies = await this.policiesModel
       .find({ status: 'Active', isPublic: true, subCategory: 'posting' })
-      .select('title content mainType subCategory')
+      .select('title slug content mainType subCategory')
       .lean();
 
     const out = await this.gemini.check({
@@ -252,11 +444,23 @@ export class ModerationService {
     });
 
     // ✅ Map ModerationFinding[] -> FindingDto[] (verdict: 'pass'|'warn'|'block')
-    const findingsDto = (out.ai_findings || []).map((f) => ({
-      sectionId: f.policy || 'general',
-      verdict: toFindingVerdict(out.status, f.severity),
-      rationale: f.evidence ? `${f.reason} | evidence: ${f.evidence}` : f.reason,
-    }));
+    const findingsDto = (out.ai_findings || []).map((finding) => {
+      const policy = resolvePolicyMetadata(finding, policies);
+      const severity = normalizeSeverity(finding.severity);
+      const advice = normalizeAdvice(finding.advice);
+
+      return {
+        sectionId: policy?.slug || finding.policy_slug || finding.policy || 'general',
+        verdict: toFindingVerdict(severity, out.status),
+        rationale: finding.evidence
+          ? `${finding.reason} | evidence: ${finding.evidence}`
+          : finding.reason,
+        policySlug: policy?.slug || finding.policy_slug || undefined,
+        policyTitle: policy?.title || finding.policy_title || finding.policy || undefined,
+        severity,
+        advice,
+      };
+    });
 
     const dto: AiResultDto = {
       chapterId: chapter._id.toString(),
@@ -274,8 +478,19 @@ export class ModerationService {
 
   // Hàng chờ cho admin
   // src/moderation/moderation.service.ts
-async listQueue(params: { status?: string; limit?: number }) {
-  const query: any = {};
+async listQueue(params: {
+  status?: string;
+  limit?: number;
+  resolutionStatus?: ModerationResolutionStatus;
+}) {
+  const query: any = params.resolutionStatus
+    ? { resolution_status: params.resolutionStatus }
+    : {
+        $or: [
+          { resolution_status: { $exists: false } },
+          { resolution_status: 'OPEN' },
+        ],
+      };
   if (params.status) query.status = params.status;
 
   const limit = params.limit ?? 50;
@@ -374,6 +589,9 @@ async listQueue(params: { status?: string; limit?: number }) {
         _id: 0,
         chapter_id: '$chapter_id',
         status: '$status',
+        resolution_status: { $ifNull: ['$resolution_status', 'OPEN'] },
+        resolution_note: { $ifNull: ['$resolution_note', null] },
+        resolved_at: '$resolved_at',
         risk_score: { $ifNull: ['$risk_score', 0] },
         labels: { $ifNull: ['$labels', []] },
         updatedAt: '$updatedAt',
@@ -418,6 +636,9 @@ async listQueue(params: { status?: string; limit?: number }) {
         _id: 0,
         chapter_id: 1,
         status: 1,
+        resolution_status: { $ifNull: ['$resolution_status', 'OPEN'] },
+        resolution_note: { $ifNull: ['$resolution_note', null] },
+        resolved_at: '$resolved_at',
         risk_score: { $ifNull: ['$risk_score', 0] },
         labels: { $ifNull: ['$labels', []] },
         policy_version: 1,
@@ -426,6 +647,7 @@ async listQueue(params: { status?: string; limit?: number }) {
         updatedAt: 1,
 
         chapterTitle: { $ifNull: ['$ch.title', 'Untitled'] },
+        is_published: { $ifNull: ['$ch.is_published', false] },
         mangaTitle: {
           $ifNull: ['$manga.title', { $ifNull: ['$manga.name', '-'] }],
         },
@@ -445,7 +667,12 @@ async listQueue(params: { status?: string; limit?: number }) {
   ]);
 
   if (!agg.length) throw new NotFoundException('Moderation record not found');
-  return agg[0];
+
+  const record = agg[0];
+  return {
+    ...record,
+    contentHtml: sanitizeModerationHtml(String(record.contentHtml || '')),
+  };
 }
 
 }
