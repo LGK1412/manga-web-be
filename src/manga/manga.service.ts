@@ -39,6 +39,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
 
 import { Role } from 'src/common/enums/role.enum';
+import { getLicenseRejectReasonHistory } from 'src/license/helpers/license-rights.helper';
 
 @Injectable()
 export class MangaService {
@@ -1028,6 +1029,7 @@ export class MangaService {
         }
         : null,
       licenseRejectReason: (manga as any).licenseRejectReason || '',
+      licenseRejectReasons: getLicenseRejectReasonHistory(manga),
 
       isPublish: Boolean((manga as any).isPublish),
       publicationStatus: this.resolvePublicationStatus(

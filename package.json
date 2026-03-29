@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:genres": "node seed-genres.js"
+    "seed:genres": "node seed-genres.js",
+    "backfill:license-reject-reasons": "node scripts/backfill-license-reject-reasons.js --dry-run",
+    "backfill:license-reject-reasons:apply": "node scripts/backfill-license-reject-reasons.js --apply"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -103,6 +105,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

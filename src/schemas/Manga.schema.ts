@@ -198,6 +198,9 @@ export class Manga {
   @Prop({ type: String, default: '' })
   licenseRejectReason?: string;
 
+  @Prop({ type: [String], default: [] })
+  licenseRejectReasons: string[];
+
   // ====== RIGHTS (NEW) ======
   @Prop({ type: MangaRightsSchema, default: {} })
   rights: MangaRights;

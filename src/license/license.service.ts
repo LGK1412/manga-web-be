@@ -22,10 +22,13 @@ import {
 import { UpdateStoryRightsDto } from './dto/update-story-rights.dto';
 import { AcceptRightsDeclarationDto } from './dto/accept-rights-declaration.dto';
 import {
+  appendLicenseRejectReason,
   canManageStoryRights,
+  clearCurrentLicenseRejectReason,
   derivePassiveReviewStatus,
   evaluatePublishEligibility,
   genFileName,
+  getLicenseRejectReasonHistory,
   getMergedRights,
   isStrictReviewCase,
   normalizeAssetPath,
@@ -62,7 +65,7 @@ export class LicenseService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'authorId isPublish licenseFiles licenseStatus licenseNote licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy rights verifiedBadge',
+        'authorId isPublish licenseFiles licenseStatus licenseNote licenseSubmittedAt licenseRejectReason licenseRejectReasons licenseReviewedAt licenseReviewedBy rights verifiedBadge',
       );
 
     if (!manga) throw new NotFoundException('Manga not found');
@@ -113,7 +116,7 @@ export class LicenseService {
       (manga as any).licenseFiles = newRelFiles;
       (manga as any).licenseNote = note ?? '';
       (manga as any).licenseSubmittedAt = new Date();
-      (manga as any).licenseRejectReason = '';
+      clearCurrentLicenseRejectReason(manga);
       (manga as any).licenseReviewedAt = undefined;
       (manga as any).licenseReviewedBy = undefined;
       (manga as any).verifiedBadge = false;
@@ -239,7 +242,7 @@ export class LicenseService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'title coverImage isPublish status licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseReviewedAt licenseReviewedBy authorId enforcementStatus enforcementReason rights verifiedBadge',
+        'title coverImage isPublish status licenseFiles licenseNote licenseStatus licenseSubmittedAt licenseRejectReason licenseRejectReasons licenseReviewedAt licenseReviewedBy authorId enforcementStatus enforcementReason rights verifiedBadge',
       )
       .populate('authorId', 'username email')
       .populate('licenseReviewedBy', 'username email')
@@ -259,6 +262,7 @@ export class LicenseService {
             normalizeAssetPath(f),
           )
         : [],
+      licenseRejectReasons: getLicenseRejectReasonHistory(manga),
       enforcementStatus: resolveEnforcementStatus(
         (manga as any).enforcementStatus,
       ),
@@ -301,17 +305,18 @@ export class LicenseService {
     }
 
     const rights = getMergedRights(manga);
+    const normalizedRejectReason = rejectReason?.trim() || '';
 
     manga.licenseStatus = status;
     manga.licenseReviewedAt = new Date();
     manga.licenseReviewedBy = new Types.ObjectId(reviewerId);
 
     if (status === MangaLicenseStatus.REJECTED) {
-      if (!rejectReason || !rejectReason.trim()) {
+      if (!normalizedRejectReason) {
         throw new BadRequestException('Reject reason is required');
       }
 
-      manga.licenseRejectReason = rejectReason.trim();
+      appendLicenseRejectReason(manga, normalizedRejectReason);
       manga.isPublish = false;
       (manga as any).verifiedBadge = false;
 
@@ -320,10 +325,10 @@ export class LicenseService {
         reviewStatus: RightsReviewStatus.REJECTED,
         reviewedAt: new Date(),
         reviewedBy: new Types.ObjectId(reviewerId),
-        rejectReason: rejectReason.trim(),
+        rejectReason: normalizedRejectReason,
       };
     } else {
-      manga.licenseRejectReason = '';
+      clearCurrentLicenseRejectReason(manga);
       (manga as any).verifiedBadge = true;
 
       (manga as any).rights = {
@@ -367,7 +372,7 @@ export class LicenseService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'licenseStatus licenseRejectReason licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus isPublish',
+        'licenseStatus licenseRejectReason licenseRejectReasons licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus isPublish',
       )
       .lean();
 
@@ -379,6 +384,7 @@ export class LicenseService {
     return {
       licenseStatus: (manga as any).licenseStatus,
       licenseRejectReason: (manga as any).licenseRejectReason ?? '',
+      licenseRejectReasons: getLicenseRejectReasonHistory(manga),
       licenseSubmittedAt: (manga as any).licenseSubmittedAt ?? null,
       licenseReviewedAt: (manga as any).licenseReviewedAt ?? null,
       verifiedBadge: Boolean((manga as any).verifiedBadge),
@@ -444,6 +450,7 @@ export class LicenseService {
       nextRights.reviewedAt = null;
       nextRights.reviewedBy = null;
       nextRights.rejectReason = '';
+      clearCurrentLicenseRejectReason(manga);
 
       (manga as any).verifiedBadge = false;
 
@@ -455,6 +462,7 @@ export class LicenseService {
       nextRights.reviewedAt = null;
       nextRights.reviewedBy = null;
       nextRights.rejectReason = '';
+      clearCurrentLicenseRejectReason(manga);
 
       (manga as any).verifiedBadge = false;
     }
@@ -513,6 +521,7 @@ export class LicenseService {
       (manga as any).verifiedBadge = false;
     }
 
+    clearCurrentLicenseRejectReason(manga);
     (manga as any).rights = rights;
     syncLegacyLicenseFromRights(manga);
 
@@ -540,7 +549,7 @@ export class LicenseService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'title authorId isPublish licenseStatus licenseRejectReason licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus',
+        'title authorId isPublish licenseStatus licenseRejectReason licenseRejectReasons licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus',
       );
 
     if (!manga) throw new NotFoundException('Manga not found');

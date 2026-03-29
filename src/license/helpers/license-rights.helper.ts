@@ -99,27 +99,80 @@ export function derivePassiveReviewStatus(
   return RightsReviewStatus.NOT_REQUIRED;
 }
 
+export function getLicenseRejectReasonHistory(
+  manga: MangaDocument | any,
+): string[] {
+  const rawReasons = (manga as any)?.licenseRejectReasons;
+
+  if (Array.isArray(rawReasons)) {
+    return rawReasons
+      .filter((reason): reason is string => typeof reason === 'string')
+      .map((reason) => reason.trim())
+      .filter(Boolean);
+  }
+
+  const legacyReason =
+    typeof (manga as any)?.licenseRejectReason === 'string'
+      ? (manga as any).licenseRejectReason.trim()
+      : '';
+
+  return legacyReason ? [legacyReason] : [];
+}
+
+export function clearCurrentLicenseRejectReason(manga: MangaDocument | any) {
+  const reasons = getLicenseRejectReasonHistory(manga);
+
+  if (reasons.length > 0) {
+    (manga as any).licenseRejectReasons = reasons;
+  }
+
+  (manga as any).licenseRejectReason = '';
+}
+
+export function appendLicenseRejectReason(
+  manga: MangaDocument | any,
+  reason: string,
+) {
+  const normalizedReason = reason.trim();
+
+  if (!normalizedReason) {
+    return;
+  }
+
+  (manga as any).licenseRejectReasons = [
+    ...getLicenseRejectReasonHistory(manga),
+    normalizedReason,
+  ];
+  (manga as any).licenseRejectReason = normalizedReason;
+}
+
 export function syncLegacyLicenseFromRights(manga: MangaDocument | any) {
   const rights = getMergedRights(manga);
+  const currentRejectReason =
+    typeof rights.rejectReason === 'string' ? rights.rejectReason.trim() : '';
 
   switch (rights.reviewStatus) {
     case RightsReviewStatus.PENDING:
     case RightsReviewStatus.UNDER_CLAIM:
       (manga as any).licenseStatus = MangaLicenseStatus.PENDING;
+      clearCurrentLicenseRejectReason(manga);
       break;
 
     case RightsReviewStatus.APPROVED:
       (manga as any).licenseStatus = MangaLicenseStatus.APPROVED;
+      clearCurrentLicenseRejectReason(manga);
       break;
 
     case RightsReviewStatus.REJECTED:
       (manga as any).licenseStatus = MangaLicenseStatus.REJECTED;
+      (manga as any).licenseRejectReason = currentRejectReason;
       break;
 
     default:
       if ((manga as any).licenseStatus !== MangaLicenseStatus.APPROVED) {
         (manga as any).licenseStatus = MangaLicenseStatus.NONE;
       }
+      clearCurrentLicenseRejectReason(manga);
       break;
   }
 }
@@ -242,6 +295,7 @@ export function serializeStoryRights(manga: MangaDocument | any) {
     ),
     licenseStatus: (manga as any).licenseStatus,
     licenseRejectReason: (manga as any).licenseRejectReason ?? '',
+    licenseRejectReasons: getLicenseRejectReasonHistory(manga),
     licenseSubmittedAt: (manga as any).licenseSubmittedAt ?? null,
     licenseReviewedAt: (manga as any).licenseReviewedAt ?? null,
     rights,
