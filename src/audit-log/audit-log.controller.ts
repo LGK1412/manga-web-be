@@ -6,9 +6,10 @@ import {
   Param,
   Body,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 import { AuditLogService } from './audit-log.service';
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
@@ -25,9 +26,6 @@ export class AuditLogController {
     return payload?.userId || payload?.user_id || payload?.user_id?.toString();
   }
 
-  /**
-   * ✅ Admin + Content Moderator được xem logs
-   */
   @Get()
   @Roles(Role.ADMIN)
   async list(
@@ -36,6 +34,9 @@ export class AuditLogController {
     @Query('action') action?: string,
     @Query('status') status?: string,
     @Query('risk') risk?: string,
+    @Query('dateRange') dateRange?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('limit') limit = '20',
     @Query('page') page = '1',
   ) {
@@ -45,23 +46,51 @@ export class AuditLogController {
       action,
       status,
       risk,
+      dateRange,
+      from,
+      to,
       limit: Number(limit),
       page: Number(page),
     });
   }
 
-  /**
-   * ✅ Admin + Content Moderator xem detail 1 log
-   */
+  @Get('export')
+  @Roles(Role.ADMIN)
+  async exportRows(
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+    @Query('risk') risk?: string,
+    @Query('dateRange') dateRange?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    const { filename, content } = await this.audit.exportCsv({
+      search,
+      role,
+      action,
+      status,
+      risk,
+      dateRange,
+      from,
+      to,
+    });
+
+    res?.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res?.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res?.setHeader('Cache-Control', 'no-store');
+
+    return content;
+  }
+
   @Get(':id')
   @Roles(Role.ADMIN)
   async getOne(@Param('id') id: string) {
     return this.audit.findOne(id);
   }
 
-  /**
-   * ✅ Admin ONLY markSeen
-   */
   @Patch(':id/seen')
   @Roles(Role.ADMIN)
   async markSeen(@Param('id') id: string, @Req() req: Request) {
@@ -69,9 +98,6 @@ export class AuditLogController {
     return this.audit.markSeen(id, adminId);
   }
 
-  /**
-   * ✅ Admin ONLY approve
-   */
   @Patch(':id/approve')
   @Roles(Role.ADMIN)
   async approve(
@@ -83,9 +109,6 @@ export class AuditLogController {
     return this.audit.approve(id, adminId, adminNote);
   }
 
-  /**
-   * ✅ Admin ONLY mark all seen
-   */
   @Patch('seen-all')
   @Roles(Role.ADMIN)
   async seenAll(@Req() req: Request) {
