@@ -4,6 +4,7 @@ import {
   Post,
   Get,
   Patch,
+  Query,
   Req,
   Param,
   BadRequestException,
@@ -30,7 +31,9 @@ import { Role } from 'src/common/enums/role.enum';
 
 import { AdminSetRoleDto } from './dto/admin-set-role.dto';
 import { AdminResetUserStatusDto } from './dto/admin-reset-user-status.dto';
+import { BulkUserActionDto } from './dto/bulk-user-action.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
+import { UserManagementListQueryDto } from './dto/user-management-list-query.dto';
 
 @Controller('api/user')
 export class UserController {
@@ -40,6 +43,19 @@ export class UserController {
   ) { }
 
   // ================= ADMIN =================
+
+  @Get('/management/list')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(
+    Role.ADMIN,
+    Role.CONTENT_MODERATOR,
+    Role.COMMUNITY_MANAGER,
+    Role.FINANCIAL_MANAGER,
+  )
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async listUsersForManagement(@Query() query: UserManagementListQueryDto) {
+    return this.userService.listUsersForManagement(query);
+  }
 
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -89,6 +105,16 @@ export class UserController {
     return this.userService.moderatorBanUser(actorId, dto.userId, dto.reason);
   }
 
+  @Patch('/moderation/ban/bulk')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async modBanBulk(@Body() dto: BulkUserActionDto, @Req() req: Request) {
+    const actor = (req as any).user;
+    const actorId = actor?.userId || actor?.user_id;
+    return this.userService.bulkModeratorBanUsers(actorId, dto.userIds, dto.reason);
+  }
+
   /**
    * ✅ Community Manager: MUTE user/author + log cho admin
    */
@@ -100,6 +126,16 @@ export class UserController {
     const actor = (req as any).user;
     const actorId = actor?.userId || actor?.user_id;
     return this.userService.communityMuteUser(actorId, dto.userId, dto.reason);
+  }
+
+  @Patch('/moderation/mute/bulk')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.COMMUNITY_MANAGER)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async modMuteBulk(@Body() dto: BulkUserActionDto, @Req() req: Request) {
+    const actor = (req as any).user;
+    const actorId = actor?.userId || actor?.user_id;
+    return this.userService.bulkCommunityMuteUsers(actorId, dto.userIds, dto.reason);
   }
 
   @Get('/admin/summary')
@@ -331,6 +367,16 @@ export class UserController {
     const admin = (req as any).user;
     const adminId = admin?.userId || admin?.user_id;
     return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
+  }
+
+  @Patch("/admin/reset-user-status/bulk")
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async adminResetUserStatusBulk(@Body() dto: BulkUserActionDto, @Req() req: Request) {
+    const admin = (req as any).user;
+    const adminId = admin?.userId || admin?.user_id;
+    return this.userService.bulkAdminResetUserStatus(adminId, dto.userIds, dto.reason);
   }
 
 }
