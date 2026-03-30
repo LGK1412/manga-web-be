@@ -4,7 +4,6 @@ import {
   Post,
   Get,
   Patch,
-  Query,
   Req,
   Param,
   BadRequestException,
@@ -16,9 +15,10 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import fs from 'fs';
+import crypto from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import multer from 'multer';
-import { join } from 'path';
+import { extname, join } from 'path';
 
 import { UserService } from './user.service';
 import { JwtService } from '@nestjs/jwt';
@@ -31,8 +31,6 @@ import { Role } from 'src/common/enums/role.enum';
 import { AdminSetRoleDto } from './dto/admin-set-role.dto';
 import { AdminResetUserStatusDto } from './dto/admin-reset-user-status.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
-import { BulkUserActionDto } from './dto/bulk-user-action.dto';
-import { UserManagementListQueryDto } from './dto/user-management-list-query.dto';
 
 @Controller('api/user')
 export class UserController {
@@ -48,14 +46,6 @@ export class UserController {
   @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
   async getAllUsers(@Req() req: Request) {
     return this.userService.getAllUsers();
-  }
-
-  @Get('/management/list')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async getManagementList(@Query() query: UserManagementListQueryDto) {
-    return this.userService.listUsersForManagement(query);
   }
 
   /**
@@ -99,16 +89,6 @@ export class UserController {
     return this.userService.moderatorBanUser(actorId, dto.userId, dto.reason);
   }
 
-  @Patch('/moderation/ban/bulk')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.CONTENT_MODERATOR)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async bulkModBan(@Body() dto: BulkUserActionDto, @Req() req: Request) {
-    const actor = (req as any).user;
-    const actorId = actor?.userId || actor?.user_id;
-    return this.userService.bulkModeratorBanUsers(actorId, dto.userIds, dto.reason);
-  }
-
   /**
    * ✅ Community Manager: MUTE user/author + log cho admin
    */
@@ -120,16 +100,6 @@ export class UserController {
     const actor = (req as any).user;
     const actorId = actor?.userId || actor?.user_id;
     return this.userService.communityMuteUser(actorId, dto.userId, dto.reason);
-  }
-
-  @Patch('/moderation/mute/bulk')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.COMMUNITY_MANAGER)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async bulkModMute(@Body() dto: BulkUserActionDto, @Req() req: Request) {
-    const actor = (req as any).user;
-    const actorId = actor?.userId || actor?.user_id;
-    return this.userService.bulkCommunityMuteUsers(actorId, dto.userIds, dto.reason);
   }
 
   @Get('/admin/summary')
@@ -221,14 +191,29 @@ export class UserController {
     const updateData: any = {};
     if (body.username) updateData.username = body.username;
     if (body.bio) updateData.bio = body.bio;
-    if (file) updateData.avatar = file.filename;
+    let avatarFilename: string | null = null;
+    if (file) {
+      const fromOriginal = extname(file.originalname || '').toLowerCase();
+      const fromMime =
+        file.mimetype?.startsWith('image/') && file.mimetype.includes('/')
+          ? `.${file.mimetype.split('/')[1].toLowerCase()}`
+          : '';
+      const ext = (fromOriginal || fromMime || '.png').replace(/[^.\w]/g, '');
+      const id =
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : crypto.randomBytes(16).toString('hex');
+      avatarFilename = `${id}${ext}`;
+      updateData.avatar = avatarFilename;
+    }
 
     const user = req['user'];
     const result = await this.userService.updateProfile(user, updateData);
 
-    if (file && result.success) {
-      const filename = file.filename;
-      const filePath = join('public/assets/avatars', filename);
+    if (file && avatarFilename && result.success) {
+      const avatarsDir = join(process.cwd(), 'public', 'assets', 'avatars');
+      await fs.promises.mkdir(avatarsDir, { recursive: true });
+      const filePath = join(avatarsDir, avatarFilename);
       await fs.promises.writeFile(filePath, file.buffer);
     }
 
@@ -326,16 +311,6 @@ export class UserController {
     return this.userService.requestAuthor(userId);
   }
 
-  @Get(':id/moderation-history')
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
-  async getUserModerationHistory(
-    @Param('id') id: string,
-    @Query('limit') limit = '20',
-  ) {
-    return this.userService.getUserModerationHistory(id, Number(limit));
-  }
-
   // ================= PUBLIC =================
 
   @Get('/public/:id')
@@ -356,16 +331,6 @@ export class UserController {
     const admin = (req as any).user;
     const adminId = admin?.userId || admin?.user_id;
     return this.userService.adminResetUserStatus(adminId, dto.userId, dto.reason);
-  }
-
-  @Patch("/admin/reset-user-status/bulk")
-  @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async bulkAdminResetUserStatus(@Body() dto: BulkUserActionDto, @Req() req: Request) {
-    const admin = (req as any).user;
-    const adminId = admin?.userId || admin?.user_id;
-    return this.userService.bulkAdminResetUserStatus(adminId, dto.userIds, dto.reason);
   }
 
 }
