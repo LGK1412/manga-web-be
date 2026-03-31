@@ -126,7 +126,12 @@ export class UserService {
       );
     }
 
-    const before = { role: targetRole, status: target.status };
+    const before = {
+      target_username: target.username,
+      target_email: target.email,
+      role: targetRole,
+      status: target.status,
+    };
 
     const res = await this.userModel.updateOne(
       { _id: targetUserId },
@@ -150,7 +155,12 @@ export class UserService {
       summary: `Admin updated staff status: ${target.username} (${target.email}) -> ${status}`,
       risk: "medium",
       before,
-      after: { role: targetRole, status },
+      after: {
+        target_username: target.username,
+        target_email: target.email,
+        role: targetRole,
+        status,
+      },
     });
 
     return { success: true, message: "Status updated successfully" };
@@ -184,7 +194,12 @@ export class UserService {
       throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
     }
 
-    const before = { role: targetRole, status: target.status };
+    const before = {
+      target_username: target.username,
+      target_email: target.email,
+      role: targetRole,
+      status: target.status,
+    };
 
     // ✅ atomic: chỉ update nếu đang NORMAL
     const res = await this.userModel.updateOne(
@@ -210,7 +225,12 @@ export class UserService {
       summary: `Content moderator banned ${target.username} (${target.email})`,
       risk: "high",
       before,
-      after: { role: targetRole, status: UserStatus.BAN },
+      after: {
+        target_username: target.username,
+        target_email: target.email,
+        role: targetRole,
+        status: UserStatus.BAN,
+      },
       note: reason,
     });
 
@@ -246,7 +266,12 @@ export class UserService {
       throw new BadRequestException("User has been moderated already. Only ADMIN can reset to NORMAL.");
     }
 
-    const before = { role: targetRole, status: target.status };
+    const before = {
+      target_username: target.username,
+      target_email: target.email,
+      role: targetRole,
+      status: target.status,
+    };
 
     // ✅ atomic
     const res = await this.userModel.updateOne(
@@ -272,7 +297,12 @@ export class UserService {
       summary: `Community manager muted ${target.username} (${target.email})`,
       risk: "medium",
       before,
-      after: { role: targetRole, status: UserStatus.MUTE },
+      after: {
+        target_username: target.username,
+        target_email: target.email,
+        role: targetRole,
+        status: UserStatus.MUTE,
+      },
       note: reason,
     });
 
@@ -943,7 +973,11 @@ export class UserService {
       throw new BadRequestException("Cannot downgrade AUTHOR back to USER");
     }
 
-    const before = { role: String(target.role) };
+    const before = {
+      target_username: target.username,
+      target_email: target.email,
+      role: String(target.role),
+    };
 
     target.role = role;
     await target.save();
@@ -961,7 +995,11 @@ export class UserService {
       summary: `Admin changed role: ${target.username} (${target.email}) -> ${role}`,
       risk: "medium",
       before,
-      after: { role },
+      after: {
+        target_username: target.username,
+        target_email: target.email,
+        role,
+      },
     });
 
     return { success: true, message: "Role updated successfully", role };
@@ -1737,7 +1775,12 @@ export class UserService {
       return { success: true, message: "Already NORMAL" };
     }
 
-    const before = { role: targetRole, status: target.status };
+    const before = {
+      target_username: target.username,
+      target_email: target.email,
+      role: targetRole,
+      status: target.status,
+    };
 
     const res = await this.userModel.updateOne(
       { _id: targetUserId, status: { $ne: UserStatus.NORMAL } },
@@ -1759,7 +1802,12 @@ export class UserService {
       summary: `Admin reset status of ${target.username} (${target.email}) -> normal`,
       risk: "medium",
       before,
-      after: { role: targetRole, status: UserStatus.NORMAL },
+      after: {
+        target_username: target.username,
+        target_email: target.email,
+        role: targetRole,
+        status: UserStatus.NORMAL,
+      },
       note: reason,
     });
 

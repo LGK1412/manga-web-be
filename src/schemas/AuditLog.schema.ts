@@ -108,6 +108,10 @@ export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
 
 AuditLogSchema.index({ createdAt: -1 });
 AuditLogSchema.index({ actor_role: 1 });
+AuditLogSchema.index({ actor_name: 1 });
+AuditLogSchema.index({ actor_email: 1 });
+AuditLogSchema.index({ action: 1 });
+AuditLogSchema.index({ risk: 1 });
 AuditLogSchema.index({ target_type: 1, target_id: 1 });
 AuditLogSchema.index({ approval: 1 });
 AuditLogSchema.index({ seen: 1 });

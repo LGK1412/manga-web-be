@@ -48,6 +48,23 @@ export class CommentService {
     return payload?.userId || payload?.user_id || payload?.user_id?.toString?.();
   }
 
+  private summarizeContent(value?: string) {
+    const text = String(value || '')
+      .replace(/<img\b[^>]*>/gi, ' [emoji] ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(div|p|li|blockquote|section|article|ul|ol)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!text) return 'No content preview';
+    return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
+  }
+
   // ================== VALIDATION ==================
   private async checkUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
@@ -376,15 +393,33 @@ export class CommentService {
 
   // ✅ UPDATED: toggle + audit log
   async toggleCommentVisibility(id: string, payload: any) {
-    const comment = await this.commentModel.findById(id);
+    const comment: any = await this.commentModel
+      .findById(id)
+      .populate('user_id', 'username email');
     if (!comment) throw new BadRequestException('Comment does not exist');
 
-    const before = { is_delete: comment.is_delete };
+    const authorName = comment?.user_id?.username || 'Unknown user';
+    const authorEmail = comment?.user_id?.email || '';
+    const contentPreview = this.summarizeContent(comment?.content);
+    const before = {
+      is_delete: comment.is_delete,
+      author_name: authorName,
+      author_email: authorEmail,
+      content_preview: contentPreview,
+      content_html: String(comment?.content ?? '').trim() || undefined,
+    };
     comment.is_delete = !comment.is_delete;
     await comment.save();
-    const after = { is_delete: comment.is_delete };
+    const after = {
+      is_delete: comment.is_delete,
+      author_name: authorName,
+      author_email: authorEmail,
+      content_preview: contentPreview,
+      content_html: String(comment?.content ?? '').trim() || undefined,
+    };
 
     const staffId = this.actorId(payload);
+    const actionLabel = comment.is_delete ? 'Comment hidden' : 'Comment restored';
 
     await this.audit.createLog({
       actor_id: staffId,
@@ -394,7 +429,7 @@ export class CommentService {
       action: comment.is_delete ? 'comment_hidden' : 'comment_restored',
       target_type: AuditTargetType.COMMENT,
       target_id: id,
-      summary: comment.is_delete ? 'Comment hidden' : 'Comment restored',
+      summary: `${actionLabel}: "${contentPreview}" by ${authorName}`,
       risk: 'low',
       before,
       after,

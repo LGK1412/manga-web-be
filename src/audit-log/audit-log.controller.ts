@@ -57,6 +57,7 @@ export class AuditLogController {
   @Get('export')
   @Roles(Role.ADMIN)
   async exportRows(
+    @Res() res: Response,
     @Query('search') search?: string,
     @Query('role') role?: string,
     @Query('action') action?: string,
@@ -65,9 +66,8 @@ export class AuditLogController {
     @Query('dateRange') dateRange?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Res({ passthrough: true }) res?: Response,
   ) {
-    const { filename, content } = await this.audit.exportCsv({
+    const { filename, stream } = await this.audit.exportCsv({
       search,
       role,
       action,
@@ -78,11 +78,15 @@ export class AuditLogController {
       to,
     });
 
-    res?.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res?.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res?.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
 
-    return content;
+    await new Promise<void>((resolve, reject) => {
+      stream.on('error', reject);
+      stream.on('end', resolve);
+      stream.pipe(res);
+    });
   }
 
   @Get(':id')
@@ -111,8 +115,27 @@ export class AuditLogController {
 
   @Patch('seen-all')
   @Roles(Role.ADMIN)
-  async seenAll(@Req() req: Request) {
+  async seenAll(
+    @Req() req: Request,
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+    @Query('risk') risk?: string,
+    @Query('dateRange') dateRange?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     const adminId = this.getUserId(req['user']);
-    return this.audit.markAllSeen(adminId);
+    return this.audit.markAllSeen(adminId, {
+      search,
+      role,
+      action,
+      status,
+      risk,
+      dateRange,
+      from,
+      to,
+    });
   }
 }

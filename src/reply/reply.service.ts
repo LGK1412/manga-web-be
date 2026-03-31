@@ -48,6 +48,23 @@ export class ReplyService {
     return payload?.userId || payload?.user_id || payload?.user_id?.toString?.();
   }
 
+  private summarizeContent(value?: string) {
+    const text = String(value || '')
+      .replace(/<img\b[^>]*>/gi, ' [emoji] ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(div|p|li|blockquote|section|article|ul|ol)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!text) return 'No content preview';
+    return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
+  }
+
   private async checkLegitUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
     if (!existingUser) {
@@ -233,15 +250,33 @@ export class ReplyService {
 
   // ✅ UPDATED: toggle + audit
   async toggleReplyVisibility(id: string, payload: any) {
-    const reply = await this.replyModel.findById(id);
+    const reply: any = await this.replyModel
+      .findById(id)
+      .populate('user_id', 'username email');
     if (!reply) throw new BadRequestException('Reply does not exist');
 
-    const before = { is_delete: reply.is_delete };
+    const authorName = reply?.user_id?.username || 'Unknown user';
+    const authorEmail = reply?.user_id?.email || '';
+    const contentPreview = this.summarizeContent(reply?.content);
+    const before = {
+      is_delete: reply.is_delete,
+      author_name: authorName,
+      author_email: authorEmail,
+      content_preview: contentPreview,
+      content_html: String(reply?.content ?? '').trim() || undefined,
+    };
     reply.is_delete = !reply.is_delete;
     await reply.save();
-    const after = { is_delete: reply.is_delete };
+    const after = {
+      is_delete: reply.is_delete,
+      author_name: authorName,
+      author_email: authorEmail,
+      content_preview: contentPreview,
+      content_html: String(reply?.content ?? '').trim() || undefined,
+    };
 
     const staffId = this.actorId(payload);
+    const actionLabel = reply.is_delete ? 'Reply hidden' : 'Reply restored';
 
     await this.audit.createLog({
       actor_id: staffId,
@@ -251,7 +286,7 @@ export class ReplyService {
       action: reply.is_delete ? 'reply_hidden' : 'reply_restored',
       target_type: AuditTargetType.REPLY,
       target_id: id,
-      summary: reply.is_delete ? 'Reply hidden' : 'Reply restored',
+      summary: `${actionLabel}: "${contentPreview}" by ${authorName}`,
       risk: 'low',
       before,
       after,
