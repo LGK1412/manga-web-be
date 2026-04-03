@@ -17,12 +17,13 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
 @Controller('api/styles')
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
+
 export class StylesController {
   constructor(private readonly stylesService: StylesService) {}
 
   @Post()
+  @UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   create(@Body() createStylesDto: any) {
     return this.stylesService.create(createStylesDto);
   }
@@ -48,11 +49,15 @@ export class StylesController {
   }
 
   @Put(':id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   update(@Param('id') id: string, @Body() updateStylesDto: any) {
     return this.stylesService.update(id, updateStylesDto);
   }
 
   @Delete(':id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   remove(@Param('id') id: string) {
     return this.stylesService.delete(id);
   }

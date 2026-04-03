@@ -19,8 +19,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
 @Controller('api/genre')
-@UseGuards(AccessTokenGuard, RolesGuard)
-@Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
+
 export class GenreController {
   constructor(private readonly genreService: GenreService) {}
 
@@ -35,23 +34,31 @@ export class GenreController {
   }
 
   @Post()
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   @UsePipes(new ValidationPipe({ whitelist: true }))
   async createGenre(@Body() dto: CreateGenreDto) {
     return await this.genreService.createGenre(dto);
   }
 
   @Post('bulk')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   async createMultipleGenres(@Body() body: { genres: CreateGenreDto[] }) {
     return await this.genreService.createMultipleGenres(body.genres);
   }
 
   @Patch(':id')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   @UsePipes(new ValidationPipe({ whitelist: true }))
   async updateGenre(@Param('id') id: string, @Body() dto: UpdateGenreDto) {
     return await this.genreService.updateGenre(id, dto);
   }
 
   @Patch(':id/toggle-status')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.CONTENT_MODERATOR, Role.AUTHOR, Role.USER)
   async toggleStatus(@Param('id') id: string) {
     return await this.genreService.toggleStatus(id);
   }
