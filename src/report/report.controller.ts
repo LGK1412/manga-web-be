@@ -29,8 +29,9 @@ export class ReportController {
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
-  create(@Body() dto: CreateReportDto) {
-    return this.reportsService.create(dto);
+  create(@Body() dto: CreateReportDto, @Req() req: Request) {
+    const payload = req['user'] as JwtPayload;
+    return this.reportsService.create(dto, payload);
   }
 
   // ✅ Admin + Content Moderator + Community Manager can view (service sẽ filter theo role)

@@ -222,61 +222,26 @@ export function evaluatePublishEligibility(manga: MangaDocument | any) {
     };
   }
 
-  if (
-    rights.originType === StoryOriginType.ORIGINAL &&
-    rights.basis === RightsBasis.SELF_DECLARATION &&
-    rights.declarationAccepted
-  ) {
+  if ((manga as any).licenseStatus === MangaLicenseStatus.PENDING) {
     return {
-      canPublish: true,
-      requiresReview: false,
-      reason: null,
-    };
-  }
-
-  if (isStrictReviewCase(rights)) {
-    return {
-      canPublish: rights.reviewStatus === RightsReviewStatus.APPROVED,
+      canPublish: false,
       requiresReview: true,
-      reason:
-        rights.reviewStatus === RightsReviewStatus.APPROVED
-          ? null
-          : 'Proof of rights must be approved before publishing',
+      reason: 'Proof images are under review',
     };
   }
 
-  if (rights.originType === StoryOriginType.CC_LICENSED) {
-    const ok =
-      !!rights.sourceUrl &&
-      !!rights.licenseUrl &&
-      (rights.reviewStatus === RightsReviewStatus.DECLARED ||
-        rights.reviewStatus === RightsReviewStatus.APPROVED);
-
+  if ((manga as any).licenseStatus === MangaLicenseStatus.REJECTED) {
     return {
-      canPublish: ok,
-      requiresReview: false,
-      reason: ok ? null : 'Source URL and license URL are required',
-    };
-  }
-
-  if (rights.originType === StoryOriginType.PUBLIC_DOMAIN) {
-    const ok =
-      !!rights.sourceUrl &&
-      (rights.reviewStatus === RightsReviewStatus.DECLARED ||
-        rights.reviewStatus === RightsReviewStatus.APPROVED ||
-        rights.reviewStatus === RightsReviewStatus.NOT_REQUIRED);
-
-    return {
-      canPublish: ok,
-      requiresReview: false,
-      reason: ok ? null : 'Source reference is required',
+      canPublish: false,
+      requiresReview: true,
+      reason: 'Proof images were rejected. Please upload clearer files',
     };
   }
 
   return {
     canPublish: false,
-    requiresReview: false,
-    reason: 'Story rights information is incomplete',
+    requiresReview: true,
+    reason: 'Upload proof images and wait for approval before publishing',
   };
 }
 

@@ -1,17 +1,19 @@
-import { PartialType } from '@nestjs/mapped-types'
-import { CreateReportDto } from './create-report.dto'
-import { IsEnum, IsOptional, IsString, IsMongoId } from 'class-validator'
+import { IsEnum, IsOptional, IsString } from 'class-validator'
 
-export class UpdateReportDto extends PartialType(CreateReportDto) {
+export class UpdateReportDto {
   @IsOptional()
-  @IsEnum(['new', 'in-progress', 'resolved', 'rejected'])
-  status?: 'new' | 'in-progress' | 'resolved' | 'rejected'
+  @IsEnum(['in-progress', 'resolved', 'rejected'])
+  status?: 'in-progress' | 'resolved' | 'rejected'
 
   @IsOptional()
-  @IsMongoId()
-  resolver_id?: string
+  @IsString()
+  note?: string
 
   @IsOptional()
   @IsString()
   resolution_note?: string
+
+  @IsOptional()
+  @IsEnum(['none', 'warning_sent', 'user_banned', 'user_muted'])
+  resolution_action?: 'none' | 'warning_sent' | 'user_banned' | 'user_muted'
 }

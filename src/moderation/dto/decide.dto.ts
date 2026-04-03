@@ -2,6 +2,6 @@ import { IsIn, IsMongoId, IsOptional, IsString } from 'class-validator';
 
 export class DecideDto {
   @IsMongoId() chapterId: string;
-  @IsIn(['approve','reject','request_changes']) action: 'approve'|'reject'|'request_changes';
+  @IsIn(['approve','reject']) action: 'approve'|'reject';
   @IsOptional() @IsString() note?: string;
 }

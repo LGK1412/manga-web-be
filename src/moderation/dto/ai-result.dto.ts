@@ -2,8 +2,8 @@ import { IsArray, IsIn, IsMongoId, IsNumber, IsOptional, IsString, ValidateNeste
 import { Type } from 'class-transformer';
 
 class ModeratorAdviceDto {
-  @IsIn(['approve', 'request_changes', 'reject', 'escalate'])
-  nextStep: 'approve' | 'request_changes' | 'reject' | 'escalate';
+  @IsIn(['approve', 'reject', 'escalate'])
+  nextStep: 'approve' | 'reject' | 'escalate';
 
   @IsString()
   reason: string;

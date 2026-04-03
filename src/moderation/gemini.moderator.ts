@@ -12,7 +12,7 @@ export type ModerationFinding = {
   severity?: 'low' | 'medium' | 'high';
   advice?: {
     moderator: {
-      next_step: 'approve' | 'request_changes' | 'reject' | 'escalate';
+      next_step: 'approve' | 'reject' | 'escalate';
       reason: string;
       checks: string[];
     };
@@ -96,12 +96,12 @@ export class GeminiModerator {
   }
 
   private parseAdvice(rawAdvice: any): ModerationFinding['advice'] | undefined {
+    const rawNextStep = rawAdvice?.moderator?.next_step;
     const nextStep =
-      rawAdvice?.moderator?.next_step === 'approve' ||
-      rawAdvice?.moderator?.next_step === 'request_changes' ||
-      rawAdvice?.moderator?.next_step === 'reject' ||
-      rawAdvice?.moderator?.next_step === 'escalate'
-        ? rawAdvice.moderator.next_step
+      rawNextStep === 'approve' ||
+      rawNextStep === 'reject' ||
+      rawNextStep === 'escalate'
+        ? rawNextStep
         : undefined;
 
     const moderatorReason = String(rawAdvice?.moderator?.reason ?? '').trim();
@@ -169,9 +169,9 @@ Requirements:
       "reason": string,
       "evidence": string,
       "severity": "low" | "medium" | "high",
-      "advice": {
-        "moderator": {
-          "next_step": "approve" | "request_changes" | "reject" | "escalate",
+        "advice": {
+          "moderator": {
+          "next_step": "approve" | "reject" | "escalate",
           "reason": string,
           "checks": string[]
         },
@@ -200,8 +200,7 @@ Advice rules:
 - The "author" advice is for revision guidance that can be sent to the author.
 - "moderator.next_step" should be:
   - "approve" only if the finding is effectively safe in context.
-  - "request_changes" if the issue is fixable through revision.
-  - "reject" if the content is clearly incompatible with posting policy.
+  - "reject" if the content is not ready for publication and requires revision or is clearly incompatible with posting policy.
   - "escalate" if age, consent, protected-group, or policy interpretation is ambiguous.
 - Keep "moderator.reason" concrete and decision-oriented.
 - Keep "moderator.checks" as short review checkpoints.

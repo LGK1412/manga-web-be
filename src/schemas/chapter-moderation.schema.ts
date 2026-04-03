@@ -4,7 +4,6 @@ import { HydratedDocument, Types } from 'mongoose';
 export type ModerationResolutionStatus =
   | 'OPEN'
   | 'APPROVED'
-  | 'CHANGES_REQUESTED'
   | 'REJECTED';
 
 @Schema({ timestamps: true })
@@ -60,7 +59,7 @@ export class ChapterModeration {
     severity?: 'low'|'medium'|'high';
     advice?: {
       moderator: {
-        nextStep: 'approve'|'request_changes'|'reject'|'escalate';
+        nextStep: 'approve'|'reject'|'escalate';
         reason: string;
         checks: string[];
       };
@@ -78,7 +77,7 @@ export class ChapterModeration {
 
   @Prop({
     type: String,
-    enum: ['OPEN', 'APPROVED', 'CHANGES_REQUESTED', 'REJECTED'],
+    enum: ['OPEN', 'APPROVED', 'REJECTED'],
     default: 'OPEN',
   })
   resolution_status: ModerationResolutionStatus;

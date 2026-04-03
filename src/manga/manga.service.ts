@@ -149,65 +149,26 @@ export class MangaService {
       };
     }
 
-    // original story declared by author
-    if (
-      rights.originType === StoryOriginType.ORIGINAL &&
-      rights.basis === RightsBasis.SELF_DECLARATION &&
-      rights.declarationAccepted
-    ) {
+    if ((manga as any).licenseStatus === MangaLicenseStatus.PENDING) {
       return {
-        canPublish: true,
-        requiresReview: false,
-        reason: null,
-      };
-    }
-
-    // translated/adapted/repost require approved proof
-    if (this.isStrictReviewCase(rights)) {
-      return {
-        canPublish: rights.reviewStatus === RightsReviewStatus.APPROVED,
+        canPublish: false,
         requiresReview: true,
-        reason:
-          rights.reviewStatus === RightsReviewStatus.APPROVED
-            ? null
-            : 'Proof of rights must be approved before publishing',
+        reason: 'Proof images are under review',
       };
     }
 
-    // CC licensed
-    if (rights.originType === StoryOriginType.CC_LICENSED) {
-      const ok =
-        !!rights.sourceUrl &&
-        !!rights.licenseUrl &&
-        (rights.reviewStatus === RightsReviewStatus.DECLARED ||
-          rights.reviewStatus === RightsReviewStatus.APPROVED);
-
+    if ((manga as any).licenseStatus === MangaLicenseStatus.REJECTED) {
       return {
-        canPublish: ok,
-        requiresReview: false,
-        reason: ok ? null : 'Source URL and license URL are required',
-      };
-    }
-
-    // public domain
-    if (rights.originType === StoryOriginType.PUBLIC_DOMAIN) {
-      const ok =
-        !!rights.sourceUrl &&
-        (rights.reviewStatus === RightsReviewStatus.DECLARED ||
-          rights.reviewStatus === RightsReviewStatus.APPROVED ||
-          rights.reviewStatus === RightsReviewStatus.NOT_REQUIRED);
-
-      return {
-        canPublish: ok,
-        requiresReview: false,
-        reason: ok ? null : 'Source reference is required',
+        canPublish: false,
+        requiresReview: true,
+        reason: 'Proof images were rejected. Please upload clearer files',
       };
     }
 
     return {
       canPublish: false,
-      requiresReview: false,
-      reason: 'Story rights information is incomplete',
+      requiresReview: true,
+      reason: 'Upload proof images and wait for approval before publishing',
     };
   }
 
@@ -334,19 +295,32 @@ export class MangaService {
       }
     }
 
-    const result = await this.mangaModel.updateOne(
-      { _id: id, authorId },
-      { $set: updateMangaDto },
-    );
-
-    if (result.modifiedCount === 0) {
+    const existingManga = await this.mangaModel.findOne({ _id: id, authorId });
+    if (!existingManga) {
       throw new BadRequestException(
         'Unable to update manga or manga does not exist',
       );
     }
 
+    const nextState = {
+      ...existingManga.toObject(),
+      ...updateMangaDto,
+    };
+
+    if (nextState.isPublish) {
+      const eligibility = this.evaluatePublishEligibility(nextState as any);
+      if (!eligibility.canPublish) {
+        throw new BadRequestException(
+          eligibility.reason || 'Story does not meet rights policy for publishing',
+        );
+      }
+    }
+
+    Object.assign(existingManga, updateMangaDto);
+    await existingManga.save();
+
     return this.mangaModel
-      .findById(id)
+      .findById(existingManga._id)
       .populate('genres', 'name')
       .populate('styles', 'name');
   }

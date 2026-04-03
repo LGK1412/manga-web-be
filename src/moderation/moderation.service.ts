@@ -28,7 +28,7 @@ type PolicyLookup = {
 };
 type FindingAdvice = {
   moderator: {
-    nextStep: 'approve' | 'request_changes' | 'reject' | 'escalate';
+    nextStep: 'approve' | 'reject' | 'escalate';
     reason: string;
     checks: string[];
   };
@@ -43,8 +43,7 @@ function toResolutionStatus(
   action: DecideDto['action'],
 ): ModerationResolutionStatus {
   if (action === 'approve') return 'APPROVED';
-  if (action === 'reject') return 'REJECTED';
-  return 'CHANGES_REQUESTED';
+  return 'REJECTED';
 }
 
 function sanitizeModerationHtml(html: string) {
@@ -126,7 +125,13 @@ function normalizeStringList(value?: string[]) {
 function normalizeAdvice(
   advice?: ModerationFinding['advice'],
 ): FindingAdvice | undefined {
-  const nextStep = advice?.moderator?.next_step;
+  const rawNextStep = advice?.moderator?.next_step;
+  const nextStep =
+    rawNextStep === 'approve' ||
+    rawNextStep === 'reject' ||
+    rawNextStep === 'escalate'
+      ? rawNextStep
+      : undefined;
   const moderatorReason = String(advice?.moderator?.reason || '').trim();
   const moderatorChecks = normalizeStringList(advice?.moderator?.checks).slice(0, 4);
   const revisionGoal = String(advice?.author?.revision_goal || '').trim();
@@ -135,7 +140,6 @@ function normalizeAdvice(
 
   if (
     nextStep !== 'approve' &&
-    nextStep !== 'request_changes' &&
     nextStep !== 'reject' &&
     nextStep !== 'escalate'
   ) {
@@ -401,7 +405,7 @@ export class ModerationService {
     await this.logModel.create({
       chapter_id: chapter._id,
       actor_id: actorId ? new Types.ObjectId(actorId) : undefined,
-      action: 'request_changes',
+      action: 'recheck',
       note: 'content updated -> invalidate AI result',
     });
 
@@ -481,25 +485,33 @@ export class ModerationService {
 async listQueue(params: {
   status?: string;
   limit?: number;
-  resolutionStatus?: ModerationResolutionStatus;
 }) {
-  const query: any = params.resolutionStatus
-    ? { resolution_status: params.resolutionStatus }
-    : {
-        $or: [
-          { resolution_status: { $exists: false } },
-          { resolution_status: 'OPEN' },
-        ],
-      };
+  const query: any = {};
   if (params.status) query.status = params.status;
-
-  const limit = params.limit ?? 50;
-
+  const limit = Math.max(1, Math.min(500, params.limit ?? 50));
   const rows = await this.cmModel.aggregate([
     { $match: query },
-    { $sort: { risk_score: -1, updatedAt: -1 } },
+    {
+      $addFields: {
+        resolution_sort_rank: {
+          $switch: {
+            branches: [
+              {
+                case: {
+                  $eq: [{ $ifNull: ['$resolution_status', 'OPEN'] }, 'OPEN'],
+                },
+                then: 0,
+              },
+              { case: { $eq: ['$resolution_status', 'REJECTED'] }, then: 1 },
+              { case: { $eq: ['$resolution_status', 'APPROVED'] }, then: 2 },
+            ],
+            default: 3,
+          },
+        },
+      },
+    },
+    { $sort: { resolution_sort_rank: 1, risk_score: -1, updatedAt: -1 } },
     { $limit: limit },
-
     {
       $lookup: {
         from: 'chapters',
@@ -589,7 +601,13 @@ async listQueue(params: {
         _id: 0,
         chapter_id: '$chapter_id',
         status: '$status',
-        resolution_status: { $ifNull: ['$resolution_status', 'OPEN'] },
+        resolution_status: {
+          $cond: [
+            { $eq: [{ $ifNull: ['$resolution_status', 'OPEN'] }, 'CHANGES_REQUESTED'] },
+            'REJECTED',
+            { $ifNull: ['$resolution_status', 'OPEN'] },
+          ],
+        },
         resolution_note: { $ifNull: ['$resolution_note', null] },
         resolved_at: '$resolved_at',
         risk_score: { $ifNull: ['$risk_score', 0] },
@@ -604,6 +622,11 @@ async listQueue(params: {
           $ifNull: ['$author.username', { $ifNull: ['$author.email', '-'] }],
         },
         authorEmail: { $ifNull: ['$author.email', ''] },
+      },
+    },
+    {
+      $project: {
+        resolution_sort_rank: 0,
       },
     },
   ]);
@@ -636,7 +659,13 @@ async listQueue(params: {
         _id: 0,
         chapter_id: 1,
         status: 1,
-        resolution_status: { $ifNull: ['$resolution_status', 'OPEN'] },
+        resolution_status: {
+          $cond: [
+            { $eq: [{ $ifNull: ['$resolution_status', 'OPEN'] }, 'CHANGES_REQUESTED'] },
+            'REJECTED',
+            { $ifNull: ['$resolution_status', 'OPEN'] },
+          ],
+        },
         resolution_note: { $ifNull: ['$resolution_note', null] },
         resolved_at: '$resolved_at',
         risk_score: { $ifNull: ['$risk_score', 0] },

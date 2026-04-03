@@ -74,6 +74,18 @@ export class LicenseService {
       throw new BadRequestException('You are not the owner of this manga');
     }
 
+    if ((manga as any).licenseStatus === MangaLicenseStatus.APPROVED) {
+      throw new BadRequestException(
+        'This license has already been approved. Re-upload is only available after rejection.',
+      );
+    }
+
+    if ((manga as any).licenseStatus === MangaLicenseStatus.PENDING) {
+      throw new BadRequestException(
+        'A license submission is already under review. Wait for review actions. You can upload again only after rejection.',
+      );
+    }
+
     const dir = join('public', 'assets', 'licenses', mangaId);
     await fs.promises.mkdir(dir, { recursive: true });
 
@@ -131,9 +143,7 @@ export class LicenseService {
         rejectReason: '',
       };
 
-      if (isStrictReviewCase((manga as any).rights)) {
-        (manga as any).isPublish = false;
-      }
+      (manga as any).isPublish = false;
 
       await manga.save();
     } catch {

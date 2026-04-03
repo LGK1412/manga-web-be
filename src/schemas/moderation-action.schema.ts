@@ -9,8 +9,8 @@ export class ModerationAction {
   @Prop({ type: Types.ObjectId, ref: 'User' })
   actor_id?: Types.ObjectId; // null/undefined = AI (FE push)
 
-  @Prop({ enum: ['ai_check','recheck','approve','reject','request_changes','redact'], required: true })
-  action: 'ai_check'|'recheck'|'approve'|'reject'|'request_changes'|'redact';
+  @Prop({ enum: ['ai_check','recheck','approve','reject','redact'], required: true })
+  action: 'ai_check'|'recheck'|'approve'|'reject'|'redact';
 
   @Prop({ type: String })
   note?: string;

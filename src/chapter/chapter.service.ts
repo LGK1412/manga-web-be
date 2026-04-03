@@ -66,11 +66,21 @@ export class ChapterServiceOnlyNormalChapterInfor {
             as: 'imageDocs',
           },
         },
+        {
+          $lookup: {
+            from: 'mangas',
+            localField: 'manga_id',
+            foreignField: '_id',
+            as: 'mangaDoc',
+          },
+        },
         { $addFields: { _text: { $first: '$texts' }, _image: { $first: '$imageDocs' } } },
+        { $addFields: { _manga: { $first: '$mangaDoc' } } },
         {
           $addFields: {
             content: { $ifNull: ['$_text.content', null] },
             _imageFiles: { $ifNull: ['$_image.images', []] },
+            authorId: { $ifNull: ['$_manga.authorId', null] },
             type: {
               $switch: {
                 branches: [
@@ -106,8 +116,10 @@ export class ChapterServiceOnlyNormalChapterInfor {
           $project: {
             texts: 0,
             imageDocs: 0,
+            mangaDoc: 0,
             _text: 0,
             _image: 0,
+            _manga: 0,
             _imageFiles: 0,
             __v: 0,
           },
