@@ -140,35 +140,10 @@ export class MangaService {
       };
     }
 
-    // backward compatibility for old approved stories
-    if ((manga as any).licenseStatus === MangaLicenseStatus.APPROVED) {
-      return {
-        canPublish: true,
-        requiresReview: false,
-        reason: null,
-      };
-    }
-
-    if ((manga as any).licenseStatus === MangaLicenseStatus.PENDING) {
-      return {
-        canPublish: false,
-        requiresReview: true,
-        reason: 'Proof images are under review',
-      };
-    }
-
-    if ((manga as any).licenseStatus === MangaLicenseStatus.REJECTED) {
-      return {
-        canPublish: false,
-        requiresReview: true,
-        reason: 'Proof images were rejected. Please upload clearer files',
-      };
-    }
-
     return {
-      canPublish: false,
-      requiresReview: true,
-      reason: 'Upload proof images and wait for approval before publishing',
+      canPublish: true,
+      requiresReview: false,
+      reason: null,
     };
   }
 
@@ -252,10 +227,12 @@ export class MangaService {
         }
       }
 
+      const nextIsPublish = Boolean(createMangaDto.isPublish);
+
       const newManga = new this.mangaModel({
         ...createMangaDto,
         authorId,
-        isPublish: false,
+        isPublish: nextIsPublish,
         licenseStatus: MangaLicenseStatus.NONE,
         enforcementStatus: MangaEnforcementStatus.NORMAL,
         rights: this.getDefaultRights(),
@@ -311,7 +288,7 @@ export class MangaService {
       const eligibility = this.evaluatePublishEligibility(nextState as any);
       if (!eligibility.canPublish) {
         throw new BadRequestException(
-          eligibility.reason || 'Story does not meet rights policy for publishing',
+          eligibility.reason || 'Story cannot be published under the current backend policy',
         );
       }
     }
@@ -1536,7 +1513,7 @@ export class MangaService {
       const eligibility = this.evaluatePublishEligibility(manga);
       if (!eligibility.canPublish) {
         throw new BadRequestException(
-          eligibility.reason || 'Story does not meet rights policy for publishing',
+          eligibility.reason || 'Story cannot be published under the current backend policy',
         );
       }
     }

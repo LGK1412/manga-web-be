@@ -1,6 +1,5 @@
 // src/moderation/moderation.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import sanitizeHtml from 'sanitize-html';
@@ -173,7 +172,6 @@ export class ModerationService {
     @InjectModel(Policies.name) private policiesModel: Model<PoliciesDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     private readonly gemini: GeminiModerator,
-    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async submit(dto: SubmitDto, actorId?: string) {
@@ -265,8 +263,7 @@ export class ModerationService {
     if (!chapter) throw new NotFoundException('Chapter not found');
 
     const resolutionStatus = toResolutionStatus(dto.action);
-    const shouldPublish = dto.action === 'approve';
-    const shouldEmitPublished = shouldPublish && !chapter.is_published;
+    const nextPublished = dto.action === 'reject' ? false : chapter.is_published;
     const actorId =
       adminId && Types.ObjectId.isValid(adminId)
         ? new Types.ObjectId(adminId)
@@ -274,7 +271,7 @@ export class ModerationService {
 
     await this.chapterModel.updateOne(
       { _id: chapter._id },
-      { $set: { is_published: shouldPublish } },
+      { $set: { is_published: nextPublished } },
     );
 
     await this.cmModel.updateOne(
@@ -287,15 +284,6 @@ export class ModerationService {
         },
       },
     );
-
-    if (shouldEmitPublished) {
-      const manga = await this.mangaModel.findById(chapter.manga_id).select('authorId').lean();
-      const authorId = manga?.authorId ? String(manga.authorId) : '';
-
-      if (authorId) {
-        this.eventEmitter.emit('chapter_published', { userId: authorId });
-      }
-    }
 
     await this.logModel.create({
       chapter_id: chapter._id,
@@ -378,7 +366,6 @@ export class ModerationService {
           ai_verdict: null,
           risk_score: null,
           last_content_hash: dto.contentHash,
-          is_published: false,
         },
       },
     );

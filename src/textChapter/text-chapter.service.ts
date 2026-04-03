@@ -10,6 +10,10 @@ import { CreateChapterWithTextDto } from './dto/create-chapter-with-text.dto';
 import { UpdateChapterWithTextDto } from './dto/update-chapter-with-text.dto';
 import { Manga, MangaDocument } from 'src/schemas/Manga.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  ChapterModeration,
+  ChapterModerationDocument,
+} from '../schemas/chapter-moderation.schema';
 
 @Injectable()
 export class ChapterService {
@@ -18,6 +22,8 @@ export class ChapterService {
     @InjectModel(TextChapter.name)
     private textChapterModel: Model<TextChapterDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
+    @InjectModel(ChapterModeration.name)
+    private chapterModerationModel: Model<ChapterModerationDocument>,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -112,18 +118,12 @@ export class ChapterService {
       );
     }
 
-    if (isPublished) {
-      throw new BadRequestException(
-        'Chapters are published after moderation approval. Create the chapter as draft and wait for review.',
-      );
-    }
-
     const chapter = await this.chapterModel.create({
       title,
       manga_id: new Types.ObjectId(manga_id),
       price: price ?? 0,
       order: order ?? 1,
-      is_published: false,
+      is_published: isPublished === true,
       ai_checked: false,
       ai_verdict: null,
       risk_score: null,
@@ -142,6 +142,12 @@ export class ChapterService {
       this.eventEmitter.emit('chapter_create_count', {
         userId: manga.authorId.toString(),
       });
+
+      if (chapter.is_published) {
+        this.eventEmitter.emit('chapter_published', {
+          userId: manga.authorId.toString(),
+        });
+      }
     } else {
       console.warn('Could not find authorId for manga:', manga_id);
     }
@@ -184,19 +190,22 @@ export class ChapterService {
     }
 
     const contentChanged = content !== undefined || title !== undefined;
-    const requestedPublish = isPublished === true && !wasPublished;
+    const nextPublished =
+      isPublished !== undefined ? isPublished : wasPublished;
 
-    if (requestedPublish) {
-      throw new BadRequestException(
-        'This chapter will be published after moderation approval. Save your changes and wait for review.',
-      );
+    if (!contentChanged && nextPublished && !wasPublished) {
+      const moderation = await this.chapterModerationModel
+        .findOne({ chapter_id: id })
+        .select('resolution_status')
+        .lean();
+
+      if (moderation?.resolution_status === 'REJECTED') {
+        throw new BadRequestException(
+          'This chapter was rejected by moderation. Update the content first before publishing again.',
+        );
+      }
     }
-
-    const nextPublished = contentChanged
-      ? false
-      : isPublished !== undefined
-        ? isPublished
-        : wasPublished;
+    const shouldEmitPublished = nextPublished && !wasPublished;
 
     const chapter = await this.chapterModel.findByIdAndUpdate(
       id,
@@ -205,6 +214,13 @@ export class ChapterService {
         ...(price !== undefined && { price }),
         ...(order !== undefined && { order }),
         is_published: nextPublished,
+        ...(contentChanged && {
+          ai_checked: false,
+          ai_verdict: null,
+          risk_score: null,
+          policy_version: null,
+          last_content_hash: null,
+        }),
       },
       { new: true },
     );
@@ -222,22 +238,22 @@ export class ChapterService {
     }
 
     if (contentChanged) {
-      await this.chapterModel.updateOne(
-        { _id: id },
-        {
-          $set: {
-            ai_checked: false,
-            ai_verdict: null,
-            risk_score: null,
-            policy_version: null,
-            is_published: false,
-          },
-        },
-      );
-
       this.eventEmitter.emit('chapter.content_changed', {
         chapterId: id.toString(),
       });
+    }
+
+    if (shouldEmitPublished) {
+      const manga = await this.mangaModel
+        .findById(oldChapter.manga_id)
+        .select('authorId')
+        .lean();
+
+      if (manga?.authorId) {
+        this.eventEmitter.emit('chapter_published', {
+          userId: String(manga.authorId),
+        });
+      }
     }
 
     return { chapter, text };

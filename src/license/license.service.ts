@@ -353,7 +353,7 @@ export class LicenseService {
         const eligibility = evaluatePublishEligibility(manga);
         if (!eligibility.canPublish) {
           throw new BadRequestException(
-            eligibility.reason || 'Story does not meet publish policy',
+            eligibility.reason || 'Story cannot be published under the current backend policy',
           );
         }
 
