@@ -660,6 +660,7 @@ async listQueue(params: {
         policy_version: 1,
         ai_model: 1,
         ai_findings: 1,
+        createdAt: 1,
         updatedAt: 1,
 
         chapterTitle: { $ifNull: ['$ch.title', 'Untitled'] },
