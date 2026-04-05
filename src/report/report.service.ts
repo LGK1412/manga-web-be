@@ -120,6 +120,14 @@ export interface ReportWithTargetDetail {
       avatar?: string
     } | null
   }
+  content_context?: {
+    manga_id?: string | null
+    manga_title?: string | null
+    target_kind?: 'manga' | 'chapter' | null
+    chapter_id?: string | null
+    chapter_number?: number | null
+    chapter_title?: string | null
+  } | null
   assignee_detail?: {
     user_id: Types.ObjectId
     username: string
@@ -511,7 +519,7 @@ export class ReportService {
       .populate({ path: 'reporter_id', select: 'username email role avatar' })
       .populate({
         path: 'target_id',
-        select: 'title authorId content manga_id user_id comment_id',
+        select: 'title authorId content manga_id user_id comment_id order',
         options: { strictPopulate: false },
       })
       .sort({ createdAt: -1 })
@@ -620,6 +628,14 @@ export class ReportService {
               }
             : null,
         }
+        reportAny.content_context = {
+          manga_id: this.toObjectIdString(manga._id),
+          manga_title: manga.title || null,
+          target_kind: 'manga',
+          chapter_id: null,
+          chapter_number: null,
+          chapter_title: null,
+        }
       } else if (reportAny.target_type === 'Chapter') {
         const chapter = reportAny.target_id as ChapterTarget
 
@@ -645,10 +661,36 @@ export class ReportService {
                 }
               : null,
           }
+          reportAny.content_context = {
+            manga_id: this.toObjectIdString(chapter.manga_id),
+            manga_title: manga.title || null,
+            target_kind: 'chapter',
+            chapter_id: this.toObjectIdString(chapter._id),
+            chapter_number:
+              typeof chapter.chapter_number === 'number'
+                ? chapter.chapter_number
+                : typeof (chapter as any).order === 'number'
+                  ? (chapter as any).order
+                  : null,
+            chapter_title: chapter.title || null,
+          }
         } else {
           reportAny.target_detail = {
             title: chapter.title || null,
             target_human: null,
+          }
+          reportAny.content_context = {
+            manga_id: this.toObjectIdString(chapter.manga_id),
+            manga_title: null,
+            target_kind: 'chapter',
+            chapter_id: this.toObjectIdString(chapter._id),
+            chapter_number:
+              typeof chapter.chapter_number === 'number'
+                ? chapter.chapter_number
+                : typeof (chapter as any).order === 'number'
+                  ? (chapter as any).order
+                  : null,
+            chapter_title: chapter.title || null,
           }
         }
       } else if (reportAny.target_type === 'Comment') {
@@ -673,6 +715,7 @@ export class ReportService {
                 email: 'No email available',
               },
         }
+        reportAny.content_context = null
       } else if (reportAny.target_type === 'Reply') {
         const reply = reportAny.target_id as ReplyTarget
         const user = await this.userModel
@@ -695,12 +738,15 @@ export class ReportService {
                 email: 'No email available',
               },
         }
+        reportAny.content_context = null
       } else {
         reportAny.target_detail = { title: null, target_human: null }
+        reportAny.content_context = null
       }
     } catch (err: any) {
       console.error(`Populate detail error for report ${reportAny?._id}:`, err?.message)
       reportAny.target_detail = { title: null, target_human: null }
+      reportAny.content_context = null
       reportAny.assignee_detail = null
       reportAny.allowed_resolution_actions = this.allowedResolutionActionsByRole(
         viewerRole,
