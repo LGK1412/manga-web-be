@@ -16,6 +16,14 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
+function jwtUserId(payload: JwtPayload): string {
+  const userId = String(payload?.user_id || payload?.userId || '').trim();
+  if (!userId) {
+    throw new BadRequestException('Invalid user information');
+  }
+  return userId;
+}
+
 @Controller('api/catch-game')
 export class CatchGameController {
   constructor(private readonly gameService: CatchGameService) {}
@@ -27,7 +35,7 @@ export class CatchGameController {
     const { score } = body;
     const payload = (req as any).user as JwtPayload;
 
-    await this.gameService.saveScore(payload.userId, score);
+    await this.gameService.saveScore(jwtUserId(payload), score);
     return { message: 'Score saved successfully', score };
   }
 
@@ -36,7 +44,7 @@ export class CatchGameController {
   @Roles(Role.USER, Role.AUTHOR)
   async getHistory(@Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
-    return this.gameService.getHistory(payload.userId);
+    return this.gameService.getHistory(jwtUserId(payload));
   }
 
   @Get('leaderboard')
@@ -59,6 +67,9 @@ export class CatchGameController {
     }
 
     const payload = (req as any).user as JwtPayload;
-    return this.gameService.transferPoint(payload.userId, transferGamePoint);
+    return this.gameService.transferPoint(
+      jwtUserId(payload),
+      transferGamePoint,
+    );
   }
 }

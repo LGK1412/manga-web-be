@@ -69,8 +69,8 @@ export class CommentService {
   private async checkUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
     if (!existingUser) throw new BadRequestException('User does not exist');
-    if (existingUser.status === 'mute')
-      throw new BadRequestException('User is banned');
+    if (existingUser.status === 'mute' || existingUser.status === 'ban')
+      throw new BadRequestException('User is not allowed to comment right now');
     if (existingUser.role !== 'user' && existingUser.role !== 'author')
       throw new BadRequestException('You do not have permission');
     return existingUser;

@@ -71,8 +71,8 @@ export class ReplyService {
       throw new BadRequestException('Người dùng không tồn tại');
     }
 
-    if (existingUser.status === 'mute') {
-      throw new BadRequestException('Người dùng bị cấm');
+    if (existingUser.status === 'mute' || existingUser.status === 'ban') {
+      throw new BadRequestException('Người dùng hiện không thể bình luận');
     }
 
     if (existingUser.role !== 'user' && existingUser.role !== 'author') {

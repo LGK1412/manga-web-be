@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, InternalServerErrorException, Req, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User, UserDocument } from 'src/schemas/User.schema';
 import { RegisterDto } from './dto/Register.dto';
 import { comparePassword, hashPassword } from 'utils/hashingBcrypt';
@@ -129,7 +129,7 @@ export class AuthService {
             return { isLogin: false }
         }
 
-        let decodedRefresh;
+        let decodedRefresh: any;
 
         try {
             decodedRefresh = this.jwtService.verify(accessToken);
@@ -137,7 +137,30 @@ export class AuthService {
             return { isLogin: false }
         }
 
-        return { isLogin: true }
+        const userId = String(decodedRefresh?.user_id || decodedRefresh?.userId || '');
+        if (!userId || !Types.ObjectId.isValid(userId)) {
+            return { isLogin: false }
+        }
+
+        const user = await this.userModel
+            .findById(userId)
+            .select('_id username email role avatar status')
+            .lean();
+
+        if (!user || user.status === 'ban') {
+            return { isLogin: false }
+        }
+
+        return {
+            isLogin: true,
+            user: {
+                user_id: user._id.toString(),
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                avatar: user.avatar,
+            },
+        }
     }
 
     // Send Verification Email code
@@ -258,6 +281,10 @@ export class AuthService {
         try {
             let user = await this.userService.findByEmail(payload.email);
 
+            if (user?.status === 'ban') {
+                throw new BadRequestException('This account has been banned');
+            }
+
             if (!user) {
                 const randomName = "user_" + randomBytes(4).toString("hex");
                 const newUser = await this.userService.createUserGoogle({
@@ -310,6 +337,9 @@ export class AuthService {
 
             return { accessToken, tokenPayload };
         } catch (e) {
+            if (e instanceof HttpException) {
+                throw e;
+            }
             throw new InternalServerErrorException('System error');
         }
     }
@@ -467,15 +497,19 @@ export class AuthService {
             const userId = userPayload.user_id;
             const user = await this.userModel
                 .findById(userId)
-                .select('_id username email role avatar bio point author_point game_point')
+                .select('_id username email role avatar bio point author_point locked_point game_point status')
                 .lean();
 
             if (!user) {
                 throw new UnauthorizedException('User does not exist');
             }
 
+            if (user.status === 'ban') {
+                throw new UnauthorizedException('This account has been banned');
+            }
+
             return {
-                user_id: user._id,
+                user_id: user._id.toString(),
                 username: user.username,
                 role: user.role,
                 avatar: user.avatar,
