@@ -21,6 +21,21 @@ export class ImageChapterService {
     private readonly eventEmitter: EventEmitter2,
   ) { }
 
+  private rethrowFriendlyPersistenceError(err: unknown): never {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code?: number }).code === 11000
+    ) {
+      throw new BadRequestException(
+        'This chapter number already exists for this story.',
+      )
+    }
+
+    throw err
+  }
+
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
     return this.chapterModel.aggregate([
       { $match: { manga_id: new Types.ObjectId(manga_id) } },
@@ -100,13 +115,18 @@ export class ImageChapterService {
       is_published: is_published ?? false,
     })
 
-    const chapter = await this.chapterModel.create({
-      title,
-      manga_id: new Types.ObjectId(manga_id),
-      price: price ?? 0,
-      order: chapterOrder,
-      is_published: is_published ?? false,
-    })
+    let chapter: ChapterDocument
+    try {
+      chapter = await this.chapterModel.create({
+        title,
+        manga_id: new Types.ObjectId(manga_id),
+        price: price ?? 0,
+        order: chapterOrder,
+        is_published: is_published ?? false,
+      })
+    } catch (err) {
+      this.rethrowFriendlyPersistenceError(err)
+    }
 
     console.log('[2] Chapter created:', chapter._id.toString())
 
@@ -255,11 +275,16 @@ export class ImageChapterService {
     if (dto.is_published !== undefined)
       updateData.is_published = dto.is_published
 
-    const chapter = await this.chapterModel.findByIdAndUpdate(
-      chapterId,
-      updateData,
-      { new: true },
-    )
+    let chapter: ChapterDocument | null
+    try {
+      chapter = await this.chapterModel.findByIdAndUpdate(
+        chapterId,
+        updateData,
+        { new: true },
+      )
+    } catch (err) {
+      this.rethrowFriendlyPersistenceError(err)
+    }
     if (!chapter) throw new NotFoundException('Chapter not found')
 
     /* ---------------- IMAGE CHAPTER ---------------- */
