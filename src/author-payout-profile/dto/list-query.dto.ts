@@ -7,7 +7,7 @@ enum KycStatus {
     REJECTED = 'rejected',
 }
 
-export class AdminListProfileQueryDto {
+export class ListProfileQueryDto {
     @IsOptional()
     kycStatus?: KycStatus;
 

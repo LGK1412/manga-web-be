@@ -1,8 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types, Document } from 'mongoose';
 
-// Subdocument
-@Schema({ _id: false })
+@Schema()
 class TaxItem {
 
     @Prop({
@@ -19,7 +18,7 @@ class TaxItem {
     @Prop({ type: String })
     taxCode: string;
 
-    @Prop({ type: String, require: true })
+    @Prop({ type: String, required: true })
     citizenId: string;
 
     @Prop({ type: Number, required: true })
@@ -37,6 +36,9 @@ class TaxItem {
         default: [],
     })
     withdrawIds: Types.ObjectId[];
+
+    @Prop({ type: [String], default: [] })
+    proofFiles: string[];
 }
 
 const TaxItemSchema = SchemaFactory.createForClass(TaxItem);
@@ -92,10 +94,6 @@ export class TaxSettlement {
 
     @Prop()
     receiptNumber?: string;
-
-    // upload proof sau khi nộp thuế
-    @Prop({ type: [String], required: true })
-    proofFiles: string[];
 
     @Prop()
     paidAt?: Date;

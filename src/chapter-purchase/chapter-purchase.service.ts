@@ -28,7 +28,6 @@ export class ChapterPurchaseService {
   }
 
   async buyChapter(userId: string, chapterId: string) {
-    // Lấy thông tin chapter kèm manga & author
     const chapter = await this.chapterModel
       .findById(chapterId)
       .populate({

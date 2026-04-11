@@ -69,6 +69,9 @@ export class WithdrawController {
     @Req() req: Request,
     @Query('page') page = '1',
     @Query('limit') limit = '5',
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     const user = req['user'];
 
@@ -76,6 +79,9 @@ export class WithdrawController {
       user.user_id,
       parseInt(page, 10),
       parseInt(limit, 10),
+      status,
+      from,
+      to
     );
   }
 

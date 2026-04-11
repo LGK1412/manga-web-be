@@ -26,7 +26,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { extname } from 'path';
-import { AdminListProfileQueryDto } from './dto/admin-list-query.dto';
+import { ListProfileQueryDto } from './dto/list-query.dto';
 
 export enum KycStatus {
   PENDING = 'pending',
@@ -126,25 +126,25 @@ export class AuthorPayoutProfileController {
     return await this.authorPayoutProfileService.updateProfile(userId, payload);
   }
 
-  @Get('admin/list')
+  @Get('list')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
-  async adminGetList(@Query() query: AdminListProfileQueryDto) {
-    return await this.authorPayoutProfileService.adminGetProfiles(query);
+  async GetList(@Query() query: ListProfileQueryDto) {
+    return await this.authorPayoutProfileService.GetProfiles(query);
   }
 
-  @Patch('admin/approve/:id')
+  @Patch('/approve/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
-  async adminApprove(@Param('id') id: string, @Req() req: Request) {
-    const adminId = req['user'].user_id;
-    return await this.authorPayoutProfileService.approveProfile(id, adminId);
+  async approve(@Param('id') id: string, @Req() req: Request) {
+    const finanicalId = req['user'].user_id;
+    return await this.authorPayoutProfileService.approveProfile(id, finanicalId);
   }
 
-  @Patch('admin/reject/:id')
+  @Patch('/reject/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
-  async adminReject(
+  async reject(
     @Param('id') id: string,
     @Body('reason') reason: string,
     @Req() req: Request
@@ -152,7 +152,7 @@ export class AuthorPayoutProfileController {
     if (!reason) {
       throw new BadRequestException('Lý do từ chối là bắt buộc');
     }
-    const adminId = req['user'].user_id;
-    return await this.authorPayoutProfileService.rejectProfile(id, adminId, reason);
+    const financialId = req['user'].user_id;
+    return await this.authorPayoutProfileService.rejectProfile(id, financialId, reason);
   }
 }

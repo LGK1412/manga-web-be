@@ -6,6 +6,8 @@ import { WithdrawDocument } from 'src/schemas/Withdrawal.schema';
 import ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import * as path from 'path';
+import express from 'express';
+import archiver from 'archiver';
 
 function startOfDayVN(date: Date) {
   return new Date(Date.UTC(
@@ -91,6 +93,26 @@ export class TaxSettlementService {
   }
 
   async exportTaxSettlement(periodFrom: Date, periodTo: Date, reportType: 'QUARTERLY' | 'ANNUAL', year: number) {
+    const now = new Date();
+    if (now <= endOfDayVN(new Date(periodTo))) {
+      throw new BadRequestException(
+        `The settlement deadline has not yet arrived. You can only export the data after ${new Date(periodTo).toLocaleDateString('vi-VN')}.`
+      );
+    }
+    if (reportType === 'ANNUAL') {
+      const quartersCount = await this.taxSettlementModel.countDocuments({
+        year,
+        reportType: 'QUARTERLY',
+        status: 'paid',
+      });
+
+      if (quartersCount < 4) {
+        throw new BadRequestException(
+          `Unable to generate the annual settlement for ${year}. The new system records ${quartersCount}/4 completed quarters.`
+        );
+      }
+    }
+
     const duplicateQuery: any = {
       reportType,
       year,
@@ -146,9 +168,9 @@ export class TaxSettlementService {
         settlement,
         files,
       };
-    } catch (error) {
+    } catch (error: any) {
       await this.taxSettlementModel.findByIdAndDelete(settlement._id);
-      throw new BadRequestException('Lỗi xử lý hồ sơ: ' + error.message);
+      throw new BadRequestException('Error whil export settlement: ' + error.message);
     }
   }
 
@@ -453,7 +475,6 @@ export class TaxSettlementService {
       withdrawCount: withdraws.length,
       authorCount: items.length,
       status: 'draft',
-      proofFiles: [],
     });
   }
 
@@ -461,26 +482,36 @@ export class TaxSettlementService {
     id: string,
     userId: string,
     receiptNumber?: string,
-    proofFiles: Express.Multer.File[] = [],
+    itemFiles: { authorId: string; files: Express.Multer.File[] }[] = [],
     note?: string
   ) {
     const tax = await this.taxSettlementModel.findById(id);
-    if (!tax) throw new NotFoundException('Không tìm thấy bản ghi quyết toán');
+    if (!tax) throw new NotFoundException('Tax settlement not found');
 
     tax.status = 'paid';
     tax.paidAt = new Date();
     tax.paidBy = new Types.ObjectId(userId);
     tax.receiptNumber = receiptNumber;
-    tax.proofFiles = proofFiles?.map(f => f.filename);
     tax.note = note;
 
+    itemFiles.forEach((item) => {
+      const target = tax.items.find(
+        (i) => i.author.toString() === item.authorId
+      );
+
+      if (target) {
+        target.proofFiles.push(...item.files.map((f) => f.filename));
+      }
+    });
+
     await tax.save();
-    return { success: true }
+
+    return { success: true };
   }
 
   async cancelSettlement(id: string, note: string) {
     const tax = await this.taxSettlementModel.findById(id);
-    if (!tax) throw new NotFoundException('Không tìm thấy bản ghi');
+    if (!tax) throw new NotFoundException('Tax settlement not found');
 
     tax.status = 'cancelled';
     tax.note = note; // Lưu lý do hủy vào trường note
@@ -492,41 +523,119 @@ export class TaxSettlementService {
   async updatePaidStatus(
     id: string,
     receiptNumber?: string,
-    remainingFiles: string[] = [], // Danh sách file cũ Admin giữ lại
-    newProofFiles: Express.Multer.File[] = [],
+    itemFiles: {
+      authorId: string;
+      remainingFiles: string[];
+      newFiles: Express.Multer.File[]
+    }[] = [],
     note?: string,
   ) {
     const tax = await this.taxSettlementModel.findById(id);
-    if (!tax) throw new NotFoundException('Không tìm thấy bản ghi');
+    if (!tax) throw new NotFoundException('Tax settlement not found');
 
-    const filesToDelete = (tax.proofFiles || []).filter(
-      (oldFile) => !remainingFiles.includes(oldFile),
+    tax.receiptNumber = receiptNumber;
+    tax.note = note;
+
+    for (const updateItem of itemFiles) {
+      const target = tax.items.find(
+        (i) => i.author.toString() === updateItem.authorId
+      );
+
+      if (target) {
+        const filesToDelete = (target.proofFiles || []).filter(
+          (oldFile) => !updateItem.remainingFiles.includes(oldFile),
+        );
+
+        // Đường dẫn thư mục của author này
+        const uploadDir = path.join(
+          process.cwd(),
+          'public',
+          'proofFiles',
+          id,
+          updateItem.authorId
+        );
+
+        filesToDelete.forEach((fileName) => {
+          const filePath = path.join(uploadDir, fileName);
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          } catch (err) {
+            console.error(`Lỗi khi xóa file ${fileName} của author ${updateItem.authorId}:`, err);
+          }
+        });
+
+        const newFileNames = updateItem.newFiles.map((f) => f.filename);
+        target.proofFiles = [...updateItem.remainingFiles, ...newFileNames];
+      }
+    }
+
+    await tax.save();
+
+    return {
+      success: true,
+      tax
+    };
+  }
+
+  async downloadAuthorProofFiles(
+    authorId: string,
+    res: express.Response
+  ) {
+    const lastYear = new Date().getFullYear() - 1;
+
+    const tax = await this.taxSettlementModel.findOne({
+      reportType: 'ANNUAL',
+      year: lastYear,
+      status: 'paid'
+    });
+
+    if (!tax) {
+      throw new NotFoundException('Annual tax settlement not found');
+    }
+
+    const authorItem = tax.items.find(
+      (item) => item.author.toString() === authorId
     );
 
-    const uploadDir = path.join(process.cwd(), 'public', 'proofFiles', id);
+    if (!authorItem || !authorItem.proofFiles?.length) {
+      throw new NotFoundException('No proof files found');
+    }
 
-    filesToDelete.forEach((fileName) => {
-      const filePath = path.join(uploadDir, fileName);
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath); // Xóa file thực tế khỏi ổ cứng
-        }
-      } catch (err) {
-        console.error(`Lỗi khi xóa file ${fileName}:`, err);
+    const folderPath = path.join(
+      process.cwd(),
+      'public',
+      'proofFiles',
+      tax._id.toString(),
+      authorId
+    );
+
+    if (!fs.existsSync(folderPath)) {
+      throw new NotFoundException('Proof folder not found');
+    }
+
+    const zipName = `tax-proof-${lastYear}.zip`;
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename=${zipName}`,
+    });
+
+    const archive = archiver('zip', {
+      zlib: { level: 9 },
+    });
+
+    archive.pipe(res);
+
+    authorItem.proofFiles.forEach((file) => {
+      const filePath = path.join(folderPath, file);
+
+      if (fs.existsSync(filePath)) {
+        archive.file(filePath, { name: file });
       }
     });
 
-    if (receiptNumber !== undefined) tax.receiptNumber = receiptNumber;
-    if (note !== undefined) tax.note = note;
-
-    const newFileNames = newProofFiles.map((f) => f.filename);
-
-    tax.proofFiles = [...remainingFiles, ...newFileNames];
-
-    await tax.save();
-    return {
-      success: true,
-      data: tax
-    };
+    await archive.finalize();
   }
 }

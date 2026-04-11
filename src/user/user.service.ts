@@ -1526,6 +1526,7 @@ export class UserService {
       throw new BadRequestException("You have already purchased this Emoji Pack");
     }
     existingUser.emoji_packs.push(new Types.ObjectId(pack_id));
+    if (existingUser.point < Number(price)) throw new BadRequestException("You do not have enough points to purchase this Emoji Pack");
     existingUser.point -= Number(price);
     existingUser.save();
     return { success: true };

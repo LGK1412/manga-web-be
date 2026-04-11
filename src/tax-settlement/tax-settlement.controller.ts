@@ -23,7 +23,7 @@ import { Role } from 'src/common/enums/role.enum';
 import { extname, join } from 'path';
 import { createReadStream, existsSync, mkdirSync } from 'fs';
 import archiver from 'archiver';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 
 @Controller('api/tax-settlement')
@@ -203,14 +203,15 @@ export class TaxSettlementController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
-    FilesInterceptor('proofFiles', 10, {
+    AnyFilesInterceptor({
       storage: diskStorage({
         destination: (req, file, cb) => {
           const taxId = req.params.id;
 
-          const uploadPath = `public/proofFiles/${taxId}`;
+          const authorId = file.fieldname.split('_')[1];
 
-          // auto create folder nếu chưa tồn tại
+          const uploadPath = `public/proofFiles/${taxId}/${authorId}`;
+
           mkdirSync(uploadPath, { recursive: true });
 
           cb(null, uploadPath);
@@ -221,25 +222,90 @@ export class TaxSettlementController {
             Date.now() + '-' + Math.round(Math.random() * 1e9);
 
           cb(null, unique + extname(file.originalname));
-        }
-      })
-    })
+        },
+      }),
+    }),
   )
   async markAsPaid(
     @Param('id') id: string,
     @Req() req: Request,
     @Body('receiptNumber') receiptNumber?: string,
-    @UploadedFiles() proofFiles?: Express.Multer.File[],
+    @UploadedFiles() files?: Express.Multer.File[],
     @Body('note') note?: string
   ) {
     const paidBy = req['user'].user_id;
+
+
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Vui lòng upload file cho từng author');
+    }
+
+    const itemFilesMap = new Map<
+      string,
+      { authorId: string; files: Express.Multer.File[] }
+    >();
+
+    files.forEach((file) => {
+      const authorId = file.fieldname.split('_')[1];
+
+      if (!authorId) {
+        throw new BadRequestException('File không hợp lệ');
+      }
+
+      if (!itemFilesMap.has(authorId)) {
+        itemFilesMap.set(authorId, {
+          authorId,
+          files: [],
+        });
+      }
+
+      const entry = itemFilesMap.get(authorId);
+
+      if (!entry) {
+        throw new BadRequestException('Lỗi xử lý file upload');
+      }
+
+      entry.files.push(file);
+    });
+
+    const itemFiles = Array.from(itemFilesMap.values());
+
+    const tax = await this.taxSettlementService.findById(id);
+
+    if (tax.status === 'paid') {
+      throw new BadRequestException('This settlement already paid');
+    }
+
+    const authorsWithoutFiles = tax.items.filter(
+      (item) =>
+        !itemFiles.some(
+          (f) => f.authorId === item.author.toString()
+        )
+    );
+
+    if (authorsWithoutFiles.length > 0) {
+      throw new BadRequestException(
+        'Please upload documents for all authors'
+      );
+    }
+
+    const invalidAuthors = itemFiles.filter(
+      (f) => !tax.items.some(
+        (item) => item.author.toString() === f.authorId
+      )
+    );
+
+    if (invalidAuthors.length > 0) {
+      throw new BadRequestException('Invalid author upload');
+    }
+
     return this.taxSettlementService.markAsPaid(
       id,
       paidBy,
       receiptNumber,
-      proofFiles,
+      itemFiles,
       note
-    )
+    );
   }
 
   @Patch('cancel/:id')
@@ -257,11 +323,15 @@ export class TaxSettlementController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
-    FilesInterceptor('proofFiles', 10, {
+    // Sử dụng AnyFilesInterceptor để bắt được các field name động như proofFiles_authorId
+    AnyFilesInterceptor({
       storage: diskStorage({
         destination: (req, file, cb) => {
           const taxId = req.params.id;
-          const uploadPath = `public/proofFiles/${taxId}`;
+          // Lấy authorId từ fieldname (ví dụ: proofFiles_65f123...)
+          const authorId = file.fieldname.split('_')[1];
+          const uploadPath = `public/proofFiles/${taxId}/${authorId}`;
+
           mkdirSync(uploadPath, { recursive: true });
           cb(null, uploadPath);
         },
@@ -276,17 +346,35 @@ export class TaxSettlementController {
     @Param('id') id: string,
     @Body('receiptNumber') receiptNumber?: string,
     @Body('note') note?: string,
-    @Body('remainingFiles') remainingFilesRaw?: string,
-    @UploadedFiles() newFiles?: Express.Multer.File[],
+    @Body('itemFiles') itemFilesRaw?: string,
+    @UploadedFiles() allFiles?: Express.Multer.File[],
   ) {
-    const remainingFiles = remainingFilesRaw ? JSON.parse(remainingFilesRaw) : [];
+    const parsedItemFiles = itemFilesRaw ? JSON.parse(itemFilesRaw) : [];
+
+    const itemFilesWithFiles = parsedItemFiles.map((item: any) => {
+      return {
+        authorId: item.authorId,
+        remainingFiles: item.remainingFiles || [],
+        newFiles: allFiles?.filter(f => f.fieldname === `proofFiles_${item.authorId}`) || []
+      };
+    });
 
     return this.taxSettlementService.updatePaidStatus(
       id,
       receiptNumber,
-      remainingFiles,
-      newFiles,
+      itemFilesWithFiles,
       note,
     );
+  }
+
+  @Get('export/me')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.AUTHOR)
+  async exportAuthorProofFiles(
+    @Req() req: Request,
+    @Res() res: express.Response
+  ) {
+    const authorId = req['user'].user_id;
+    return this.taxSettlementService.downloadAuthorProofFiles(authorId, res);
   }
 }

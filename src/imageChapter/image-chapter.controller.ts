@@ -63,7 +63,7 @@ export class ImageChapterController {
       new Types.ObjectId(mangaId),
     );
 
-    return { success: true, data: result };
+    return result;
   }
 
   @Post()
@@ -96,32 +96,16 @@ export class ImageChapterController {
     @Body() body: any,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid chapterId');
-    }
-
-    let parsedDto: UpdateImageChapterDto;
-
-    try {
-      parsedDto = {
-        ...body,
-        price: body.price ? Number(body.price) : undefined,
-        order: body.order ? Number(body.order) : undefined,
-        is_published: body.is_published === 'true' || body.is_published === true,
-        is_completed:
-          body.is_completed === 'true' || body.is_completed === true,
-        existing_images: body.existing_images
-          ? JSON.parse(body.existing_images).map((img: any, index: number) => {
-            if (typeof img === 'string') {
-              return { url: img, order: index };
-            }
-            return img;
-          })
-          : undefined,
-      };
-    } catch {
-      throw new BadRequestException('existing_images must be valid JSON');
-    }
+    // Đồng bộ hóa kiểu dữ liệu từ FormData (luôn là string) sang Boolean/Number
+    const parsedDto = {
+      ...body,
+      price: body.price ? Number(body.price) : undefined,
+      order: body.order ? Number(body.order) : undefined,
+      is_published: body.is_published === 'true' || body.is_published === true,
+      is_completed: body.is_completed === 'true' || body.is_completed === true,
+      existing_images: body.existing_images ? JSON.parse(body.existing_images) : [],
+      new_images_meta: body.new_images_meta ? JSON.parse(body.new_images_meta) : [],
+    };
 
     const result = await this.imageChapterService.updateChapterWithImages(
       id,
@@ -129,7 +113,7 @@ export class ImageChapterController {
       files,
     );
 
-    return { success: true, data: result };
+    return result;
   }
 
   @Delete(':id')
