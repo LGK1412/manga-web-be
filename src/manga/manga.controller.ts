@@ -59,7 +59,7 @@ const coverImageInterceptor = FileInterceptor('coverImage', {
 
 @Controller('api/manga')
 export class MangaController {
-  constructor(private readonly mangaService: MangaService) {}
+  constructor(private readonly mangaService: MangaService) { }
 
   // ================= ADMIN ANALYTICS =================
 
@@ -147,7 +147,7 @@ export class MangaController {
   }
 
   @Get('get/all')
-  async getAll(@Query('page') page = '1', @Query('limit') limit = '24') {
+  async getAll(@Query('page') page = '1', @Query('limit') limit = '16') {
     const p = Math.max(1, parseInt(page as string, 10) || 1);
     const l = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 24));
     const { data, total } = await this.mangaService.getAllManga(p, l);

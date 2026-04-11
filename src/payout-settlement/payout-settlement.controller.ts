@@ -159,7 +159,7 @@ export class PayoutSettlementController {
     @Param('id') id: string,
     @Body('note') note: string,
   ) {
-    if (!note) throw new BadRequestException('Vui lòng nhập lý do hủy');
+    if (!note) throw new BadRequestException('Please enter rejected reason');
     return this.payoutSettlementService.cancelPayoutSettlement(id, note);
   }
 

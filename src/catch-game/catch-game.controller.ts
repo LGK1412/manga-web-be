@@ -14,28 +14,19 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
-
-function jwtUserId(payload: JwtPayload): string {
-  const userId = String(payload?.user_id || payload?.userId || '').trim();
-  if (!userId) {
-    throw new BadRequestException('Invalid user information');
-  }
-  return userId;
-}
 
 @Controller('api/catch-game')
 export class CatchGameController {
-  constructor(private readonly gameService: CatchGameService) {}
+  constructor(private readonly gameService: CatchGameService) { }
 
   @Post('submit-score')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async submitScore(@Req() req: Request, @Body() body: { score: number }) {
     const { score } = body;
-    const payload = (req as any).user as JwtPayload;
+    const userId = req['user'].user_id;
 
-    await this.gameService.saveScore(jwtUserId(payload), score);
+    await this.gameService.saveScore(userId, score);
     return { message: 'Score saved successfully', score };
   }
 
@@ -43,8 +34,8 @@ export class CatchGameController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getHistory(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload;
-    return this.gameService.getHistory(jwtUserId(payload));
+    const userId = req['user'].user_id;
+    return this.gameService.getHistory(userId);
   }
 
   @Get('leaderboard')
@@ -66,10 +57,7 @@ export class CatchGameController {
       throw new BadRequestException('Points must be divisible by 1000');
     }
 
-    const payload = (req as any).user as JwtPayload;
-    return this.gameService.transferPoint(
-      jwtUserId(payload),
-      transferGamePoint,
-    );
+    const userId = req['user'].user_id;
+    return this.gameService.transferPoint(userId, transferGamePoint);
   }
 }

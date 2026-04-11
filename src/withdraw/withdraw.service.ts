@@ -142,12 +142,43 @@ export class WithdrawService {
   /**
    * Lấy lịch sử rút của author (có phân trang)
    */
-  async getUserWithdraws(authorId: string, page = 1, limit = 5) {
+  async getUserWithdraws(
+    authorId: string,
+    page = 1,
+    limit = 5,
+    status?: string,
+    from?: string,
+    to?: string
+  ) {
     const skip = (page - 1) * limit;
-    const [docs, totalDocs] = await Promise.all([this.withdrawModel
-      .find({ authorId: new Types.ObjectId(authorId) })
-      .sort({ createdAt: -1 })
-      .skip(skip).limit(limit), this.withdrawModel.countDocuments({ authorId: new Types.ObjectId(authorId) }),]);
+
+    const filters: any = {
+      authorId: new Types.ObjectId(authorId)
+    };
+
+    if (status) {
+      filters.status = status;
+    }
+    if (from || to) {
+      filters.createdAt = {};
+      if (from) {
+        filters.createdAt['$gte'] = new Date(from);
+      }
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        filters.createdAt['$lte'] = toDate;
+      }
+    }
+    const [docs, totalDocs] = await Promise.all([
+      this.withdrawModel
+        .find(filters)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      this.withdrawModel.countDocuments(filters),
+    ]);
+
     return {
       docs,
       totalDocs,
@@ -201,7 +232,6 @@ export class WithdrawService {
       .find(query)
       .select(`
       authorId
-      taxCode
       withdraw_point
       taxRate
       bankName
@@ -211,8 +241,9 @@ export class WithdrawService {
       taxAmount
       netAmount
       status
-      approvedAt
+      note
       createdAt
+      approvedAt
       settledAt
       paidAt
     `)
@@ -222,7 +253,6 @@ export class WithdrawService {
         options: { lean: true },
       })
       .lean()
-
       .sort({ createdAt: -1 });
   }
 

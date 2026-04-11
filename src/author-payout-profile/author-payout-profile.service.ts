@@ -11,7 +11,7 @@ import { FilterQuery, Model, PipelineStage, Types } from 'mongoose';
 import { AuthorPayoutProfileDocument } from 'src/schemas/author-payout-profile.schema';
 import { AuthorPayoutProfileHistoryDocument } from 'src/schemas/author-payout-profile-history.schema';
 import { CreateAuthorPayoutProfileDto } from './dto/create-profile.dto';
-import { AdminListProfileQueryDto } from './dto/admin-list-query.dto';
+import { ListProfileQueryDto } from './dto/list-query.dto';
 
 export enum KycStatus {
   PENDING = 'pending',
@@ -45,7 +45,7 @@ export interface ProfileItem {
   };
 }
 
-export interface AdminProfileListResult {
+export interface ProfileListResult {
   items: ProfileItem[];
   total: number;
   page: number;
@@ -97,7 +97,7 @@ export class AuthorPayoutProfileService {
     const currentProfile = await this.profileModel.findOne({ userId: new Types.ObjectId(userId) });
 
     if (!currentProfile) {
-      throw new NotFoundException('Profile không tồn tại.');
+      throw new NotFoundException('Profile does not exist');
     }
 
     const historyEntry = new this.historyModel({
@@ -121,41 +121,41 @@ export class AuthorPayoutProfileService {
     );
   }
 
-  async approveProfile(profileId: string, adminId: string) {
+  async approveProfile(profileId: string, financialId: string) {
     const profile = await this.profileModel.findByIdAndUpdate(
       profileId,
       {
         kycStatus: KycStatus.VERIFIED,
         isActive: true,
-        verifiedBy: new Types.ObjectId(adminId),
+        verifiedBy: new Types.ObjectId(financialId),
         verifiedAt: new Date(),
         rejectReason: '',
       },
       { new: true }
     );
 
-    if (!profile) throw new NotFoundException('Không tìm thấy profile.');
+    if (!profile) throw new NotFoundException('Cannot find profile.');
     return profile;
   }
 
-  async rejectProfile(profileId: string, adminId: string, reason: string) {
+  async rejectProfile(profileId: string, financialId: string, reason: string) {
     const profile = await this.profileModel.findByIdAndUpdate(
       profileId,
       {
         kycStatus: KycStatus.REJECTED,
         isActive: false,
-        verifiedBy: new Types.ObjectId(adminId),
+        verifiedBy: new Types.ObjectId(financialId),
         verifiedAt: new Date(),
         rejectReason: reason,
       },
       { new: true }
     );
 
-    if (!profile) throw new NotFoundException('Không tìm thấy profile.');
+    if (!profile) throw new NotFoundException('Cannot find profile.');
     return profile;
   }
 
-  async adminGetProfiles(query: AdminListProfileQueryDto) {
+  async GetProfiles(query: ListProfileQueryDto) {
     const { kycStatus, keyword, page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 

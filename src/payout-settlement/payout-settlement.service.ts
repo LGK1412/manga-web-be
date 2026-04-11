@@ -105,10 +105,10 @@ export class PayoutSettlementService {
   ) {
     const settlement = await this.payoutSettlementModel.findById(id);
 
-    if (!settlement) throw new NotFoundException('Settlement not found');
+    if (!settlement) throw new NotFoundException('Payout settlement not found');
 
     if (settlement.status !== 'exported')
-      throw new BadRequestException('Settlement already processed');
+      throw new BadRequestException('Payout settlement already processed');
 
     const paidAt = new Date();
 
@@ -352,7 +352,7 @@ export class PayoutSettlementService {
 
     return {
       success: true,
-      message: `Đã hủy đợt quyết toán và giải phóng ${withdrawIds.length} yêu cầu rút tiền.`
+      message: 'Cancel payout settlement successfully'
     };
   }
 
@@ -363,7 +363,7 @@ export class PayoutSettlementService {
     note?: string,
   ) {
     const payout = await this.payoutSettlementModel.findById(id);
-    if (!payout) throw new NotFoundException('Không tìm thấy bản ghi');
+    if (!payout) throw new NotFoundException('Payout settlement not found');
 
     const filesToDelete = (payout.bankBatchRef || []).filter(
       (oldFile) => !remainingFiles.includes(oldFile),
@@ -378,7 +378,7 @@ export class PayoutSettlementService {
           unlinkSync(filePath);
         }
       } catch (err) {
-        console.error(`Lỗi khi xóa file ${fileName}:`, err);
+        console.error(`Error while deleting file ${fileName}:`, err);
       }
     });
 
