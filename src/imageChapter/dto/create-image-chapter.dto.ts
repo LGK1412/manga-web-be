@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsBoolean, IsMongoId } from "class-validator"
+import { IsString, IsOptional, IsNumber, IsBoolean, IsMongoId, IsArray } from "class-validator"
 import { Transform } from "class-transformer"
 
 export class CreateImageChapterDto {
@@ -31,4 +31,18 @@ export class CreateImageChapterDto {
     @IsOptional()
     @IsString()
     content?: string
+
+    @IsOptional()
+    @IsArray()
+    @Transform(({ value }) => {
+        if (typeof value === "string") {
+            try {
+                return JSON.parse(value)
+            } catch {
+                return []
+            }
+        }
+        return value || []
+    })
+    kept_images?: string[]
 }

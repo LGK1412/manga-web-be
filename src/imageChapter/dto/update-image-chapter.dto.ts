@@ -32,9 +32,15 @@ export class UpdateImageChapterDto {
 
     @IsOptional()
     @IsArray()
-    existing_images?: Array<{ url: string; order: number }>
-
-    @IsOptional()
-    @IsArray()
-    new_images_meta?: Array<{ originalname: string; order: number }>
+    @Transform(({ value }) => {
+        if (typeof value === "string") {
+            try {
+                return JSON.parse(value)
+            } catch {
+                return []
+            }
+        }
+        return value || []
+    })
+    kept_images?: string[]
 }

@@ -1288,21 +1288,19 @@ export class MangaService {
       if (!Id || !Types.ObjectId.isValid(Id)) {
         throw new BadRequestException('Invalid chapter ID');
       }
-
       const chapter = await this.chapterModel.findById(Id).exec();
       if (!chapter) {
         throw new NotFoundException('Chapter does not exist');
       }
-
-      if (!(chapter as any).manga_id) {
+      const mangaId = (chapter as any).manga_id;
+      if (!mangaId) {
         throw new BadRequestException('Chapter does not have manga_id');
       }
-
       const updatedManga = await this.mangaModel
         .findByIdAndUpdate(
-          (chapter as any).manga_id,
+          mangaId,
           { $inc: { views: 1 } },
-          { new: true },
+          { new: true, timestamps: false }
         )
         .exec();
 
