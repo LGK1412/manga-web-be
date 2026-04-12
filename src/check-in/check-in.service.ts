@@ -46,7 +46,7 @@ export class CheckinService {
 
   async checkinToday(userId: string, role: "user" | "author") {
     const timezone = "Asia/Ho_Chi_Minh";
-    const todayIndex = moment.tz(timezone).day() - 1; // 0-6
+    const todayIndex = moment.tz(timezone).day(); // 0-6
 
     const record = await this.getOrCreateRecord(userId);
 
@@ -83,11 +83,13 @@ export class CheckinService {
     const today = moment.tz(timezone).day();
 
     const record = await this.getOrCreateRecord(userId);
-
+    // console.log(today)
+    // console.log(!record.checkins[today])
+    // console.log(record)
     return {
       weekStart: record.weekStart,
       checkins: record.checkins,
-      canCheckin: !record.checkins[today - 1],
+      canCheckin: !record.checkins[today],
     };
   }
 }
