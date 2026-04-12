@@ -1052,7 +1052,7 @@ export class UserService {
       const updates: any = {};
       if (payload.username !== undefined) updates.username = payload.username;
       if (payload.avatar !== undefined) updates.avatar = payload.avatar;
-      if (payload.bio !== undefined) updates.bio = payload.bio;
+      if (payload.bio !== undefined) updates.bio = String(payload.bio).slice(0, 200);
 
       if (Object.keys(updates).length === 0) {
         return { success: true, message: "No changes to update" };

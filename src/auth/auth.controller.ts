@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -28,6 +29,11 @@ export class AuthController {
   @Post('/register')
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
+  }
+
+  @Get('/check-username')
+  async checkUsername(@Query('username') username?: string) {
+    return this.authService.isUsernameTaken(username);
   }
 
   @Post('/login')
