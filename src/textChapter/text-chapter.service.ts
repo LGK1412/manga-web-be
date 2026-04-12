@@ -25,7 +25,7 @@ export class ChapterService {
     @InjectModel(ChapterModeration.name)
     private chapterModerationModel: Model<ChapterModerationDocument>,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
     return this.chapterModel.aggregate([
@@ -137,6 +137,8 @@ export class ChapterService {
       is_completed: is_completed ?? false,
     });
 
+    await this.mangaModel.findByIdAndUpdate(manga_id, { updatedAt: new Date() });
+
     const manga = await this.mangaModel.findById(manga_id).select('authorId');
     if (manga && manga.authorId) {
       this.eventEmitter.emit('chapter_create_count', {
@@ -242,6 +244,11 @@ export class ChapterService {
         chapterId: id.toString(),
       });
     }
+
+    // Update manga's updatedAt whenever chapter is modified
+    await this.mangaModel.findByIdAndUpdate(oldChapter.manga_id, {
+      updatedAt: new Date(),
+    });
 
     if (shouldEmitPublished) {
       const manga = await this.mangaModel
