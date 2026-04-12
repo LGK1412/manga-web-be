@@ -20,7 +20,7 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
 
 @Controller('api/auth')
 export class AuthController {
