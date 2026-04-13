@@ -951,7 +951,7 @@ export class UserService {
   }
 
   /**
-   * ✅ admin: set role cho user
+   * ✅ admin: set role for user/staff except admin/author
    */
   async adminSetRole(adminId: string, targetUserId: string, role: Role) {
     if (!Types.ObjectId.isValid(targetUserId)) {
@@ -968,17 +968,22 @@ export class UserService {
       throw new BadRequestException("You cannot remove your own ADMIN role");
     }
 
-    if (target.role !== Role.USER) {
-      throw new BadRequestException("Admin can only change role for USER accounts");
+    const adminAssignableRoles = new Set<Role>([
+      Role.USER,
+      Role.CONTENT_MODERATOR,
+      Role.COMMUNITY_MANAGER,
+      Role.FINANCIAL_MANAGER,
+    ]);
+
+    if (!adminAssignableRoles.has(target.role as Role)) {
+      throw new BadRequestException(
+        "Admin can only change roles for USER, CONTENT_MODERATOR, COMMUNITY_MANAGER, or FINANCIAL_MANAGER accounts",
+      );
     }
 
-    if (
-      role !== Role.CONTENT_MODERATOR &&
-      role !== Role.COMMUNITY_MANAGER &&
-      role !== Role.FINANCIAL_MANAGER
-    ) {
+    if (!adminAssignableRoles.has(role)) {
       throw new BadRequestException(
-        "Admin can only assign CONTENT_MODERATOR, COMMUNITY_MANAGER, or FINANCIAL_MANAGER",
+        "Admin can only assign USER, CONTENT_MODERATOR, COMMUNITY_MANAGER, or FINANCIAL_MANAGER roles",
       );
     }
 
