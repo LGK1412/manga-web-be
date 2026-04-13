@@ -183,12 +183,19 @@ export class ImageChapterService {
       }
     }
 
+    // Update manga updatedAt
+    await this.mangaModel.findByIdAndUpdate(
+      manga_id,
+      { updatedAt: new Date() },
+      { new: true },
+    )
+
     return { chapter, imageChapter }
   }
 
   async updateChapterWithImages(
     chapterId: string,
-    dto: Partial<CreateImageChapterDto>,
+    dto: Partial<CreateImageChapterDto> & { kept_images?: string[] },
     files: Express.Multer.File[],
   ): Promise<{ chapter: ChapterDocument; imageChapter: ImageChapterDocument }> {
 
@@ -220,29 +227,55 @@ export class ImageChapterService {
       })
     }
 
-    const chapterDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'image-chapters',
-      chapter._id.toString(),
-    )
+    // Handle kept_images array (for deletion + reordering)
+    if (dto.kept_images && Array.isArray(dto.kept_images)) {
+      const keptSet = new Set(dto.kept_images)
+      const imagesToDelete = imageChapter.images.filter(
+        (img) => !keptSet.has(img)
+      )
 
-    if (fs.existsSync(chapterDir)) {
-      fs.rmSync(chapterDir, { recursive: true, force: true })
+      // Delete removed images from filesystem
+      const chapterDir = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'image-chapters',
+        chapter._id.toString(),
+      )
+
+      for (const filename of imagesToDelete) {
+        try {
+          const filePath = path.join(chapterDir, filename)
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+        } catch (err) {
+          console.warn(`Could not delete file ${filename}:`, err)
+        }
+      }
+
+      // Reorder kept images
+      imageChapter.images = dto.kept_images
     }
 
-    const savedImages = await this.saveImagesAsWebp(
-      chapter._id.toString(),
-      files,
-    )
-
-    imageChapter.images = savedImages
+    // Save new images
+    if (files && files.length > 0) {
+      const savedImages = await this.saveImagesAsWebp(
+        chapter._id.toString(),
+        files,
+      )
+      imageChapter.images.push(...savedImages)
+    }
 
     if (dto.is_completed !== undefined)
       imageChapter.is_completed = dto.is_completed
 
     await imageChapter.save()
+
+    // Update manga updatedAt
+    await this.mangaModel.findByIdAndUpdate(
+      chapter.manga_id,
+      { updatedAt: new Date() },
+      { new: true },
+    )
 
     return { chapter, imageChapter }
   }
@@ -278,6 +311,15 @@ export class ImageChapterService {
     })
 
     const deletedChapter = await this.chapterModel.findByIdAndDelete(id)
+
+    // Update manga updatedAt
+    if (deletedChapter?.manga_id) {
+      await this.mangaModel.findByIdAndUpdate(
+        deletedChapter.manga_id,
+        { updatedAt: new Date() },
+        { new: true },
+      )
+    }
 
     return { deletedChapter, deletedImageChapter }
   }

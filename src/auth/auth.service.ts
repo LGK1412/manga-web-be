@@ -70,6 +70,16 @@ export class AuthService {
         return { "success": true };
     }
 
+    /** Public check for registration UX (exact username match, trimmed). */
+    async isUsernameTaken(raw?: string): Promise<{ taken: boolean }> {
+        const username = typeof raw === 'string' ? raw.trim() : '';
+        if (username.length < 3) {
+            return { taken: false };
+        }
+        const existing = await this.userService.findByUsername(username);
+        return { taken: !!existing };
+    }
+
     // Login
     async login(loginDto: LoginDto) {
         const existingUser = await this.userService.findByEmail(loginDto.email);

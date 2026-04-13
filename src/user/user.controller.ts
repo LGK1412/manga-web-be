@@ -34,6 +34,7 @@ import { AdminResetUserStatusDto } from './dto/admin-reset-user-status.dto';
 import { BulkUserActionDto } from './dto/bulk-user-action.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
 import { UserManagementListQueryDto } from './dto/user-management-list-query.dto';
+import { UpdateProfileDto } from './dto/UpdateProfile.dto';
 
 @Controller('api/user')
 export class UserController {
@@ -220,13 +221,13 @@ export class UserController {
     }),
   )
   async updateProfile(
-    @Body() body: any,
+    @Body() body: UpdateProfileDto,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
     const updateData: any = {};
     if (body.username) updateData.username = body.username;
-    if (body.bio) updateData.bio = body.bio;
+    if (body.bio !== undefined) updateData.bio = body.bio;
     let avatarFilename: string | null = null;
     if (file) {
       const fromOriginal = extname(file.originalname || '').toLowerCase();

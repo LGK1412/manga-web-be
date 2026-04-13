@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -19,7 +20,7 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
 
 @Controller('api/auth')
 export class AuthController {
@@ -28,6 +29,11 @@ export class AuthController {
   @Post('/register')
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
+  }
+
+  @Get('/check-username')
+  async checkUsername(@Query('username') username?: string) {
+    return this.authService.isUsernameTaken(username);
   }
 
   @Post('/login')

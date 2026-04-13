@@ -96,15 +96,14 @@ export class ImageChapterController {
     @Body() body: any,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    // Đồng bộ hóa kiểu dữ liệu từ FormData (luôn là string) sang Boolean/Number
+    // Convert FormData string values to proper types
     const parsedDto = {
-      ...body,
+      title: body.title,
       price: body.price ? Number(body.price) : undefined,
       order: body.order ? Number(body.order) : undefined,
       is_published: body.is_published === 'true' || body.is_published === true,
       is_completed: body.is_completed === 'true' || body.is_completed === true,
-      existing_images: body.existing_images ? JSON.parse(body.existing_images) : [],
-      new_images_meta: body.new_images_meta ? JSON.parse(body.new_images_meta) : [],
+      kept_images: body.kept_images ? JSON.parse(body.kept_images) : undefined,
     };
 
     const result = await this.imageChapterService.updateChapterWithImages(
