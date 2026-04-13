@@ -968,9 +968,18 @@ export class UserService {
       throw new BadRequestException("You cannot remove your own ADMIN role");
     }
 
-    // (tuỳ hệ thống) nếu bạn muốn ngăn đổi AUTHOR -> USER (giống logic cũ) thì bật:
-    if (target.role === Role.AUTHOR && role === Role.USER) {
-      throw new BadRequestException("Cannot downgrade AUTHOR back to USER");
+    if (target.role !== Role.USER) {
+      throw new BadRequestException("Admin can only change role for USER accounts");
+    }
+
+    if (
+      role !== Role.CONTENT_MODERATOR &&
+      role !== Role.COMMUNITY_MANAGER &&
+      role !== Role.FINANCIAL_MANAGER
+    ) {
+      throw new BadRequestException(
+        "Admin can only assign CONTENT_MODERATOR, COMMUNITY_MANAGER, or FINANCIAL_MANAGER",
+      );
     }
 
     const before = {
