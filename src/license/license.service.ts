@@ -559,7 +559,7 @@ export class LicenseService {
     const manga = await this.mangaModel
       .findById(mangaId)
       .select(
-        'title authorId isPublish licenseStatus licenseRejectReason licenseRejectReasons licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus',
+        'title authorId isPublish licenseStatus licenseFiles licenseRejectReason licenseRejectReasons licenseSubmittedAt licenseReviewedAt rights verifiedBadge enforcementStatus',
       );
 
     if (!manga) throw new NotFoundException('Manga not found');

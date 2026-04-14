@@ -243,8 +243,9 @@ ${plainText}
         ai_findings: [
           {
             policy: 'system/fallback',
-            reason: 'Gemini API unavailable or error',
-            evidence: err?.message || 'No details',
+            reason: 'AI moderation is temporarily unavailable.',
+            evidence:
+              'The AI provider is temporarily unavailable or has reached its request limit. Please try again later.',
             severity: 'medium',
           },
         ],
@@ -271,8 +272,9 @@ ${plainText}
         ai_findings: [
           {
             policy: 'system/format',
-            reason: 'Model returned non-JSON or invalid JSON',
-            evidence: rawText?.slice(0, 500) || '',
+            reason: 'AI moderation returned an unreadable response.',
+            evidence:
+              'The moderation result could not be processed. Please run the AI check again later.',
             severity: 'low',
           },
         ],

@@ -224,6 +224,9 @@ export function evaluatePublishEligibility(manga: MangaDocument | any) {
 export function serializeStoryRights(manga: MangaDocument | any) {
   const rights = getMergedRights(manga);
   const eligibility = evaluatePublishEligibility(manga);
+  const normalizedLicenseFiles = Array.isArray((manga as any).licenseFiles)
+    ? (manga as any).licenseFiles.map((file: string) => normalizeAssetPath(file))
+    : [];
 
   return {
     _id: (manga as any)._id,
@@ -235,6 +238,7 @@ export function serializeStoryRights(manga: MangaDocument | any) {
       (manga as any).enforcementStatus,
     ),
     licenseStatus: (manga as any).licenseStatus,
+    licenseFiles: normalizedLicenseFiles,
     licenseRejectReason: (manga as any).licenseRejectReason ?? '',
     licenseRejectReasons: getLicenseRejectReasonHistory(manga),
     licenseSubmittedAt: (manga as any).licenseSubmittedAt ?? null,
