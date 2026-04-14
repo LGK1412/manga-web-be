@@ -18,22 +18,7 @@ export class AchievementService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>
   ) { }
 
-  private async checkUser(id: string) {
-    const existingUser = await this.userModel.findOne({ _id: id });
-    if (!existingUser) {
-      throw new BadRequestException('Người dùng không tồn tại');
-    }
-    if (existingUser.role != "user" && existingUser.role != "author") {
-      throw new BadRequestException('Người dùng không có quyền');
-    }
-    if (existingUser.status == "ban") {
-      throw new BadRequestException('Người dùng không có quyền');
-    }
-    return existingUser;
-  }
-
   async getAllWithProgress(userId: string) {
-    await this.checkUser(userId);
     return await this.achievementProgressModel
       .find({ userId: new Types.ObjectId(userId) })
       .populate("achievementId")
@@ -42,67 +27,63 @@ export class AchievementService {
 
   async claimReward(userId: string, achievementId: string) {
     try {
-      // Validate userId format
-      if (!userId || !Types.ObjectId.isValid(userId)) {
-        throw new BadRequestException('ID người dùng không hợp lệ');
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new BadRequestException('Invalid user id');
       }
 
-      // Validate achievementId format
-      if (!achievementId || !Types.ObjectId.isValid(achievementId)) {
-        throw new BadRequestException('ID thành tựu không hợp lệ');
+      if (!Types.ObjectId.isValid(achievementId)) {
+        throw new BadRequestException('Invalid achievement id');
       }
 
-      await this.checkUser(userId);
       const userObjId = new Types.ObjectId(userId);
       const achievementObjId = new Types.ObjectId(achievementId);
 
-      // Check achievement exists and is active
       const achievement = await this.achievementModel.findById(achievementObjId);
-      if (!achievement) {
-        throw new NotFoundException('Thành tựu không tồn tại');
-      }
-      if (!achievement.isActive) {
-        throw new BadRequestException('Thành tựu này đã bị vô hiệu hóa');
+
+      if (!achievement?.isActive) {
+        throw new NotFoundException('Achievement not found or inactive');
       }
 
-      const achievementProgress = await this.achievementProgressModel.findOne({
+      const progress = await this.achievementProgressModel.findOne({
         userId: userObjId,
         achievementId: achievementObjId,
       });
 
-      if (!achievementProgress) {
-        throw new NotFoundException('Tiến độ thành tựu không tồn tại');
+      if (!progress) {
+        throw new NotFoundException('Achievement progress not found');
       }
 
-      if (!achievementProgress.isCompleted) {
-        throw new BadRequestException('Thành tựu chưa hoàn thành');
+      if (!progress.isCompleted) {
+        throw new BadRequestException('Achievement not completed');
       }
 
-      if (achievementProgress.rewardClaimed) {
-        throw new BadRequestException('Phần thưởng đã được nhận trước đó');
+      if (progress.rewardClaimed) {
+        throw new BadRequestException('Reward already claimed');
       }
 
-      const rewardPoint = achievement.reward?.point || 0;
-      const rewardAuthorPoint = achievement.reward?.author_point || 0;
+      const rewardPoint = achievement.reward?.point ?? 0;
+      const rewardAuthorPoint = achievement.reward?.author_point ?? 0;
 
-      // Cộng điểm và exp cho user
       await this.userModel.findByIdAndUpdate(userObjId, {
-        $inc: { point: rewardPoint, author_point: rewardAuthorPoint },
+        $inc: {
+          point: rewardPoint,
+          author_point: rewardAuthorPoint,
+        },
       });
 
-      achievementProgress.rewardClaimed = true;
-      await achievementProgress.save();
+      progress.rewardClaimed = true;
+      await progress.save();
 
-      return {
-        success: true,
-        message: 'Nhận thưởng thành công!',
-        reward: { point: rewardPoint, author_point: rewardAuthorPoint },
-      };
+      return { success: true };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      throw new InternalServerErrorException('Không thể nhận thưởng thành tựu');
+
+      throw new InternalServerErrorException('Failed to claim reward');
     }
   }
 

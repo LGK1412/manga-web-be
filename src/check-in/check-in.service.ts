@@ -54,10 +54,7 @@ export class CheckinService {
       throw new BadRequestException("Already checked in today!");
     }
 
-    // Đánh dấu điểm danh
     record.checkins[todayIndex] = true;
-
-    // Tự động nhận thưởng
     const reward = DAILY_REWARD_CONFIG[role][todayIndex];
 
     const user = await this.checkUser(userId);
