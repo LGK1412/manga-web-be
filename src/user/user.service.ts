@@ -1607,21 +1607,16 @@ export class UserService {
         autoApproved: user.authorAutoApproved,
         criteria,
         canRequest: false,
-        message: "You are already an author",
       };
     }
 
     const criteria = await this.evaluateAuthorEligibility(userId);
-    const allCriteriaMet = criteria.every((c) => c.met);
 
     if (!user.authorRequestStatus || user.authorRequestStatus === AuthorRequestStatus.NONE) {
       return {
         status: "none",
         criteria,
         canRequest: true,
-        message: allCriteriaMet
-          ? "You meet all requirements to become an author"
-          : "You do not meet all requirements to become an author",
       };
     }
 
@@ -1631,9 +1626,6 @@ export class UserService {
         requestedAt: user.authorRequestedAt?.toISOString(),
         criteria,
         canRequest: false,
-        message: allCriteriaMet
-          ? "Your request is being processed. The system will automatically approve when you meet all requirements."
-          : "Your request is pending. Please improve the missing criteria.",
       };
     }
 
@@ -1643,13 +1635,12 @@ export class UserService {
       autoApproved: user.authorAutoApproved,
       criteria,
       canRequest: false,
-      message: "You have been approved",
     };
   }
 
   async requestAuthor(
     userId: string,
-  ): Promise<{ success: boolean; message: string; autoApproved?: boolean }> {
+  ): Promise<{ success: boolean; autoApproved?: boolean }> {
     const user = await this.userModel.findById(userId).select("role authorRequestStatus");
 
     if (!user) {
@@ -1700,7 +1691,6 @@ export class UserService {
 
       return {
         success: true,
-        message: "Congratulations! You are now an author",
         autoApproved: true,
       };
     }
@@ -1717,8 +1707,6 @@ export class UserService {
 
     return {
       success: true,
-      message:
-        "Your request has been submitted. The system will automatically approve when you meet all requirements.",
       autoApproved: false,
     };
   }

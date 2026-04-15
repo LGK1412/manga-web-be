@@ -15,7 +15,6 @@ export interface AuthorRequestStatusResponse {
   autoApproved?: boolean;
   criteria: EligibilityCriteria[];
   canRequest: boolean;
-  message?: string;
 }
 
 
