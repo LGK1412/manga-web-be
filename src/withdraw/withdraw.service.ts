@@ -193,8 +193,10 @@ export class WithdrawService {
     year?: number;
     status?: string;
     search?: string;
+    page?: number;
+    limit?: number;
   }) {
-    const { month, year, status, search } = filter;
+    const { month, year, status, search, page = 1, limit = 10 } = filter;
 
     const query: any = {};
 
@@ -228,32 +230,50 @@ export class WithdrawService {
       query.authorId = { $in: authors.map(a => a._id) };
     }
 
-    return this.withdrawModel
-      .find(query)
-      .select(`
-      authorId
-      withdraw_point
-      taxRate
-      bankName
-      bankAccount
-      bankAccountName
-      grossAmount
-      taxAmount
-      netAmount
-      status
-      note
-      createdAt
-      approvedAt
-      settledAt
-      paidAt
-    `)
-      .populate({
-        path: 'authorId',
-        select: 'username email fullName',
-        options: { lean: true },
-      })
-      .lean()
-      .sort({ createdAt: -1 });
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.withdrawModel
+        .find(query)
+        .select(`
+        authorId
+        withdraw_point
+        taxRate
+        bankName
+        bankAccount
+        bankAccountName
+        grossAmount
+        taxAmount
+        netAmount
+        status
+        note
+        createdAt
+        approvedAt
+        settledAt
+        paidAt
+      `)
+        .populate({
+          path: 'authorId',
+          select: 'username email fullName',
+          options: { lean: true },
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      this.withdrawModel.countDocuments(query),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getDetailWithdraw(withdrawId: string) {

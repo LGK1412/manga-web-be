@@ -18,20 +18,16 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
-/** Auth JWT dùng `user_id`; một số chỗ type `userId` — lấy thống nhất. */
-function jwtUserId(payload: JwtPayload & { user_id?: unknown }): string {
-  const id = (payload as { user_id?: unknown; userId?: unknown }).user_id ??
-    (payload as { userId?: unknown }).userId;
-  return id != null ? String(id) : '';
-}
 
 @Controller('api/donation')
 export class DonationController {
-  constructor(private readonly donationService: DonationService) {}
+  constructor(private readonly donationService: DonationService) { }
+
 
   @Get('items')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.USER, Role.AUTHOR)
   async getAllDonationItems(
     @Query('onlyAvailable') onlyAvailable?: string,
     @Query('rarity') rarity?: string,
@@ -48,10 +44,6 @@ export class DonationController {
     };
   }
 
-  /**
-   * Logged-in: gửi quà/donation
-   * NOTE: KHÔNG nhận senderId từ body (tránh giả mạo).
-   */
   @Post('send')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
@@ -65,8 +57,7 @@ export class DonationController {
       message?: string;
     },
   ) {
-    const payload = (req as any).user as JwtPayload & { user_id?: unknown };
-    const senderId = jwtUserId(payload);
+    const senderId = req['user'].user_id;
 
     if (!Types.ObjectId.isValid(senderId)) {
       throw new BadRequestException('Invalid senderId');
@@ -100,16 +91,16 @@ export class DonationController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getReceivedGifts(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload & { user_id?: unknown };
-    return this.donationService.getReceivedGifts(jwtUserId(payload));
+    const userId = req['user'].user_id;
+    return this.donationService.getReceivedGifts(userId);
   }
 
   @Get('sent')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.USER, Role.AUTHOR)
   async getSentGifts(@Req() req: Request) {
-    const payload = (req as any).user as JwtPayload & { user_id?: unknown };
-    return this.donationService.getSentGifts(jwtUserId(payload));
+    const userId = req['user'].user_id;
+    return this.donationService.getSentGifts(userId);
   }
 
   @Patch('mark-read')
@@ -119,7 +110,7 @@ export class DonationController {
     @Req() req: Request,
     @Body() body: { donationIds?: string[]; id?: string },
   ) {
-    const payload = (req as any).user as JwtPayload & { user_id?: unknown };
+    const userId = req['user'].user_id;
 
     const ids = body.donationIds || (body.id ? [body.id] : []);
     if (!ids.length) throw new BadRequestException('donationIds is required');
@@ -128,6 +119,6 @@ export class DonationController {
     const invalid = ids.find((x) => !Types.ObjectId.isValid(x));
     if (invalid) throw new BadRequestException('Invalid donationId');
 
-    return this.donationService.markAsRead(jwtUserId(payload), ids);
+    return this.donationService.markAsRead(userId);
   }
 }

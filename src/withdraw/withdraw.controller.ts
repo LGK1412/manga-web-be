@@ -59,9 +59,6 @@ export class WithdrawController {
     return this.withdrawService.rejectWithdraw(withdrawId, note);
   }
 
-  /**
-   * Author lấy lịch sử rút của chính mình (có phân trang)
-   */
   @Get('me')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR)
@@ -85,9 +82,6 @@ export class WithdrawController {
     );
   }
 
-  /**
-   * Admin lấy danh sách tất cả yêu cầu rút
-   */
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
@@ -96,12 +90,16 @@ export class WithdrawController {
     @Query('year') year?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.withdrawService.getWithdraws({
       month: month ? +month : undefined,
       year: year ? +year : undefined,
       status,
       search,
+      page: page ? +page : 1,
+      limit: limit ? +limit : 10,
     });
   }
 
