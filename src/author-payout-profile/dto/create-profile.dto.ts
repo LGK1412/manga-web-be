@@ -32,10 +32,6 @@ export class CreateAuthorPayoutProfileDto {
     address: string;
 
     @IsString()
-    @Length(10, 20)
-    taxCode: string;
-
-    @IsString()
     @IsNotEmpty()
     bankName: string;
 
