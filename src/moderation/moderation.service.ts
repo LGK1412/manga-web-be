@@ -439,6 +439,16 @@ export class ModerationService {
       const policy = resolvePolicyMetadata(finding, policies);
       const severity = normalizeSeverity(finding.severity);
       const advice = normalizeAdvice(finding.advice);
+      const spans = Array.isArray(finding.spans)
+        ? finding.spans
+            .filter(
+              (span) =>
+                typeof span?.start === 'number' &&
+                typeof span?.end === 'number' &&
+                span.end > span.start,
+            )
+            .slice(0, 4)
+        : undefined;
 
       return {
         sectionId: policy?.slug || finding.policy_slug || finding.policy || 'general',
@@ -450,6 +460,7 @@ export class ModerationService {
         policyTitle: policy?.title || finding.policy_title || finding.policy || undefined,
         severity,
         advice,
+        spans,
       };
     });
 

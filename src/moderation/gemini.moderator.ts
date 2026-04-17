@@ -9,6 +9,10 @@ export type ModerationFinding = {
   policy_title?: string;
   reason: string;
   evidence?: string;
+  spans?: Array<{
+    start: number;
+    end: number;
+  }>;
   severity?: 'low' | 'medium' | 'high';
   advice?: {
     moderator: {
@@ -95,6 +99,38 @@ export class GeminiModerator {
       : [];
   }
 
+  private parseSpans(value: unknown): ModerationFinding['spans'] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    const spans = value
+      .map((item) => {
+        const start =
+          typeof item?.start === 'number' ? item.start : Number(item?.start);
+        const end =
+          typeof item?.end === 'number' ? item.end : Number(item?.end);
+
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end <= start
+        ) {
+          return null;
+        }
+
+        return {
+          start: Math.floor(start),
+          end: Math.floor(end),
+        };
+      })
+      .filter((item): item is { start: number; end: number } => Boolean(item))
+      .slice(0, 4);
+
+    return spans.length > 0 ? spans : undefined;
+  }
+
   private parseAdvice(rawAdvice: any): ModerationFinding['advice'] | undefined {
     const rawNextStep = rawAdvice?.moderator?.next_step;
     const nextStep =
@@ -168,6 +204,7 @@ Requirements:
       "policy_title": string,
       "reason": string,
       "evidence": string,
+      "spans": [{ "start": number, "end": number }],
       "severity": "low" | "medium" | "high",
         "advice": {
           "moderator": {
@@ -194,6 +231,15 @@ Policy matching rules:
 - "policy_slug" must be one exact slug from the provided policy list.
 - "policy_title" must match the title for that slug.
 - If no policy is clearly matched, use "general" for "policy_slug" and "General Review" for "policy_title".
+
+Evidence rules:
+- Each "ai_finding" must describe exactly one distinct violating fragment or one closely connected sentence.
+- Do not combine multiple numbered excerpts, bullet lists, or distant passages into a single finding.
+- If 5 different excerpts are problematic, return 5 separate "ai_findings".
+- "evidence" must be copied verbatim from CHAPTER TEXT, not summarized.
+- Keep "evidence" short and precise.
+- "spans" must use 0-based character offsets from CHAPTER TEXT, with "end" exclusive.
+- If exact offsets are unclear, return an empty "spans" array instead of guessing.
 
 Advice rules:
 - The "moderator" advice is for internal staff, not for the author.
@@ -313,6 +359,7 @@ ${plainText}
             : undefined,
           reason: String(finding?.reason ?? ''),
           evidence: finding?.evidence ? String(finding.evidence) : undefined,
+          spans: this.parseSpans(finding?.spans),
           severity:
             finding?.severity === 'high' ||
             finding?.severity === 'medium' ||
