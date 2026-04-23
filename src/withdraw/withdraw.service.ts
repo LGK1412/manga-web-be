@@ -44,6 +44,10 @@ export class WithdrawService {
     };
   }
 
+  private escapeRegex(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   async previewWithdraw(withdraw_point: number) {
     const grossAmount = withdraw_point * this.RATE;
     const taxData = await this.calculateTax(grossAmount);
@@ -119,9 +123,10 @@ export class WithdrawService {
   /**
    * Admin từ chối rút tiền
    */
-  async rejectWithdraw(withdrawId: string, note?: string) {
+  async rejectWithdrawal(withdrawId: string, note?: string) {
     const withdraw = await this.withdrawModel.findById(withdrawId);
     if (!withdraw) throw new NotFoundException('Withdraw request not found');
+    if (!note) throw new BadRequestException("You must enter reject reason");
 
     if (withdraw.status !== 'pending')
       throw new BadRequestException('Already processed');
@@ -132,7 +137,7 @@ export class WithdrawService {
     await author.save();
 
     withdraw.status = 'rejected';
-    if (note) withdraw['note'] = note;
+    withdraw.note = note;
 
     await withdraw.save();
 
@@ -217,11 +222,14 @@ export class WithdrawService {
     }
 
     if (search) {
+      const safeSearch = this.escapeRegex(search);
+      const regex = new RegExp(safeSearch, 'i');
+
       const authors = await this.userModel
         .find({
           $or: [
-            { username: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } },
+            { username: regex },
+            { email: regex },
           ],
         })
         .select('_id')

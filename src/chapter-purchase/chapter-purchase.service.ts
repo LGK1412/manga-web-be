@@ -52,15 +52,9 @@ export class ChapterPurchaseService {
     if (user.point < chapter.price) {
       throw new BadRequestException('Insufficient points to purchase');
     }
-
-    // --- Ép kiểu để TS hiểu manga_id có authorId ---
     const manga = chapter.manga_id as { _id: Types.ObjectId; authorId?: Types.ObjectId };
-
-    // --- Trừ điểm user ---
     user.point -= chapter.price;
     await user.save();
-
-    // --- Cộng điểm cho tác giả ---
     if (manga?.authorId) {
       const author = await this.userModel.findById(manga.authorId);
       if (author) {
@@ -69,7 +63,6 @@ export class ChapterPurchaseService {
       }
     }
 
-    // --- Tạo bản ghi mua ---
     const purchase = await this.purchaseModel.create({
       userId: new Types.ObjectId(userId),
       chapterId: new Types.ObjectId(chapterId),
