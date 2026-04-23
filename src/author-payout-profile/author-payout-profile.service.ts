@@ -62,6 +62,10 @@ export class AuthorPayoutProfileService {
     private historyModel: Model<AuthorPayoutProfileHistoryDocument>,
   ) { }
 
+  private escapeRegex(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   async getProfile(userId: string) {
     const profile = await this.profileModel.findOne({ userId: new Types.ObjectId(userId) })
       .populate('userId', 'email username');
@@ -134,7 +138,7 @@ export class AuthorPayoutProfileService {
       { new: true }
     );
 
-    if (!profile) throw new NotFoundException('Cannot find profile.');
+    if (!profile) throw new NotFoundException('Profile not found');
     return profile;
   }
 
@@ -161,12 +165,13 @@ export class AuthorPayoutProfileService {
 
     const searchMatch: any = {};
     if (keyword) {
+      const safeSearch = this.escapeRegex(keyword);
+      const regex = new RegExp(safeSearch, 'i');
       searchMatch.$or = [
-        { fullName: { $regex: keyword, $options: 'i' } },
-        { citizenId: { $regex: keyword, $options: 'i' } },
+        { fullName: regex },
+        { citizenId: regex },
       ];
     }
-
 
     const kycMatch: any = {};
     if (kycStatus) {

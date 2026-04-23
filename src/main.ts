@@ -36,6 +36,8 @@ async function bootstrap() {
 
   app.use('/payout-identity', express.static(join(process.cwd(), 'public', 'payout-identity')));
 
+  app.use('/licenses', express.static(join(process.cwd(), 'public', 'licenses')));
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

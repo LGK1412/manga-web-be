@@ -114,13 +114,18 @@ export class AuthorPayoutProfileController {
   async handleResubmit(
     @Req() req: Request,
     @Body() dto: CreateAuthorPayoutProfileDto,
+    @Body("existingImages") existingImages: string,
     @UploadedFiles() files: { identityImages?: Express.Multer.File[] },
   ) {
     const userId = req['user'].user_id;
 
+    const newImages = files.identityImages?.map(f => f.filename) || [];
+
+    const oldImages = existingImages ? JSON.parse(existingImages) : [];
+
     const payload = {
       ...dto,
-      identityImages: files.identityImages?.map(f => f.filename) || [],
+      identityImages: [...oldImages, ...newImages],
     };
 
     return await this.authorPayoutProfileService.updateProfile(userId, payload);
@@ -150,7 +155,7 @@ export class AuthorPayoutProfileController {
     @Req() req: Request
   ) {
     if (!reason) {
-      throw new BadRequestException('Lý do từ chối là bắt buộc');
+      throw new BadRequestException('You must enter reject reason');
     }
     const financialId = req['user'].user_id;
     return await this.authorPayoutProfileService.rejectProfile(id, financialId, reason);

@@ -113,7 +113,6 @@ export class PayoutSettlementController {
 
     const fileStream = createReadStream(filePath);
 
-    // Xử lý lỗi trong quá trình stream (nếu có)
     fileStream.on('error', (error) => {
       console.error('Stream error:', error);
       if (!res.headersSent) {

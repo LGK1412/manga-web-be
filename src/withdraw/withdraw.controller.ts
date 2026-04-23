@@ -38,8 +38,8 @@ export class WithdrawController {
     @Req() req: Request,
     @Body('withdraw_point') withdraw_point: number,
   ) {
-    const userId = req['user'].user_id;
-    return this.withdrawService.createWithdraw(userId, withdraw_point);
+    const authorId = req['user'].user_id;
+    return this.withdrawService.createWithdraw(authorId, withdraw_point);
   }
 
   @Patch(':id/approve')
@@ -52,11 +52,11 @@ export class WithdrawController {
   @Patch(':id/reject')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
-  async rejectWithdraw(
+  async rejectWithdrawal(
     @Param('id') withdrawId: string,
     @Body('note') note?: string,
   ) {
-    return this.withdrawService.rejectWithdraw(withdrawId, note);
+    return this.withdrawService.rejectWithdrawal(withdrawId, note);
   }
 
   @Get('me')
