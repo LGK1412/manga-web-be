@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import sanitizeHtml from 'sanitize-html';
 import { createHash } from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -53,6 +53,7 @@ export type GeminiCheckOutput = {
 
 @Injectable()
 export class GeminiModerator {
+  private readonly logger = new Logger(GeminiModerator.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
@@ -162,6 +163,104 @@ export class GeminiModerator {
         note_draft: authorNoteDraft || undefined,
       },
     };
+  }
+
+  private buildSystemFallback(
+    policyVersion: string,
+    contentHash: string,
+    options: {
+      label: string;
+      reason: string;
+      evidence: string;
+      severity?: 'low' | 'medium' | 'high';
+      riskScore?: number;
+      status?: GeminiCheckOutput['status'];
+    },
+  ): GeminiCheckOutput {
+    return {
+      status: options.status ?? 'AI_WARN',
+      risk_score: options.riskScore ?? 50,
+      labels: [options.label],
+      ai_findings: [
+        {
+          policy: 'system/fallback',
+          reason: options.reason,
+          evidence: options.evidence,
+          severity: options.severity ?? 'medium',
+        },
+      ],
+      policy_version: policyVersion,
+      content_hash: contentHash,
+      ai_model: this.modelName,
+    };
+  }
+
+  private extractRetryDelay(err: any) {
+    const retryInfo = Array.isArray(err?.errorDetails)
+      ? err.errorDetails.find(
+          (detail: any) =>
+            detail?.['@type'] === 'type.googleapis.com/google.rpc.RetryInfo',
+        )
+      : undefined;
+
+    return typeof retryInfo?.retryDelay === 'string'
+      ? retryInfo.retryDelay
+      : undefined;
+  }
+
+  private buildFailureFromError(
+    err: any,
+    policyVersion: string,
+    contentHash: string,
+  ): GeminiCheckOutput {
+    const message = String(err?.message ?? '');
+    const retryDelay = this.extractRetryDelay(err);
+
+    if (message.includes('PROHIBITED_CONTENT')) {
+      return this.buildSystemFallback(policyVersion, contentHash, {
+        label: 'provider_blocked_prompt',
+        reason:
+          'The AI provider refused to analyze this chapter because the submitted content triggered its prohibited-content safety system.',
+        evidence:
+          'Gemini returned PROHIBITED_CONTENT for this moderation request. Escalate to manual review or analyze with a provider/model that supports safety review workflows.',
+        severity: 'high',
+        riskScore: 85,
+      });
+    }
+
+    if (err?.status === 429) {
+      return this.buildSystemFallback(policyVersion, contentHash, {
+        label: 'quota_exceeded',
+        reason:
+          'The configured Gemini model is not available to this project under the current quota or billing limits.',
+        evidence: retryDelay
+          ? `Gemini returned 429 quota exceeded for model ${this.modelName}. Suggested retry delay: ${retryDelay}.`
+          : `Gemini returned 429 quota exceeded for model ${this.modelName}.`,
+        severity: 'medium',
+        riskScore: 45,
+      });
+    }
+
+    if (err?.status === 503) {
+      return this.buildSystemFallback(policyVersion, contentHash, {
+        label: 'model_overloaded',
+        reason:
+          'The selected Gemini model is temporarily overloaded and could not process this request.',
+        evidence:
+          'Gemini returned 503 Service Unavailable due to high demand. Please retry later or switch to another model.',
+        severity: 'medium',
+        riskScore: 40,
+      });
+    }
+
+    return this.buildSystemFallback(policyVersion, contentHash, {
+      label: 'ai_unavailable',
+      reason: 'AI moderation is temporarily unavailable.',
+      evidence:
+        'The AI provider is temporarily unavailable or has reached its request limit. Please try again later.',
+      severity: 'medium',
+      riskScore: 50,
+    });
   }
 
   async check(input: GeminiCheckInput): Promise<GeminiCheckOutput> {
@@ -277,28 +376,40 @@ ${plainText}
       const result = await model.generateContent(
         `${systemInstruction}\n\n${userPrompt}`,
       );
+      const response = result?.response as any;
+      const promptBlockReason = response?.promptFeedback?.blockReason;
+      const candidateFinishReason = response?.candidates?.[0]?.finishReason;
+
+      if (
+        promptBlockReason === 'PROHIBITED_CONTENT' ||
+        candidateFinishReason === 'PROHIBITED_CONTENT'
+      ) {
+        return this.buildSystemFallback(policyVersion, contentHash, {
+          label: 'provider_blocked_prompt',
+          reason:
+            'The AI provider refused to analyze this chapter because the submitted content triggered its prohibited-content safety system.',
+          evidence:
+            'Gemini returned PROHIBITED_CONTENT for this moderation request. Escalate to manual review or analyze with a provider/model that supports safety review workflows.',
+          severity: 'high',
+          riskScore: 85,
+        });
+      }
+
       rawText =
-        typeof result?.response?.text === 'function'
-          ? result.response.text()
-          : (result?.response as any)?.text ?? '';
+        typeof response?.text === 'function'
+          ? response.text()
+          : response?.text ?? '';
     } catch (err: any) {
-      return {
-        status: 'AI_WARN',
-        risk_score: 50,
-        labels: ['ai_unavailable'],
-        ai_findings: [
-          {
-            policy: 'system/fallback',
-            reason: 'AI moderation is temporarily unavailable.',
-            evidence:
-              'The AI provider is temporarily unavailable or has reached its request limit. Please try again later.',
-            severity: 'medium',
-          },
-        ],
-        policy_version: policyVersion,
-        content_hash: contentHash,
-        ai_model: this.modelName,
-      };
+      this.logger.error('Gemini generateContent failed', {
+        model: this.modelName,
+        message: err?.message,
+        status: err?.status,
+        statusText: err?.statusText,
+        errorDetails: err?.errorDetails,
+        stack: err?.stack,
+      });
+
+      return this.buildFailureFromError(err, policyVersion, contentHash);
     }
 
     let parsed: Partial<GeminiCheckOutput> | null = null;
