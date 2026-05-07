@@ -1,4 +1,18 @@
-import { BadRequestException, Controller, Get, Param, Patch, Query, Res, Req, UseGuards, Body, UploadedFiles, UseInterceptors, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Query,
+  Res,
+  Req,
+  UseGuards,
+  Body,
+  UploadedFiles,
+  UseInterceptors,
+  NotFoundException,
+} from '@nestjs/common';
 import { PayoutSettlementService } from './payout-settlement.service';
 import express from 'express';
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
@@ -6,15 +20,15 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
-import { extname } from 'path';
+import * as multer from 'multer';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Controller('api/payout-settlement')
 export class PayoutSettlementController {
-  constructor(private readonly payoutSettlementService: PayoutSettlementService) { }
+  constructor(
+    private readonly payoutSettlementService: PayoutSettlementService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) { }
 
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -35,31 +49,29 @@ export class PayoutSettlementController {
     });
   }
 
-  // Thêm mark as pay
   @Patch('pay/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('bankBatchRef', 10, {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const payoutId = req.params.id;
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 8 * 1024 * 1024,
+      },
+      fileFilter: (req, file, cb) => {
+        const isImage = file.mimetype.startsWith('image/');
+        const isPdf = file.mimetype === 'application/pdf';
 
-          const uploadPath = `public/bankBatchRef/${payoutId}`;
-
-          fs.mkdirSync(uploadPath, { recursive: true });
-
-          cb(null, uploadPath);
-        },
-
-        filename: (req, file, cb) => {
-          const unique =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-
-          cb(null, unique + path.extname(file.originalname));
+        if (!isImage && !isPdf) {
+          return cb(
+            new BadRequestException('Only image or PDF files are allowed'),
+            false,
+          );
         }
-      })
-    })
+
+        cb(null, true);
+      },
+    }),
   )
   async markAsPaid(
     @Param('id') id: string,
@@ -68,12 +80,20 @@ export class PayoutSettlementController {
     @UploadedFiles() bankBatchRef?: Express.Multer.File[],
   ) {
     const paidBy = req['user'].user_id;
+
+    const uploadedFiles = await this.cloudinaryService.uploadImages(
+      bankBatchRef || [],
+      `mangaword/bankBatchRef/${id}`,
+    );
+
+    const fileUrls = uploadedFiles.map((file) => file.secure_url);
+
     return this.payoutSettlementService.markAsPaid(
       id,
       paidBy,
       note,
-      bankBatchRef
-    )
+      fileUrls,
+    );
   }
 
   @Get('export')
@@ -100,27 +120,7 @@ export class PayoutSettlementController {
       return res.status(204).send();
     }
 
-    const { fileName, filePath } = result;
-
-    if (!existsSync(filePath)) {
-      throw new NotFoundException('Error message: File has been created in the DB but not saved on the server.');
-    }
-
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-    });
-
-    const fileStream = createReadStream(filePath);
-
-    fileStream.on('error', (error) => {
-      console.error('Stream error:', error);
-      if (!res.headersSent) {
-        res.status(500).send('Error while sending file');
-      }
-    });
-
-    fileStream.pipe(res);
+    return res.redirect(result.fileUrl);
   }
 
   @Get('download/:id')
@@ -132,23 +132,32 @@ export class PayoutSettlementController {
   ) {
     const payout = await this.payoutSettlementService.findById(id);
 
-    if (!payout || !payout.fileName) {
-      throw new NotFoundException('Thông tin file không tồn tại');
+    if (!payout || !payout.fileUrl) {
+      throw new NotFoundException('File không tồn tại');
     }
 
-    const filePath = path.join(process.cwd(), 'public', 'payout-files', id, payout.fileName);
+    const response = await fetch(payout.fileUrl);
 
-    if (!existsSync(filePath)) {
-      throw new NotFoundException('File không tồn tại trên server');
+    if (!response.ok) {
+      throw new NotFoundException('Không thể tải file từ Cloudinary');
     }
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(payout.fileName)}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(payout.fileName || 'payout.xlsx')}`,
+    );
 
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 
-    const fileStream = require('fs').createReadStream(filePath);
-    fileStream.pipe(res);
+    return res.send(buffer);
   }
 
   @Patch('cancel/:id')
@@ -159,6 +168,7 @@ export class PayoutSettlementController {
     @Body('note') note: string,
   ) {
     if (!note) throw new BadRequestException('Please enter rejected reason');
+
     return this.payoutSettlementService.cancelPayoutSettlement(id, note);
   }
 
@@ -167,18 +177,23 @@ export class PayoutSettlementController {
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     FilesInterceptor('proofFiles', 10, {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const payoutId = req.params.id;
-          const uploadPath = `public/bankBatchRef/${payoutId}`;
-          mkdirSync(uploadPath, { recursive: true });
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 8 * 1024 * 1024,
+      },
+      fileFilter: (req, file, cb) => {
+        const isImage = file.mimetype.startsWith('image/');
+        const isPdf = file.mimetype === 'application/pdf';
+
+        if (!isImage && !isPdf) {
+          return cb(
+            new BadRequestException('Only image or PDF files are allowed'),
+            false,
+          );
+        }
+
+        cb(null, true);
+      },
     }),
   )
   async updatePayoutSettlement(
@@ -187,14 +202,26 @@ export class PayoutSettlementController {
     @Body('remainingFiles') remainingFilesRaw?: string,
     @UploadedFiles() newFiles?: Express.Multer.File[],
   ) {
-    const remainingFiles = remainingFilesRaw ? JSON.parse(remainingFilesRaw) : [];
+    let remainingFiles: string[] = [];
+
+    try {
+      remainingFiles = remainingFilesRaw ? JSON.parse(remainingFilesRaw) : [];
+    } catch {
+      remainingFiles = [];
+    }
+
+    const uploadedFiles = await this.cloudinaryService.uploadImages(
+      newFiles || [],
+      `mangaword/bankBatchRef/${id}`,
+    );
+
+    const newFileUrls = uploadedFiles.map((file) => file.secure_url);
 
     return this.payoutSettlementService.updatePaidStatus(
       id,
       remainingFiles,
-      newFiles,
+      newFileUrls,
       note,
     );
   }
-
 }

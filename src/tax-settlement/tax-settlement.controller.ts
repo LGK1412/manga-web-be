@@ -24,7 +24,7 @@ import { extname, join } from 'path';
 import { createReadStream, existsSync, mkdirSync } from 'fs';
 import archiver from 'archiver';
 import { AnyFilesInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import * as multer from 'multer';
 
 @Controller('api/tax-settlement')
 export class TaxSettlementController {
@@ -204,26 +204,10 @@ export class TaxSettlementController {
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
     AnyFilesInterceptor({
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const taxId = req.params.id;
-
-          const authorId = file.fieldname.split('_')[1];
-
-          const uploadPath = `public/proofFiles/${taxId}/${authorId}`;
-
-          mkdirSync(uploadPath, { recursive: true });
-
-          cb(null, uploadPath);
-        },
-
-        filename: (req, file, cb) => {
-          const unique =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 8 * 1024 * 1024,
+      },
     }),
   )
   async markAsPaid(
@@ -323,23 +307,11 @@ export class TaxSettlementController {
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
   @UseInterceptors(
-    // Sử dụng AnyFilesInterceptor để bắt được các field name động như proofFiles_authorId
     AnyFilesInterceptor({
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const taxId = req.params.id;
-          // Lấy authorId từ fieldname (ví dụ: proofFiles_65f123...)
-          const authorId = file.fieldname.split('_')[1];
-          const uploadPath = `public/proofFiles/${taxId}/${authorId}`;
-
-          mkdirSync(uploadPath, { recursive: true });
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 8 * 1024 * 1024,
+      },
     }),
   )
   async updateTaxSettlement(

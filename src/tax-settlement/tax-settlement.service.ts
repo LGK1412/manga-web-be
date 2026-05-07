@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import express from 'express';
 import archiver from 'archiver';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 function startOfDayVN(date: Date) {
   return new Date(Date.UTC(
@@ -32,6 +33,7 @@ export class TaxSettlementService {
   constructor(
     @InjectModel('Withdraw') private withdrawModel: Model<WithdrawDocument>,
     @InjectModel('TaxSettlement') private taxSettlementModel: Model<TaxSettlementDocument>,
+    private readonly cloudinaryService: CloudinaryService,
   ) { }
 
   async findById(id: string): Promise<TaxSettlement> {
@@ -494,15 +496,24 @@ export class TaxSettlementService {
     tax.receiptNumber = receiptNumber;
     tax.note = note;
 
-    itemFiles.forEach((item) => {
+    // Upload files to Cloudinary and store URLs
+    for (const item of itemFiles) {
       const target = tax.items.find(
         (i) => i.author.toString() === item.authorId
       );
 
       if (target) {
-        target.proofFiles.push(...item.files.map((f) => f.filename));
+        // Upload files to Cloudinary
+        const uploadedFiles = await this.cloudinaryService.uploadImages(
+          item.files,
+          `mangaword/tax-settlement/${id}/${item.authorId}`
+        );
+
+        // Store Cloudinary URLs instead of filenames
+        const fileUrls = uploadedFiles.map((file) => file.secure_url);
+        target.proofFiles.push(...fileUrls);
       }
-    });
+    }
 
     await tax.save();
 
@@ -542,32 +553,23 @@ export class TaxSettlementService {
       );
 
       if (target) {
-        const filesToDelete = (target.proofFiles || []).filter(
-          (oldFile) => !updateItem.remainingFiles.includes(oldFile),
+        // Filter out removed files (keeping only URLs in remainingFiles)
+        const filesToKeep = (target.proofFiles || []).filter(
+          (file) => updateItem.remainingFiles.includes(file),
         );
 
-        // Đường dẫn thư mục của author này
-        const uploadDir = path.join(
-          process.cwd(),
-          'public',
-          'proofFiles',
-          id,
-          updateItem.authorId
-        );
+        // Upload new files to Cloudinary
+        let newFileUrls: string[] = [];
+        if (updateItem.newFiles && updateItem.newFiles.length > 0) {
+          const uploadedFiles = await this.cloudinaryService.uploadImages(
+            updateItem.newFiles,
+            `mangaword/tax-settlement/${id}/${updateItem.authorId}`
+          );
+          newFileUrls = uploadedFiles.map((file) => file.secure_url);
+        }
 
-        filesToDelete.forEach((fileName) => {
-          const filePath = path.join(uploadDir, fileName);
-          try {
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-            }
-          } catch (err) {
-            console.error(`Lỗi khi xóa file ${fileName} của author ${updateItem.authorId}:`, err);
-          }
-        });
-
-        const newFileNames = updateItem.newFiles.map((f) => f.filename);
-        target.proofFiles = [...updateItem.remainingFiles, ...newFileNames];
+        // Combine kept files with newly uploaded files
+        target.proofFiles = [...filesToKeep, ...newFileUrls];
       }
     }
 

@@ -4,7 +4,7 @@ import { AuthorPayoutProfileController } from './author-payout-profile.controlle
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthorPayoutProfile, AuthorPayoutProfileSchema } from 'src/schemas/author-payout-profile.schema';
 import { AuthorPayoutProfileHistory, AuthorPayoutProfileHistorySchema } from 'src/schemas/author-payout-profile-history.schema';
-
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 @Module({
   imports: [MongooseModule.forFeature([
     { name: AuthorPayoutProfile.name, schema: AuthorPayoutProfileSchema },
@@ -12,6 +12,6 @@ import { AuthorPayoutProfileHistory, AuthorPayoutProfileHistorySchema } from 'sr
   ]
   )],
   controllers: [AuthorPayoutProfileController],
-  providers: [AuthorPayoutProfileService],
+  providers: [AuthorPayoutProfileService, CloudinaryService],
 })
 export class AuthorPayoutProfileModule { }

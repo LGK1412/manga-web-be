@@ -1,10 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
-
 @Schema({ _id: false })
 class PayoutItem {
-
     @Prop({
         type: Types.ObjectId,
         ref: 'User',
@@ -37,7 +35,6 @@ const PayoutItemSchema = SchemaFactory.createForClass(PayoutItem);
 
 @Schema({ timestamps: true })
 export class PayoutSettlement {
-
     @Prop({ type: Date, required: true })
     periodFrom: Date;
 
@@ -51,10 +48,10 @@ export class PayoutSettlement {
     items: PayoutItem[];
 
     @Prop({ type: Number, required: true })
-    totalNet: number
+    totalNet: number;
 
     @Prop({ type: Number, required: true })
-    withdrawCount: number
+    withdrawCount: number;
 
     @Prop({
         default: 'draft',
@@ -63,20 +60,30 @@ export class PayoutSettlement {
     status: string;
 
     @Prop({ type: String, required: true })
-    fileName: string //Tên file excel khi xuất
+    fileName: string;
 
-    @Prop({ type: [String] })
-    bankBatchRef?: string[]
+    // URL file Excel trên Cloudinary
+    @Prop({ type: String })
+    fileUrl?: string;
+
+    // public_id của file Excel trên Cloudinary
+    @Prop({ type: String })
+    filePublicId?: string;
+
+    // URL ảnh/pdf chứng từ chuyển khoản trên Cloudinary
+    @Prop({ type: [String], default: [] })
+    bankBatchRef?: string[];
 
     @Prop({ type: Date })
-    paidAt?: Date
+    paidAt?: Date;
 
     @Prop({ type: Types.ObjectId, ref: 'User' })
-    paidBy?: Types.ObjectId
+    paidBy?: Types.ObjectId;
 
     @Prop()
     note?: string;
-
 }
+
 export type PayoutSettlementDocument = HydratedDocument<PayoutSettlement>;
-export const PayoutSettlementSchema = SchemaFactory.createForClass(PayoutSettlement)
+export const PayoutSettlementSchema =
+    SchemaFactory.createForClass(PayoutSettlement);

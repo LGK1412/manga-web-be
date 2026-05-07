@@ -23,10 +23,11 @@ import { Role } from 'src/common/enums/role.enum';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import multer, { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { extname } from 'path';
 import { ListProfileQueryDto } from './dto/list-query.dto';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 export enum KycStatus {
   PENDING = 'pending',
@@ -36,7 +37,7 @@ export enum KycStatus {
 
 @Controller('api/payout-profile')
 export class AuthorPayoutProfileController {
-  constructor(private readonly authorPayoutProfileService: authorPayoutProfileService.AuthorPayoutProfileService) { }
+  constructor(private readonly authorPayoutProfileService: authorPayoutProfileService.AuthorPayoutProfileService, private readonly cloudinaryService: CloudinaryService,) { }
 
   @Get('me')
   @UseGuards(AccessTokenGuard, RolesGuard)
@@ -49,88 +50,109 @@ export class AuthorPayoutProfileController {
   @Post('submit')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR)
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'identityImages', maxCount: 2 }
-  ], {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const userId = req['user'].user_id;
-
-        const uploadPath = `./public/payout-identity/${userId}`;
-
-        // Tạo folder nếu chưa có
-        if (!existsSync(uploadPath)) {
-          mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [{ name: 'identityImages', maxCount: 2 }],
+      {
+        storage: multer.memoryStorage(),
+        limits: {
+          fileSize: 8 * 1024 * 1024,
+        },
+        fileFilter: (req, file, cb) => {
+          if (!file.mimetype.startsWith('image/')) {
+            return cb(new BadRequestException('File is not an image'), false);
+          }
+          cb(null, true);
+        },
       },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
-      },
-    }),
-  }))
+    ),
+  )
   async handleSubmit(
     @Req() req: Request,
     @Body() dto: CreateAuthorPayoutProfileDto,
-    @UploadedFiles() files: {
-      identityImages?: Express.Multer.File[],
+    @UploadedFiles()
+    files: {
+      identityImages?: Express.Multer.File[];
     },
   ) {
     const userId = req['user'].user_id;
 
     const profileState = await this.authorPayoutProfileService.getProfile(userId);
+
     if (!profileState || profileState.kycStatus !== 'not_found') {
       throw new BadRequestException('Profile already exists');
     }
 
+    const uploadedImages = await this.cloudinaryService.uploadImages(
+      files.identityImages || [],
+      `mangaword/payout-identity/${userId}`,
+    );
+
+    const identityImageUrls = uploadedImages.map((image) => image.secure_url);
+
     const payload = {
       ...dto,
-      identityImages: files.identityImages?.map(f => f.filename) || [],
+      identityImages: identityImageUrls,
     };
 
-    return await this.authorPayoutProfileService.createInitialProfile(userId, payload);
+    return await this.authorPayoutProfileService.createInitialProfile(
+      userId,
+      payload,
+    );
   }
-
   @Patch('resubmit')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR)
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'identityImages', maxCount: 2 }
-  ], {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const userId = req['user'].user_id;
-        const uploadPath = `./public/payout-identity/${userId}`;
-        if (!existsSync(uploadPath)) mkdirSync(uploadPath, { recursive: true });
-        cb(null, uploadPath);
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [{ name: 'identityImages', maxCount: 2 }],
+      {
+        storage: multer.memoryStorage(),
+        limits: {
+          fileSize: 8 * 1024 * 1024,
+        },
+        fileFilter: (req, file, cb) => {
+          if (!file.mimetype.startsWith('image/')) {
+            return cb(new BadRequestException('File is not an image'), false);
+          }
+          cb(null, true);
+        },
       },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
-      },
-    }),
-  }))
+    ),
+  )
   async handleResubmit(
     @Req() req: Request,
     @Body() dto: CreateAuthorPayoutProfileDto,
-    @Body("existingImages") existingImages: string,
-    @UploadedFiles() files: { identityImages?: Express.Multer.File[] },
+    @Body('existingImages') existingImages: string,
+    @UploadedFiles()
+    files: {
+      identityImages?: Express.Multer.File[];
+    },
   ) {
     const userId = req['user'].user_id;
 
-    const newImages = files.identityImages?.map(f => f.filename) || [];
+    const uploadedImages = await this.cloudinaryService.uploadImages(
+      files.identityImages || [],
+      `mangaword/payout-identity/${userId}`,
+    );
 
-    const oldImages = existingImages ? JSON.parse(existingImages) : [];
+    const newImageUrls = uploadedImages.map((image) => image.secure_url);
+
+    let oldImages: string[] = [];
+
+    try {
+      oldImages = existingImages ? JSON.parse(existingImages) : [];
+    } catch {
+      oldImages = [];
+    }
 
     const payload = {
       ...dto,
-      identityImages: [...oldImages, ...newImages],
+      identityImages: [...oldImages, ...newImageUrls],
     };
 
     return await this.authorPayoutProfileService.updateProfile(userId, payload);
   }
-
   @Get('list')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)

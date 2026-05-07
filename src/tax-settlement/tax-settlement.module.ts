@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from 'src/schemas/User.schema';
 import { Withdraw, WithdrawSchema } from 'src/schemas/Withdrawal.schema';
 import { TaxSettlement, TaxSettlementSchema } from 'src/schemas/tax-settlement.schema';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Module({
   imports: [MongooseModule.forFeature([
@@ -13,6 +14,6 @@ import { TaxSettlement, TaxSettlementSchema } from 'src/schemas/tax-settlement.s
     { name: TaxSettlement.name, schema: TaxSettlementSchema }
   ])],
   controllers: [TaxSettlementController],
-  providers: [TaxSettlementService],
+  providers: [TaxSettlementService, CloudinaryService],
 })
 export class TaxSettlementModule { }

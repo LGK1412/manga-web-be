@@ -39,11 +39,13 @@ import {
   toAbsFromRel,
   unlinkSafe,
 } from './helpers/license-rights.helper';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Injectable()
 export class LicenseService {
   constructor(
     @InjectModel(Manga.name) private readonly mangaModel: Model<MangaDocument>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async uploadLicenseForManga(
@@ -86,46 +88,20 @@ export class LicenseService {
       );
     }
 
-    const dir = join('public', 'assets', 'licenses', mangaId);
-    await fs.promises.mkdir(dir, { recursive: true });
-
-    const oldRelFiles: string[] = Array.isArray((manga as any).licenseFiles)
-      ? [...((manga as any).licenseFiles as string[])]
-      : [];
-
-    const newRelFiles: string[] = [];
-    const newAbsFiles: string[] = [];
-
     try {
-      for (const f of files) {
-        if (!f?.buffer || !Buffer.isBuffer(f.buffer)) {
-          throw new BadRequestException('Invalid file buffer');
-        }
+      // Upload files to Cloudinary
+      const uploadedFiles = await this.cloudinaryService.uploadImages(
+        files,
+        `mangaword/licenses/${mangaId}`
+      );
 
-        const filename = genFileName(f.originalname);
-        const absPath = join(dir, filename);
+      // Store Cloudinary URLs instead of relative paths
+      const newFileUrls = uploadedFiles.map((file) => file.secure_url);
 
-        await fs.promises.writeFile(absPath, f.buffer);
-
-        const relPath = join('assets', 'licenses', mangaId, filename).replace(
-          /\\/g,
-          '/',
-        );
-
-        newAbsFiles.push(absPath);
-        newRelFiles.push(relPath);
-      }
-    } catch (err) {
-      await Promise.allSettled(newAbsFiles.map((p) => unlinkSafe(p)));
-      if (err instanceof BadRequestException) throw err;
-      throw new InternalServerErrorException('Unable to save license files');
-    }
-
-    try {
       const rights = getMergedRights(manga);
 
       (manga as any).licenseStatus = MangaLicenseStatus.PENDING;
-      (manga as any).licenseFiles = newRelFiles;
+      (manga as any).licenseFiles = newFileUrls;
       (manga as any).licenseNote = note ?? '';
       (manga as any).licenseSubmittedAt = new Date();
       clearCurrentLicenseRejectReason(manga);
@@ -135,7 +111,7 @@ export class LicenseService {
 
       (manga as any).rights = {
         ...rights,
-        proofFiles: newRelFiles,
+        proofFiles: newFileUrls,
         proofNote: note ?? '',
         reviewStatus: RightsReviewStatus.PENDING,
         reviewedAt: null,
@@ -146,15 +122,8 @@ export class LicenseService {
       (manga as any).isPublish = false;
 
       await manga.save();
-    } catch {
-      await Promise.allSettled(newAbsFiles.map((p) => unlinkSafe(p)));
+    } catch (err) {
       throw new InternalServerErrorException('Unable to update manga license');
-    }
-
-    if (oldRelFiles.length > 0) {
-      await Promise.allSettled(
-        oldRelFiles.map((rel) => unlinkSafe(toAbsFromRel(rel))),
-      );
     }
 
     return {
