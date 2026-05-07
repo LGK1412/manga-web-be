@@ -128,17 +128,15 @@ export class ImageChapterService {
     if (!result[0]) return null
     return result[0]
   }
-
   async createChapterWithImages(
     dto: CreateImageChapterDto,
-    files: Express.Multer.File[],
+    imageUrls: string[],
   ): Promise<{ chapter: ChapterDocument; imageChapter: ImageChapterDocument }> {
+    const { title, manga_id, price, order, is_published, is_completed } = dto;
 
-    const { title, manga_id, price, order, is_published, is_completed } = dto
+    const chapterOrder = order && order > 0 ? order : 1;
 
-    const chapterOrder = order && order > 0 ? order : 1
-
-    let chapter: ChapterDocument
+    let chapter: ChapterDocument;
 
     try {
       chapter = await this.chapterModel.create({
@@ -147,137 +145,100 @@ export class ImageChapterService {
         price: price ?? 0,
         order: chapterOrder,
         is_published: is_published ?? false,
-      })
+      });
     } catch (err) {
-      this.rethrowFriendlyPersistenceError(err)
+      this.rethrowFriendlyPersistenceError(err);
     }
-
-    const savedImages = await this.saveImagesAsWebp(
-      chapter._id.toString(),
-      files,
-    )
 
     let imageChapter = await this.imageChapterModel.findOne({
       chapter_id: chapter._id,
-    })
+    });
 
     if (imageChapter) {
-      imageChapter.images.push(...savedImages)
-      imageChapter.is_completed = is_completed ?? false
-      await imageChapter.save()
+      imageChapter.images.push(...imageUrls);
+      imageChapter.is_completed = is_completed ?? false;
+      await imageChapter.save();
     } else {
       imageChapter = await this.imageChapterModel.create({
         chapter_id: chapter._id,
-        images: savedImages,
+        images: imageUrls,
         is_completed: is_completed ?? false,
-      })
+      });
 
-      const manga = await this.mangaModel
-        .findById(manga_id)
-        .select('authorId')
+      const manga = await this.mangaModel.findById(manga_id).select('authorId');
 
       if (manga?.authorId) {
         this.eventEmitter.emit('chapter_create_count', {
           userId: manga.authorId.toString(),
-        })
+        });
       }
     }
 
-    // Update manga updatedAt
     await this.mangaModel.findByIdAndUpdate(
       manga_id,
       { updatedAt: new Date() },
       { new: true },
-    )
+    );
 
-    return { chapter, imageChapter }
+    return { chapter, imageChapter };
   }
-
   async updateChapterWithImages(
     chapterId: string,
     dto: Partial<CreateImageChapterDto> & { kept_images?: string[] },
-    files: Express.Multer.File[],
+    imageUrls: string[],
   ): Promise<{ chapter: ChapterDocument; imageChapter: ImageChapterDocument }> {
+    const updateData: any = {};
 
-    const updateData: any = {}
-
-    if (dto.title !== undefined) updateData.title = dto.title
-    if (dto.price !== undefined) updateData.price = dto.price
-    if (dto.order !== undefined && dto.order > 0) updateData.order = dto.order
-    if (dto.is_published !== undefined)
-      updateData.is_published = dto.is_published
+    if (dto.title !== undefined) updateData.title = dto.title;
+    if (dto.price !== undefined) updateData.price = dto.price;
+    if (dto.order !== undefined && dto.order > 0) updateData.order = dto.order;
+    if (dto.is_published !== undefined) {
+      updateData.is_published = dto.is_published;
+    }
 
     const chapter = await this.chapterModel.findByIdAndUpdate(
       chapterId,
       updateData,
       { new: true },
-    )
+    );
 
-    if (!chapter) throw new NotFoundException('Chapter not found')
+    if (!chapter) throw new NotFoundException('Chapter not found');
 
     let imageChapter = await this.imageChapterModel.findOne({
       chapter_id: chapter._id,
-    })
+    });
 
     if (!imageChapter) {
       imageChapter = new this.imageChapterModel({
         chapter_id: chapter._id,
         images: [],
         is_completed: false,
-      })
+      });
     }
 
-    // Handle kept_images array (for deletion + reordering)
+    // Giữ lại ảnh cũ và sắp xếp lại
     if (dto.kept_images && Array.isArray(dto.kept_images)) {
-      const keptSet = new Set(dto.kept_images)
-      const imagesToDelete = imageChapter.images.filter(
-        (img) => !keptSet.has(img)
-      )
-
-      // Delete removed images from filesystem
-      const chapterDir = path.join(
-        process.cwd(),
-        'public',
-        'uploads',
-        'image-chapters',
-        chapter._id.toString(),
-      )
-
-      for (const filename of imagesToDelete) {
-        try {
-          const filePath = path.join(chapterDir, filename)
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-        } catch (err) {
-          console.warn(`Could not delete file ${filename}:`, err)
-        }
-      }
-
-      // Reorder kept images
-      imageChapter.images = dto.kept_images
+      imageChapter.images = dto.kept_images;
     }
 
-    // Save new images
-    if (files && files.length > 0) {
-      const savedImages = await this.saveImagesAsWebp(
-        chapter._id.toString(),
-        files,
-      )
-      imageChapter.images.push(...savedImages)
+    // Thêm ảnh mới đã upload lên Cloudinary
+    if (imageUrls && imageUrls.length > 0) {
+      imageChapter.images.push(...imageUrls);
     }
 
-    if (dto.is_completed !== undefined)
-      imageChapter.is_completed = dto.is_completed
+    if (dto.is_completed !== undefined) {
+      imageChapter.is_completed = dto.is_completed;
+    }
 
-    await imageChapter.save()
+    await imageChapter.save();
 
-    // Update manga updatedAt
     await this.mangaModel.findByIdAndUpdate(
       chapter.manga_id,
       { updatedAt: new Date() },
       { new: true },
-    )
+    );
 
-    return { chapter, imageChapter }
+    return { chapter, imageChapter };
   }
 
   async deleteImageChapter(id: Types.ObjectId): Promise<{ deletedChapter: any; deletedImageChapter: any }> {

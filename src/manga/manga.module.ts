@@ -14,6 +14,7 @@ import { Chapter, ChapterSchema } from 'src/schemas/chapter.schema';
 import { ChapterPurchase, ChapterPurchaseSchema } from 'src/schemas/chapter-purchase.schema';
 import { Rating, RatingSchema } from 'src/schemas/Rating.schema';
 import { AchievementEventModule } from 'src/achievement/achievement.event.module';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Module({
   imports: [
@@ -38,8 +39,8 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
     AchievementEventModule
   ],
   controllers: [MangaController],
-  providers: [MangaService],
-  exports: [MangaService, MongooseModule],
+  providers: [MangaService, CloudinaryService],
+  exports: [MangaService, MongooseModule, CloudinaryService],
 })
 export class MangaModule { }
 

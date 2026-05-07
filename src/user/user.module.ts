@@ -13,6 +13,7 @@ import { Chapter, ChapterSchema } from "src/schemas/chapter.schema";
 import { UserChapterProgress, UserChapterProgressSchema } from "src/schemas/UserChapterProgress.schema";
 import { AuthorApprovalEventListener } from "./author-approval.event.listener";
 import { AuditLogModule } from 'src/audit-log/audit-log.module'; // ✅ Import AuditLogModule
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Module({
     imports: [
@@ -38,7 +39,7 @@ import { AuditLogModule } from 'src/audit-log/audit-log.module'; // ✅ Import A
         }),
         AchievementEventModule
     ],
-    providers: [UserService, AuthorApprovalEventListener],
+    providers: [UserService, AuthorApprovalEventListener, CloudinaryService],
     controllers: [UserController],
     exports: [MongooseModule, UserService]
 })

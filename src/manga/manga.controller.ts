@@ -37,29 +37,29 @@ import { OptionalAccessTokenGuard } from 'src/common/guards/optional-access-toke
 import { UpdatePublishStatusDto } from './dto/update-publish-status.dto';
 import { GetMangaManagementQueryDto } from './dto/get-manga-management-query.dto';
 import { UpdateEnforcementStatusDto } from './dto/update-enforcement-status.dto';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import * as multer from 'multer';
 
-// Reusable FileInterceptor config
-const coverImageInterceptor = FileInterceptor('coverImage', {
-  storage: diskStorage({
-    destination: 'public/assets/coverImages',
-    filename: (req, file, cb) => {
-      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      const ext = extname(file.originalname);
-      cb(null, `${unique}${ext}`);
-    },
-  }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+export const coverImageInterceptor = FileInterceptor('coverImage', {
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
       return cb(new BadRequestException('File không phải ảnh'), false);
     }
+
     cb(null, true);
   },
 });
 
 @Controller('api/manga')
 export class MangaController {
-  constructor(private readonly mangaService: MangaService) { }
+  constructor(
+    private readonly mangaService: MangaService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) { }
 
   // ================= ADMIN ANALYTICS =================
 
@@ -183,8 +183,6 @@ export class MangaController {
     return this.mangaService.getRecommendStory(new Types.ObjectId(userId));
   }
 
-  // ================= AUTHOR ACTIONS =================
-
   @Post('author/:authorId')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
@@ -200,14 +198,24 @@ export class MangaController {
     const userId = (payload as any).user_id || (payload as any).userId;
 
     if (userId !== authorId && payload.role !== Role.ADMIN) {
-      throw new BadRequestException('You do not have permission to create story for this author');
+      throw new BadRequestException(
+        'You do not have permission to create story for this author',
+      );
     }
 
     if (file) {
-      createMangaDto.coverImage = file.filename;
+      const uploadedImage = await this.cloudinaryService.uploadImage(
+        file,
+        'mangaword/coverImages',
+      );
+
+      createMangaDto.coverImage = uploadedImage.secure_url;
     }
 
-    return this.mangaService.createManga(createMangaDto, new Types.ObjectId(authorId));
+    return this.mangaService.createManga(
+      createMangaDto,
+      new Types.ObjectId(authorId),
+    );
   }
 
   @Get('author/story/:id')
@@ -235,7 +243,14 @@ export class MangaController {
     const payload = (req as any).user as JwtPayload;
     const userId = (payload as any).user_id || (payload as any).userId;
 
-    if (file) updateMangaDto.coverImage = file.filename;
+    if (file) {
+      const uploadedImage = await this.cloudinaryService.uploadImage(
+        file,
+        'mangaword/coverImages',
+      );
+
+      updateMangaDto.coverImage = uploadedImage.secure_url;
+    }
 
     return this.mangaService.updateManga(
       mangaId,

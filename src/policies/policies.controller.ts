@@ -31,13 +31,26 @@ export class PoliciesController {
     return this.policiesService.create(dto);
   }
 
-  // 🟡 Public: Get all or filter by mainType (e.g. ?mainType=TERMS)
+  // 🟡 Get all with pagination, search, and filtering
   @Get()
-  async findAll(@Query('mainType') mainType?: string) {
-    if (mainType) {
-      return this.policiesService.findByMainType(mainType);
-    }
-    return this.policiesService.findAll();
+  async findAll(
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('visibility') visibility?: string,
+    @Query('sortField') sortField = 'updatedAt',
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+  ) {
+    return this.policiesService.findAllPaginated({
+      page: Number(page),
+      limit: Number(limit),
+      search,
+      status,
+      visibility,
+      sortField,
+      sortOrder,
+    });
   }
 
   // 🟢 Public: Get all active policies

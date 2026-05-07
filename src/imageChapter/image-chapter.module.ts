@@ -6,6 +6,7 @@ import { ImageChapter, ImageChapterSchema } from 'src/schemas/Image-chapter';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Manga, MangaSchema } from 'src/schemas/Manga.schema';
 import { AchievementEventModule } from 'src/achievement/achievement.event.module';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { AchievementEventModule } from 'src/achievement/achievement.event.module
     AchievementEventModule
   ],
   controllers: [ImageChapterController],
-  providers: [ImageChapterService],
+  providers: [ImageChapterService, CloudinaryService],
 })
 export class ImageChapterModule { }

@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ImageChapterService } from './image-chapter.service';
 import { CreateImageChapterDto } from './dto/create-image-chapter.dto';
 import { UpdateImageChapterDto } from './dto/update-image-chapter.dto';
@@ -25,17 +25,25 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
-const multerOptions = {
+export const chapterImagesInterceptor = FilesInterceptor('images', 100, {
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 8 * 1024 * 1024, // 8 MB / file
+    fileSize: 8 * 1024 * 1024, // 8MB / ảnh
   },
-};
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new BadRequestException('File không phải ảnh'), false);
+    }
+
+    cb(null, true);
+  },
+});
 
 @Controller('api/image-chapter')
 export class ImageChapterController {
-  constructor(private readonly imageChapterService: ImageChapterService) { }
+  constructor(private readonly imageChapterService: ImageChapterService, private readonly cloudinaryService: CloudinaryService,) { }
 
   @Get('id/:id')
   async getChapterById(@Param('id') chapterId: string) {
@@ -65,11 +73,10 @@ export class ImageChapterController {
 
     return result;
   }
-
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
-  @UseInterceptors(FilesInterceptor('images', undefined, multerOptions))
+  @UseInterceptors(chapterImagesInterceptor)
   async create(
     @Body() dto: CreateImageChapterDto,
     @UploadedFiles() files: Express.Multer.File[],
@@ -84,35 +91,53 @@ export class ImageChapterController {
         dto.is_completed === true || (dto.is_completed as any) === 'true',
     };
 
-    return this.imageChapterService.createChapterWithImages(parsedDto, files);
-  }
+    const uploadedImages = await this.cloudinaryService.uploadImages(
+      files,
+      'mangaword/imageChapters',
+    );
 
+    const imageUrls = uploadedImages.map((image) => image.secure_url);
+
+    return this.imageChapterService.createChapterWithImages(
+      parsedDto,
+      imageUrls,
+    );
+  }
   @Patch(':id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.AUTHOR, Role.ADMIN)
-  @UseInterceptors(FilesInterceptor('images', undefined, multerOptions))
-  async updateChapter(
-    @Param('id') id: string,
-    @Body() body: any,
+  @UseInterceptors(chapterImagesInterceptor)
+  async update(
+    @Param('id') chapterId: string,
+    @Body() dto: Partial<CreateImageChapterDto> & { kept_images?: string[] },
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    // Convert FormData string values to proper types
     const parsedDto = {
-      title: body.title,
-      price: body.price ? Number(body.price) : undefined,
-      order: body.order ? Number(body.order) : undefined,
-      is_published: body.is_published === 'true' || body.is_published === true,
-      is_completed: body.is_completed === 'true' || body.is_completed === true,
-      kept_images: body.kept_images ? JSON.parse(body.kept_images) : undefined,
+      ...dto,
+      price: dto.price !== undefined ? Number(dto.price) : undefined,
+      order: dto.order !== undefined ? Number(dto.order) : undefined,
+      is_published:
+        dto.is_published === undefined
+          ? undefined
+          : dto.is_published === true || (dto.is_published as any) === 'true',
+      is_completed:
+        dto.is_completed === undefined
+          ? undefined
+          : dto.is_completed === true || (dto.is_completed as any) === 'true',
     };
 
-    const result = await this.imageChapterService.updateChapterWithImages(
-      id,
-      parsedDto,
+    const uploadedImages = await this.cloudinaryService.uploadImages(
       files,
+      'mangaword/imageChapters',
     );
 
-    return result;
+    const imageUrls = uploadedImages.map((image) => image.secure_url);
+
+    return this.imageChapterService.updateChapterWithImages(
+      chapterId,
+      parsedDto,
+      imageUrls,
+    );
   }
 
   @Delete(':id')

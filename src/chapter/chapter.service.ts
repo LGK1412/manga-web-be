@@ -25,7 +25,7 @@ export class ChapterServiceOnlyNormalChapterInfor {
     @InjectModel(UserStoryHistory.name)
     private historyModel: Model<UserStoryHistoryDocument>,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   async getChapterById(id: Types.ObjectId) {
     return this.chapterModel
@@ -102,14 +102,8 @@ export class ChapterServiceOnlyNormalChapterInfor {
         },
         {
           $addFields: {
-            images: {
-              $map: {
-                input: '$_imageFiles',
-                as: 'f',
-                in: { $concat: ['/uploads/image-chapters/', { $toString: '$_id' }, '/', '$$f'] },
-              },
-            },
-            image_count: { $size: '$_imageFiles' },
+            images: '$_imageFiles',
+            image_count: { $size: { $ifNull: ['$_imageFiles', []] } },
           },
         },
         {

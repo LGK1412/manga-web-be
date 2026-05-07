@@ -35,12 +35,15 @@ import { BulkUserActionDto } from './dto/bulk-user-action.dto';
 import { ModBanUserDto, ModMuteUserDto } from './dto/moderate-user.dto';
 import { UserManagementListQueryDto } from './dto/user-management-list-query.dto';
 import { UpdateProfileDto } from './dto/UpdateProfile.dto';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Controller('api/user')
 export class UserController {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
+    private readonly cloudinaryService: CloudinaryService,
+
   ) { }
 
   // ================= ADMIN =================
@@ -226,35 +229,22 @@ export class UserController {
     @Req() req: Request,
   ) {
     const updateData: any = {};
+
     if (body.username) updateData.username = body.username;
     if (body.bio !== undefined) updateData.bio = body.bio;
-    let avatarFilename: string | null = null;
+
     if (file) {
-      const fromOriginal = extname(file.originalname || '').toLowerCase();
-      const fromMime =
-        file.mimetype?.startsWith('image/') && file.mimetype.includes('/')
-          ? `.${file.mimetype.split('/')[1].toLowerCase()}`
-          : '';
-      const ext = (fromOriginal || fromMime || '.png').replace(/[^.\w]/g, '');
-      const id =
-        typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : crypto.randomBytes(16).toString('hex');
-      avatarFilename = `${id}${ext}`;
-      updateData.avatar = avatarFilename;
+      const uploadedAvatar = await this.cloudinaryService.uploadImage(
+        file,
+        'mangaword/avatars',
+      );
+
+      updateData.avatar = uploadedAvatar.secure_url;
     }
 
     const user = req['user'];
-    const result = await this.userService.updateProfile(user, updateData);
 
-    if (file && avatarFilename && result.success) {
-      const avatarsDir = join(process.cwd(), 'public', 'assets', 'avatars');
-      await fs.promises.mkdir(avatarsDir, { recursive: true });
-      const filePath = join(avatarsDir, avatarFilename);
-      await fs.promises.writeFile(filePath, file.buffer);
-    }
-
-    return result;
+    return this.userService.updateProfile(user, updateData);
   }
 
   @Get('/point')
