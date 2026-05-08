@@ -15,11 +15,8 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import fs from 'fs';
-import crypto from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import multer from 'multer';
-import { extname, join } from 'path';
 
 import { UserService } from './user.service';
 import { JwtService } from '@nestjs/jwt';

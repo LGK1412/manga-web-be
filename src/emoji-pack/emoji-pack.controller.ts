@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -13,7 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
-
+import * as multer from 'multer';
 import { FilesInterceptor } from '@nestjs/platform-express';
 
 import { EmojiPackService } from './emoji-pack.service';
@@ -24,6 +25,19 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
+
+const emojiUploadOptions = {
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req: any, file: Express.Multer.File, cb: any) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new BadRequestException('File không phải ảnh'), false);
+    }
+    cb(null, true);
+  },
+};
 
 @Controller('api/emoji-pack')
 export class EmojiPackController {
@@ -36,7 +50,7 @@ export class EmojiPackController {
    * ADMIN: tạo emoji pack
    */
   @Post('/create-emoji-pack')
-  @UseInterceptors(FilesInterceptor('emojis'))
+  @UseInterceptors(FilesInterceptor('emojis', 50, emojiUploadOptions))
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async createEmojiPack(
@@ -106,7 +120,7 @@ export class EmojiPackController {
   @Patch('/edit/:id')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @UseInterceptors(FilesInterceptor('newEmojis'))
+  @UseInterceptors(FilesInterceptor('newEmojis', 50, emojiUploadOptions))
   async editEmojiPack(
     @Param('id') id: string,
     @Body() body: any,

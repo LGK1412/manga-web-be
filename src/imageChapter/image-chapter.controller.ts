@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ImageChapterService } from './image-chapter.service';
 import { CreateImageChapterDto } from './dto/create-image-chapter.dto';
 import { UpdateImageChapterDto } from './dto/update-image-chapter.dto';

@@ -4,11 +4,9 @@ import { type Model, Types } from "mongoose"
 import { ImageChapter, type ImageChapterDocument } from "src/schemas/Image-chapter"
 import { Chapter, type ChapterDocument } from "../schemas/chapter.schema"
 import type { CreateImageChapterDto } from "./dto/create-image-chapter.dto"
-import * as fs from "fs"
-import * as path from "path"
-import sharp from "sharp"
 import { EventEmitter2 } from "@nestjs/event-emitter"
 import { Manga, MangaDocument } from "src/schemas/Manga.schema"
+import { CloudinaryService } from "src/cloudinary/cloudinary.service"
 
 @Injectable()
 export class ImageChapterService {
@@ -19,6 +17,7 @@ export class ImageChapterService {
     private chapterModel: Model<ChapterDocument>,
     @InjectModel(Manga.name) private mangaModel: Model<MangaDocument>,
     private readonly eventEmitter: EventEmitter2,
+    private readonly cloudinaryService: CloudinaryService,
   ) { }
 
   private rethrowFriendlyPersistenceError(err: unknown): never {
@@ -33,43 +32,6 @@ export class ImageChapterService {
       )
     }
     throw err;
-  }
-
-  private async saveImagesAsWebp(
-    chapterId: string,
-    files: Express.Multer.File[],
-  ): Promise<string[]> {
-    const { v4: uuidv4 } = await import('uuid')
-
-    const chapterDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'image-chapters',
-      chapterId,
-    )
-
-    fs.mkdirSync(chapterDir, { recursive: true })
-
-    const savedImages: string[] = []
-
-    try {
-      for (const file of files || []) {
-        const filename = `${Date.now()}-${uuidv4()}.webp`
-        const filepath = path.join(chapterDir, filename)
-
-        await sharp(file.buffer)
-          .rotate()
-          .webp({ quality: 80, effort: 4 })
-          .toFile(filepath)
-
-        savedImages.push(filename)
-      }
-
-      return savedImages
-    } catch (error) {
-      throw new BadRequestException('Image processing failed')
-    }
   }
 
   async getChapterAllByManga_id(manga_id: Types.ObjectId) {
@@ -245,25 +207,14 @@ export class ImageChapterService {
     const imageChapter = await this.imageChapterModel.findOne({ chapter_id: id })
 
     if (imageChapter?.images && imageChapter?.images?.length > 0) {
-      for (const filename of imageChapter.images) {
+      for (const imageUrl of imageChapter.images) {
         try {
-          const filePath = path.join(process.cwd(), "public", "uploads", "image-chapters", id.toString(), filename)
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-        } catch (err) {
-          console.warn(`Không xóa được file ${filename}:`, err)
-        }
-      }
-
-      try {
-        const chapterDir = path.join(process.cwd(), "public", "uploads", "image-chapters", id.toString())
-        if (fs.existsSync(chapterDir)) {
-          const files = fs.readdirSync(chapterDir)
-          if (files.length === 0) {
-            fs.rmdirSync(chapterDir)
+          if (typeof imageUrl === "string" && /^https?:\/\//i.test(imageUrl)) {
+            await this.cloudinaryService.deleteByUrl(imageUrl, "image")
           }
+        } catch (err) {
+          console.warn(`Không xóa được ảnh chapter từ cloudinary:`, err)
         }
-      } catch (err) {
-        console.warn(`Không xóa được folder chương:`, err)
       }
     }
 
