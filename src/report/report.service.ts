@@ -505,14 +505,52 @@ export class ReportService {
     return report.toObject()
   }
 
-  async findAllForRole(role?: string): Promise<ReportWithTargetDetail[]> {
+  async findAllForRole(
+    role?: string,
+    query?: {
+      q?: string
+      status?: string
+      page?: number
+      limit?: number
+      sortDir?: 'asc' | 'desc'
+    },
+  ): Promise<{
+    items: ReportWithTargetDetail[]
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }> {
     const allow = this.allowedTargetTypesByRole(role)
-    if (Array.isArray(allow) && allow.length === 0) return []
+    if (Array.isArray(allow) && allow.length === 0) {
+      return { items: [], total: 0, page: 1, limit: 1, totalPages: 1 }
+    }
 
     const match: any = {}
     if (Array.isArray(allow) && allow.length > 0) {
       match.target_type = { $in: allow }
     }
+
+    const status = String(query?.status || '').trim()
+    if (status) {
+      match.status = status
+    }
+
+    const q = String(query?.q || '').trim()
+    if (q) {
+      match.$or = [
+        { reason: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } },
+        { reportCode: { $regex: q, $options: 'i' } },
+      ]
+    }
+
+    const page = Math.max(1, Number(query?.page ?? 1))
+    const limit = Math.min(Math.max(Number(query?.limit ?? 50), 1), 100)
+    const skip = (page - 1) * limit
+    const sortDir = query?.sortDir === 'asc' ? 1 : -1
+
+    const total = await this.reportModel.countDocuments(match)
 
     const reports = await this.reportModel
       .find(match)
@@ -522,10 +560,12 @@ export class ReportService {
         select: 'title authorId content manga_id user_id comment_id order',
         options: { strictPopulate: false },
       })
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: sortDir })
+      .skip(skip)
+      .limit(limit)
       .exec()
 
-    return Promise.all(
+    const items = await Promise.all(
       reports.map((report) =>
         this.attachTargetDetail(
           report.toObject() as unknown as ReportWithTargetDetail,
@@ -533,6 +573,14 @@ export class ReportService {
         ),
       ),
     )
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    }
   }
 
   async findOneForRole(

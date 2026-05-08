@@ -23,9 +23,7 @@ import { Role } from 'src/common/enums/role.enum';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import multer, { diskStorage } from 'multer';
-import { existsSync, mkdirSync } from 'fs';
-import { extname } from 'path';
+import multer from 'multer';
 import { ListProfileQueryDto } from './dto/list-query.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 

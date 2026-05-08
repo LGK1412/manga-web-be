@@ -51,6 +51,48 @@ export class EmojiPackService {
         return await this.emojiPackModel.find().populate("emojis")
     }
 
+    async getAllPackPaginated(query: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: "all" | "normal" | "hide";
+    }) {
+        const page = Math.max(1, Number(query.page ?? 1));
+        const limit = Math.min(Math.max(Number(query.limit ?? 10), 1), 100);
+        const skip = (page - 1) * limit;
+        const search = String(query.search || "").trim();
+        const status = query.status || "all";
+
+        const filter: any = {};
+        if (search) {
+            filter.name = { $regex: search, $options: "i" };
+        }
+        if (status === "hide") {
+            filter.is_hide = true;
+        }
+        if (status === "normal") {
+            filter.is_hide = false;
+        }
+
+        const [items, total] = await Promise.all([
+            this.emojiPackModel
+                .find(filter)
+                .populate("emojis")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            this.emojiPackModel.countDocuments(filter),
+        ]);
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+        };
+    }
+
     async getAllFreePack() {
         return await this.emojiPackModel.find({ price: 0, is_hide: false }).populate("emojis");
     }

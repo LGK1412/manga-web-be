@@ -38,9 +38,22 @@ export class ReportController {
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
-  findAll(@Req() req: Request) {
+  findAll(
+    @Req() req: Request,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+    @Query('sortDir') sortDir: 'asc' | 'desc' = 'desc',
+  ) {
     const payload = req['user'] as JwtPayload;
-    return this.reportsService.findAllForRole(payload?.role);
+    return this.reportsService.findAllForRole(payload?.role, {
+      q,
+      status,
+      page: Number(page),
+      limit: Number(limit),
+      sortDir,
+    });
   }
 
   @Get(':id')

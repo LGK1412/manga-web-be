@@ -72,7 +72,11 @@ export class AdminNotificationController {
   async sent(
     @Req() req: Request,
     @Query("status") status?: "Read" | "Unread",
-    @Query("q") q?: string
+    @Query("saved") saved?: "Saved" | "Unsaved",
+    @Query("sort") sort?: "Newest" | "Oldest" | "Title A-Z" | "Title Z-A",
+    @Query("q") q?: string,
+    @Query("page") page = "1",
+    @Query("limit") limit = "10",
   ) {
     const user = req["user"];
     const senderId = this.getUserId(user);
@@ -85,6 +89,8 @@ export class AdminNotificationController {
 
     if (status === "Read") rows = rows.filter((r) => r.is_read);
     if (status === "Unread") rows = rows.filter((r) => !r.is_read);
+    if (saved === "Saved") rows = rows.filter((r) => r.is_save);
+    if (saved === "Unsaved") rows = rows.filter((r) => !r.is_save);
 
     if (q) {
       const s = q.toLowerCase();
@@ -95,12 +101,34 @@ export class AdminNotificationController {
       );
     }
 
-    rows.sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    if (sort === "Oldest") {
+      rows.sort(
+        (a: any, b: any) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    } else if (sort === "Title A-Z") {
+      rows.sort((a: any, b: any) => String(a.title || "").localeCompare(String(b.title || "")));
+    } else if (sort === "Title Z-A") {
+      rows.sort((a: any, b: any) => String(b.title || "").localeCompare(String(a.title || "")));
+    } else {
+      rows.sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    }
 
-    return rows;
+    const pageNumber = Math.max(1, Number(page || 1));
+    const limitNumber = Math.min(Math.max(Number(limit || 10), 1), 100);
+    const start = (pageNumber - 1) * limitNumber;
+    const pagedRows = rows.slice(start, start + limitNumber);
+
+    return {
+      items: pagedRows,
+      total: rows.length,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.max(1, Math.ceil(rows.length / limitNumber)),
+    };
   }
 
   @Get("stats")

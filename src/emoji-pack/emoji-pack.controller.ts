@@ -63,8 +63,18 @@ export class EmojiPackController {
    * Public: lấy tất cả pack
    */
   @Get('/')
-  async getAllPack() {
-    return this.emojiPackService.getAllPack();
+  async getAllPack(
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+    @Query('search') search?: string,
+    @Query('status') status?: 'all' | 'normal' | 'hide',
+  ) {
+    return this.emojiPackService.getAllPackPaginated({
+      page: Number(page),
+      limit: Number(limit),
+      search,
+      status,
+    });
   }
 
   /**

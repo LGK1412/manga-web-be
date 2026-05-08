@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -29,8 +30,22 @@ export class StylesController {
   }
 
   @Get()
-  findAll() {
-    return this.stylesService.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
+  ) {
+    return this.stylesService.findAllPaginated({
+      page: Number(page || 1),
+      limit: Number(limit || 10),
+      search,
+      status,
+      sortBy,
+      sortDir,
+    });
   }
 
   @Get('all')

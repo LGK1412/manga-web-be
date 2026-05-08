@@ -10,10 +10,12 @@ import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationModule } from 'src/notification/notification.module';
+import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 
 @Module({
   imports: [
     NotificationModule,
+    CloudinaryModule,
     MongooseModule.forFeature([
       { name: EmojiPack.name, schema: EmojiPackSchema },
       { name: Emoji.name, schema: EmojiSchema },

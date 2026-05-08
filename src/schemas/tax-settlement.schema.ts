@@ -92,6 +92,12 @@ export class TaxSettlement {
     @Prop({ type: [String] })
     fileName: string[];
 
+    @Prop({ type: [String], default: [] })
+    fileUrls?: string[];
+
+    @Prop({ type: [String], default: [] })
+    filePublicIds?: string[];
+
     @Prop()
     receiptNumber?: string;
 

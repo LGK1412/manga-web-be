@@ -2,6 +2,8 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { Readable } from 'stream';
+import * as http from 'http';
+import * as https from 'https';
 
 @Injectable()
 export class CloudinaryService {
@@ -91,5 +93,75 @@ export class CloudinaryService {
 
             Readable.from(buffer).pipe(uploadStream);
         });
+    }
+
+    async deleteByUrl(
+        fileUrl: string,
+        resourceType: 'image' | 'raw' | 'video' = 'image',
+    ) {
+        const publicId = this.extractPublicIdFromUrl(fileUrl);
+        if (!publicId) {
+            throw new BadRequestException('Không thể xác định public_id từ URL Cloudinary');
+        }
+
+        return cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+    }
+
+    private extractPublicIdFromUrl(fileUrl: string): string | null {
+        try {
+            const parsed = new URL(fileUrl);
+            const marker = '/upload/';
+            const idx = parsed.pathname.indexOf(marker);
+
+            if (idx === -1) {
+                return null;
+            }
+
+            let assetPath = parsed.pathname.slice(idx + marker.length);
+            assetPath = assetPath.replace(/^v\d+\//, '');
+
+            const dotIndex = assetPath.lastIndexOf('.');
+            if (dotIndex > 0) {
+                assetPath = assetPath.slice(0, dotIndex);
+            }
+
+            return decodeURIComponent(assetPath);
+        } catch {
+            return null;
+        }
+    }
+
+    async fetchRemoteStream(url: string): Promise<Readable> {
+        const parsedUrl = new URL(url);
+        const client = parsedUrl.protocol === 'http:' ? http : https;
+
+        return new Promise((resolve, reject) => {
+            const request = client.get(parsedUrl, (response) => {
+                if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                    this.fetchRemoteStream(response.headers.location)
+                        .then(resolve)
+                        .catch(reject);
+                    return;
+                }
+
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to fetch remote file: ${url} (${response.statusCode})`));
+                    return;
+                }
+
+                resolve(response);
+            });
+
+            request.on('error', reject);
+        });
+    }
+
+    getFileNameFromUrl(url: string): string {
+        try {
+            const pathname = new URL(url).pathname;
+            return pathname.split('/').pop() || 'file';
+        } catch {
+            return 'file';
+        }
     }
 }

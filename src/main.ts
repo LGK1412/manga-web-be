@@ -18,25 +18,6 @@ async function bootstrap() {
     origin: process.env.CLIENT_URL,
     credentials: true,
   });
-  //  expose public folder
-  app.useStaticAssets(join(process.cwd(), "public", "assets"), {
-    prefix: "/assets",
-  });
-
-  //Serve static files (ảnh)
-  app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
-
-  app.use('/donation-items', express.static(join(process.cwd(), 'public', 'donation-items')));
-
-  app.use('/payoutInfo', express.static(join(process.cwd(), 'public', 'payoutInfo')));
-
-  app.use('/proofFiles', express.static(join(process.cwd(), 'public', 'proofFiles')));
-
-  app.use('/bankBatchRef', express.static(join(process.cwd(), 'public', 'bankBatchRef')));
-
-  app.use('/payout-identity', express.static(join(process.cwd(), 'public', 'payout-identity')));
-
-  app.use('/licenses', express.static(join(process.cwd(), 'public', 'licenses')));
 
   await app.listen(process.env.PORT ?? 3000);
 }

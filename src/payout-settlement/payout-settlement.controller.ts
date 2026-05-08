@@ -30,6 +30,48 @@ export class PayoutSettlementController {
     private readonly cloudinaryService: CloudinaryService,
   ) { }
 
+  private validateCloudinaryUrl(fileUrl: string) {
+    try {
+      const parsed = new URL(fileUrl);
+      const isCloudinaryHost =
+        parsed.hostname === 'res.cloudinary.com' ||
+        parsed.hostname.endsWith('.cloudinary.com');
+
+      if (!isCloudinaryHost) {
+        throw new BadRequestException('Only Cloudinary files are allowed');
+      }
+    } catch {
+      throw new BadRequestException('Invalid file url');
+    }
+  }
+
+  private async sendCloudinaryAttachment(
+    res: express.Response,
+    fileUrl: string,
+    fileName?: string,
+    fallbackContentType = 'application/octet-stream',
+  ) {
+    this.validateCloudinaryUrl(fileUrl);
+
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      throw new NotFoundException('Không thể tải file từ Cloudinary');
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const resolvedName = fileName || this.cloudinaryService.getFileNameFromUrl(fileUrl);
+    const contentType = response.headers.get('content-type') || fallbackContentType;
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(resolvedName)}`,
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return res.send(buffer);
+  }
+
   @Get()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.FINANCIAL_MANAGER)
@@ -120,7 +162,12 @@ export class PayoutSettlementController {
       return res.status(204).send();
     }
 
-    return res.redirect(result.fileUrl);
+    return this.sendCloudinaryAttachment(
+      res,
+      result.fileUrl,
+      result.fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
   }
 
   @Get('download/:id')
@@ -136,28 +183,27 @@ export class PayoutSettlementController {
       throw new NotFoundException('File không tồn tại');
     }
 
-    const response = await fetch(payout.fileUrl);
-
-    if (!response.ok) {
-      throw new NotFoundException('Không thể tải file từ Cloudinary');
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    res.setHeader(
-      'Content-Type',
+    return this.sendCloudinaryAttachment(
+      res,
+      payout.fileUrl,
+      payout.fileName || 'payout.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
+  }
 
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(payout.fileName || 'payout.xlsx')}`,
-    );
+  @Get('download-bank-file')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.FINANCIAL_MANAGER)
+  async downloadBankFile(
+    @Query('url') url: string,
+    @Query('fileName') fileName: string,
+    @Res() res: express.Response,
+  ) {
+    if (!url) {
+      throw new BadRequestException('url is required');
+    }
 
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-
-    return res.send(buffer);
+    return this.sendCloudinaryAttachment(res, url, fileName);
   }
 
   @Patch('cancel/:id')

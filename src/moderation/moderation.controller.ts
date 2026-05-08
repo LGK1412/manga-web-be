@@ -39,8 +39,28 @@ export class ModerationController {
   }
 
   @Get('queue')
-  queue(@Query('status') status?: string, @Query('limit') limit?: number) {
-    return this.svc.listQueue({ status, limit });
+  queue(
+    @Query('status') status?: string,
+    @Query('limit') limit?: number,
+    @Query('page') page?: number,
+    @Query('q') q?: string,
+    @Query('resolutionStatus') resolutionStatus?: string,
+    @Query('riskMin') riskMin?: number,
+    @Query('riskMax') riskMax?: number,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
+  ) {
+    return this.svc.listQueue({
+      status,
+      limit,
+      page,
+      q,
+      resolutionStatus,
+      riskMin,
+      riskMax,
+      sortBy,
+      sortDir,
+    });
   }
 
   // Ép chạy kiểm duyệt AI ngay

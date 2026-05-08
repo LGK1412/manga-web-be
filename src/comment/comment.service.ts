@@ -65,6 +65,10 @@ export class CommentService {
     return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
   }
 
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   // ================== VALIDATION ==================
   private async checkUser(payload: any) {
     const existingUser = await this.userService.findUserById(payload.user_id);
@@ -329,26 +333,224 @@ export class CommentService {
   }
 
   // ================== ADMIN / COMMUNITY ==================
-  async getAllComments() {
-    const comments = await this.commentModel
-      .find()
-      .populate({
-        path: 'chapter_id',
-        populate: { path: 'manga_id', select: 'title' },
-        select: 'title manga_id',
-      })
-      .populate('user_id', 'username email role avatar')
-      .sort({ createdAt: -1 });
+  async getAllCommentsPaginated(query: {
+    page?: number;
+    limit?: number;
+    storyId?: string;
+    chapterId?: string;
+    status?: 'visible' | 'hidden';
+    user?: string;
+    search?: string;
+    sortBy?: 'commentId' | 'user' | 'manga' | 'chapter' | 'date';
+    sortDir?: 'asc' | 'desc';
+    onlyNewest24h?: boolean;
+  }) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(Math.max(Number(query.limit ?? 10), 1), 100);
+    const skip = (page - 1) * limit;
+    const sortDirection = query.sortDir === 'asc' ? 1 : -1;
+
+    const postLookupMatch: any = {};
+    if (query.storyId && Types.ObjectId.isValid(query.storyId)) {
+      postLookupMatch['chapter.manga_id'] = new Types.ObjectId(query.storyId);
+    }
+    if (query.chapterId && Types.ObjectId.isValid(query.chapterId)) {
+      postLookupMatch['chapter_id'] = new Types.ObjectId(query.chapterId);
+    }
+    if (query.status === 'visible') {
+      postLookupMatch['is_delete'] = false;
+    }
+    if (query.status === 'hidden') {
+      postLookupMatch['is_delete'] = true;
+    }
+    if (query.onlyNewest24h) {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      postLookupMatch['createdAt'] = { $gte: since };
+    }
+
+    const searchParts: any[] = [];
+    const userKeyword = String(query.user || '').trim();
+    if (userKeyword) {
+      const safe = this.escapeRegex(userKeyword);
+      searchParts.push(
+        { 'user.username': { $regex: safe, $options: 'i' } },
+        { 'user.email': { $regex: safe, $options: 'i' } },
+      );
+    }
+
+    const keyword = String(query.search || '').trim();
+    if (keyword) {
+      const safe = this.escapeRegex(keyword);
+      searchParts.push(
+        { content: { $regex: safe, $options: 'i' } },
+        { 'chapter.title': { $regex: safe, $options: 'i' } },
+        { 'manga.title': { $regex: safe, $options: 'i' } },
+        { 'manga.name': { $regex: safe, $options: 'i' } },
+        { 'user.username': { $regex: safe, $options: 'i' } },
+        { 'user.email': { $regex: safe, $options: 'i' } },
+      );
+    }
+
+    if (searchParts.length > 0) {
+      postLookupMatch.$or = searchParts;
+    }
+
+    const sortMap: Record<string, any> = {
+      date: { createdAt: sortDirection, _id: sortDirection },
+      commentId: { _id: sortDirection },
+      user: { 'user.username': sortDirection, _id: 1 },
+      manga: { 'manga.title': sortDirection, _id: 1 },
+      chapter: { 'chapter.title': sortDirection, _id: 1 },
+    };
+    const sort = sortMap[query.sortBy || 'date'] || sortMap.date;
+
+    const basePipeline: any[] = [
+      {
+        $lookup: {
+          from: 'chapters',
+          localField: 'chapter_id',
+          foreignField: '_id',
+          as: 'chapter',
+        },
+      },
+      { $unwind: { path: '$chapter', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'mangas',
+          localField: 'chapter.manga_id',
+          foreignField: '_id',
+          as: 'manga',
+        },
+      },
+      { $unwind: { path: '$manga', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      { $match: postLookupMatch },
+    ];
+
+    const [rows, total, visibleCount, hiddenCount, newest24hCount, topMangaRows] =
+      await Promise.all([
+        this.commentModel.aggregate([
+          ...basePipeline,
+          { $sort: sort },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              _id: 1,
+              chapter_id: 1,
+              user_id: 1,
+              content: 1,
+              is_delete: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              chapter: {
+                _id: '$chapter._id',
+                title: '$chapter.title',
+                manga_id: '$chapter.manga_id',
+              },
+              manga: {
+                _id: '$manga._id',
+                title: { $ifNull: ['$manga.title', '$manga.name'] },
+              },
+              user: {
+                _id: '$user._id',
+                username: '$user.username',
+                email: '$user.email',
+                role: '$user.role',
+                avatar: '$user.avatar',
+              },
+            },
+          },
+        ]),
+        this.commentModel.aggregate([
+          ...basePipeline,
+          { $count: 'total' },
+        ]),
+        this.commentModel.countDocuments({ is_delete: false }),
+        this.commentModel.countDocuments({ is_delete: true }),
+        this.commentModel.countDocuments({
+          createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        }),
+        this.commentModel.aggregate([
+          {
+            $lookup: {
+              from: 'chapters',
+              localField: 'chapter_id',
+              foreignField: '_id',
+              as: 'chapter',
+            },
+          },
+          { $unwind: { path: '$chapter', preserveNullAndEmptyArrays: true } },
+          {
+            $lookup: {
+              from: 'mangas',
+              localField: 'chapter.manga_id',
+              foreignField: '_id',
+              as: 'manga',
+            },
+          },
+          { $unwind: { path: '$manga', preserveNullAndEmptyArrays: true } },
+          {
+            $group: {
+              _id: '$chapter.manga_id',
+              title: { $first: { $ifNull: ['$manga.title', '$manga.name'] } },
+              count: { $sum: 1 },
+            },
+          },
+          { $match: { _id: { $ne: null } } },
+          { $sort: { count: -1 } },
+          { $limit: 3 },
+        ]),
+      ]);
 
     const replySummary = await this.replyService.getReplySummaryByCommentIds(
-      comments.map((comment) => String((comment as any)._id)),
+      rows.map((row: any) => String(row._id)),
     );
 
-    return comments.map((comment: any) => ({
-      ...comment.toObject(),
-      replyCount: replySummary[String(comment._id)]?.replyCount || 0,
-      replyUsernames: replySummary[String(comment._id)]?.usernames || [],
+    const data = rows.map((row: any) => ({
+      ...row,
+      chapter_id: row.chapter || row.chapter_id,
+      user_id: row.user || row.user_id,
+      replyCount: replySummary[String(row._id)]?.replyCount || 0,
+      replyUsernames: replySummary[String(row._id)]?.usernames || [],
     }));
+
+    const totalItems = Number(total[0]?.total || 0);
+    return {
+      data,
+      total: totalItems,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(totalItems / limit)),
+      stats: {
+        visibleCount,
+        hiddenCount,
+        newest24hCount,
+        topMangas: topMangaRows.map((item: any) => ({
+          id: String(item._id),
+          title: item.title || 'Unknown manga',
+          count: Number(item.count || 0),
+        })),
+      },
+    };
+  }
+
+  async getAllComments() {
+    const result = await this.getAllCommentsPaginated({
+      page: 1,
+      limit: 100,
+      sortBy: 'date',
+      sortDir: 'desc',
+    });
+    return result.data;
   }
 
   async filterComments({

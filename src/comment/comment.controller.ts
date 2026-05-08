@@ -6,6 +6,7 @@ import {
   Post,
   Req,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -64,8 +65,30 @@ export class CommentController {
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.COMMUNITY_MANAGER)
-  async getAllComments() {
-    return this.commentService.getAllComments();
+  async getAllComments(
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+    @Query('storyId') storyId?: string,
+    @Query('chapterId') chapterId?: string,
+    @Query('status') status?: 'visible' | 'hidden',
+    @Query('user') user?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy: 'commentId' | 'user' | 'manga' | 'chapter' | 'date' = 'date',
+    @Query('sortDir') sortDir: 'asc' | 'desc' = 'desc',
+    @Query('onlyNewest24h') onlyNewest24h = 'false',
+  ) {
+    return this.commentService.getAllCommentsPaginated({
+      page: Number(page),
+      limit: Number(limit),
+      storyId,
+      chapterId,
+      status,
+      user,
+      search,
+      sortBy,
+      sortDir,
+      onlyNewest24h: onlyNewest24h === 'true',
+    });
   }
 
   @Post('/filter')

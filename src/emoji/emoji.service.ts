@@ -2,25 +2,29 @@ import { Injectable, BadRequestException, InternalServerErrorException } from "@
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { Emoji } from "src/schemas/Emoji.schema";
-import * as fs from "fs/promises";
 import * as path from "path";
+import { CloudinaryService } from "src/cloudinary/cloudinary.service";
 
 @Injectable()
 export class EmojiService {
-    constructor(@InjectModel(Emoji.name) private emojiModel: Model<Emoji>) { }
+    constructor(
+        @InjectModel(Emoji.name) private emojiModel: Model<Emoji>,
+        private readonly cloudinaryService: CloudinaryService,
+    ) { }
 
     async uploadEmojis(files: Express.Multer.File[]) {
         if (!files || files.length === 0)
             throw new BadRequestException("No files uploaded");
 
-        const uploadDir = path.join(process.cwd(), "public", "assets", "emoji");
-        await fs.mkdir(uploadDir, { recursive: true });
-
-        const savedFiles: string[] = [];
+        const uploadedUrls: string[] = [];
 
         try {
             const emojis: Emoji[] = []
             for (const file of files) {
+                if (!file.mimetype.startsWith("image/")) {
+                    throw new BadRequestException(`File "${file.originalname}" không phải ảnh`);
+                }
+
                 const ext = path.extname(file.originalname);
                 const baseName = path.basename(file.originalname, ext);
 
@@ -28,18 +32,17 @@ export class EmojiService {
                 const exist = await this.emojiModel.findOne({ name: baseName });
                 if (exist) throw new BadRequestException(`Emoji "${baseName}" already exists`);
 
-                const uniqueName = `${baseName}${ext}`;
-                const filePath = path.join(uploadDir, uniqueName);
-
-                // lưu file
-                await fs.writeFile(filePath, file.buffer);
-                savedFiles.push(`/assets/emoji/${uniqueName}`);
+                const uploaded = await this.cloudinaryService.uploadImage(
+                    file,
+                    "mangaword/emojis",
+                );
+                uploadedUrls.push(uploaded.secure_url);
 
                 // lưu DB
                 const emoji = new this.emojiModel({
                     name: baseName,
                     keywords: [baseName],
-                    skins: [{ src: `/assets/emoji/${uniqueName}` }],
+                    skins: [{ src: uploaded.secure_url }],
                 });
                 const res = await emoji.save();
                 emojis.push(res)
@@ -47,11 +50,10 @@ export class EmojiService {
 
             return { success: true, emojis, count: files.length };
         } catch (err) {
-            // rollback file
-            for (const src of savedFiles) {
-                const absPath = path.join(process.cwd(), "public", src);
+            // rollback cloudinary file
+            for (const src of uploadedUrls) {
                 try {
-                    await fs.unlink(absPath);
+                    await this.cloudinaryService.deleteByUrl(src, "image");
                 } catch { }
             }
 
@@ -73,11 +75,12 @@ export class EmojiService {
         // Lấy tất cả emoji cần xoá (full info)
         const emojis = await this.emojiModel.find({ _id: { $in: objectIds } });
 
-        // Xoá file trên disk
+        // Xoá file trên Cloudinary
         for (const emoji of emojis) {
             for (const skin of emoji.skins) {
-                const filePath = path.join(process.cwd(), 'public', skin.src);
-                try { await fs.unlink(filePath); } catch { }
+                try {
+                    await this.cloudinaryService.deleteByUrl(skin.src, "image");
+                } catch { }
             }
         }
 

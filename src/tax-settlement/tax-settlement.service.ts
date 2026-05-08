@@ -4,10 +4,12 @@ import { Model, Types } from 'mongoose';
 import { TaxSettlement, TaxSettlementDocument } from 'src/schemas/tax-settlement.schema';
 import { WithdrawDocument } from 'src/schemas/Withdrawal.schema';
 import ExcelJS from 'exceljs';
-import * as fs from 'fs';
+import * as http from 'http';
+import * as https from 'https';
 import * as path from 'path';
-import express from 'express';
 import archiver from 'archiver';
+import { Readable } from 'stream';
+import { Response } from 'express';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 function startOfDayVN(date: Date) {
@@ -83,12 +85,6 @@ export class TaxSettlementService {
     return { data, total };
   }
 
-  private ensureDir(dir: string) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  }
-
   private getQuarter(date: Date) {
     const m = new Date(date).getMonth() + 1;
     return Math.ceil(m / 3);
@@ -147,7 +143,7 @@ export class TaxSettlementService {
     const settlement = await this.initTaxSettlementRecord(withdraws, reportType, year, periodFrom, periodTo);
 
     try {
-      const files: { fileName: string; filePath: string }[] = [];
+      const files: { fileName: string; buffer: Buffer; fileUrl?: string; filePublicId?: string }[] = [];
 
       // ===== File chính 05-QTT =====
       const mainFile = await this.generateExcel(settlement);
@@ -159,16 +155,33 @@ export class TaxSettlementService {
         files.push(appendixFile);
       }
 
-      // ===== Lưu vào DB =====
-      settlement.fileName = files.map(f => f.fileName);
+      const uploadedFiles = await Promise.all(
+        files.map((file) =>
+          this.cloudinaryService.uploadBuffer(
+            file.buffer,
+            `mangaword/tax-file/${settlement._id}`,
+            `${settlement._id.toString()}_${file.fileName.replace(/\s+/g, '_')}`,
+          ),
+        ),
+      );
 
+      const fileUrls = uploadedFiles.map((upload) => upload.secure_url);
+      const filePublicIds = uploadedFiles.map((upload) => upload.public_id);
+
+      settlement.fileName = files.map((f) => f.fileName);
+      settlement.fileUrls = fileUrls;
+      settlement.filePublicIds = filePublicIds;
       settlement.status = 'exported';
       await settlement.save();
 
-      // return file đầu tiên để download ngay (tuỳ bạn)
       return {
         settlement,
-        files,
+        files: files.map((file, index) => ({
+          fileName: file.fileName,
+          buffer: file.buffer,
+          fileUrl: fileUrls[index],
+          filePublicId: filePublicIds[index],
+        })),
       };
     } catch (error: any) {
       await this.taxSettlementModel.findByIdAndDelete(settlement._id);
@@ -224,13 +237,9 @@ export class TaxSettlementService {
       subRows.forEach(r => this.renderDataRow(sheet, r));
     }
 
-    // Logic lưu file...
     const fileName = isAnnual ? `05-QTT-${settlement.year}.xlsx` : `05-KK-TNCN-Q${this.getQuarter(settlement.periodFrom)}-${settlement.year}.xlsx`;
-    const baseDir = isAnnual ? path.join(process.cwd(), 'public', 'tax-file', `${settlement.year}`, 'ANNUAL') : path.join(process.cwd(), 'public', 'tax-file', `${settlement.year}`, `Q${this.getQuarter(settlement.periodFrom)}`);
-    this.ensureDir(baseDir);
-    const filePath = path.join(baseDir, fileName);
-    await workbook.xlsx.writeFile(filePath);
-    return { fileName, filePath };
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    return { fileName, buffer };
   }
 
   // Hàm bổ trợ để tái sử dụng style dòng dữ liệu
@@ -364,23 +373,9 @@ export class TaxSettlementService {
       totalRow.getCell(colIndex).numFmt = '#,##0';
     });
 
-    // ===== Lưu =====
-    const baseDir = path.join(
-      process.cwd(),
-      'public',
-      'tax-file',
-      `${settlement.year}`,
-      'ANNUAL',
-    );
-
-    this.ensureDir(baseDir);
-
     const fileName = `05-1-BK-QTT-${settlement.year}.xlsx`;
-    const filePath = path.join(baseDir, fileName);
-
-    await workbook.xlsx.writeFile(filePath);
-
-    return { fileName, filePath };
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    return { fileName, buffer };
   }
 
   private applyHeaderStyle(row: ExcelJS.Row) {
@@ -583,7 +578,7 @@ export class TaxSettlementService {
 
   async downloadAuthorProofFiles(
     authorId: string,
-    res: express.Response
+    res: Response
   ) {
     const lastYear = new Date().getFullYear() - 1;
 
@@ -605,18 +600,6 @@ export class TaxSettlementService {
       throw new NotFoundException('No proof files found');
     }
 
-    const folderPath = path.join(
-      process.cwd(),
-      'public',
-      'proofFiles',
-      tax._id.toString(),
-      authorId
-    );
-
-    if (!fs.existsSync(folderPath)) {
-      throw new NotFoundException('Proof folder not found');
-    }
-
     const zipName = `tax-proof-${lastYear}.zip`;
 
     res.set({
@@ -630,14 +613,46 @@ export class TaxSettlementService {
 
     archive.pipe(res);
 
-    authorItem.proofFiles.forEach((file) => {
-      const filePath = path.join(folderPath, file);
-
-      if (fs.existsSync(filePath)) {
-        archive.file(filePath, { name: file });
-      }
-    });
+    for (const fileUrl of authorItem.proofFiles) {
+      const fileName = this.getFileNameFromUrl(fileUrl);
+      const stream = await this.fetchRemoteStream(fileUrl);
+      archive.append(stream, { name: fileName });
+    }
 
     await archive.finalize();
+  }
+
+  public async fetchRemoteStream(url: string): Promise<Readable> {
+    const parsedUrl = new URL(url);
+    const client = parsedUrl.protocol === 'http:' ? http : https;
+
+    return new Promise((resolve, reject) => {
+      const request = client.get(parsedUrl, (response) => {
+        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          this.fetchRemoteStream(response.headers.location)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to fetch remote file: ${url} (${response.statusCode})`));
+          return;
+        }
+
+        resolve(response);
+      });
+
+      request.on('error', reject);
+    });
+  }
+
+  private getFileNameFromUrl(url: string): string {
+    try {
+      const pathname = new URL(url).pathname;
+      return pathname.split('/').pop() || 'file';
+    } catch {
+      return 'file';
+    }
   }
 }

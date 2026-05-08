@@ -23,6 +23,52 @@ export class StylesService {
     return this.stylesModel.find().exec();
   }
 
+  async findAllPaginated(query: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    sortBy?: string;
+    sortDir?: 'asc' | 'desc';
+  }) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(Math.max(Number(query.limit ?? 10), 1), 100);
+    const skip = (page - 1) * limit;
+    const search = String(query.search || '').trim();
+    const status = String(query.status || '').trim();
+    const sortDir = query.sortDir === 'asc' ? 1 : -1;
+    const sortBy = query.sortBy || 'updatedAt';
+
+    const filter: Record<string, any> = {};
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    const sort: Record<string, 1 | -1> =
+      sortBy === 'name'
+        ? { name: sortDir, _id: 1 }
+        : { updatedAt: sortDir, _id: 1 };
+
+    const [items, total] = await Promise.all([
+      this.stylesModel.find(filter).sort(sort).skip(skip).limit(limit).exec(),
+      this.stylesModel.countDocuments(filter),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
   async findActive(): Promise<Styles[]> {
     return this.stylesModel.find({ status: 'normal' }).exec();
   }

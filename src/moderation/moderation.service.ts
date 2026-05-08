@@ -483,11 +483,53 @@ export class ModerationService {
 async listQueue(params: {
   status?: string;
   limit?: number;
+  page?: number;
+  q?: string;
+  resolutionStatus?: string;
+  riskMin?: number;
+  riskMax?: number;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }) {
   const query: any = {};
   if (params.status) query.status = params.status;
-  const limit = Math.max(1, Math.min(500, params.limit ?? 50));
-  const rows = await this.cmModel.aggregate([
+  if (params.resolutionStatus) {
+    if (params.resolutionStatus === 'REJECTED') {
+      query.resolution_status = { $in: ['REJECTED', 'CHANGES_REQUESTED'] };
+    } else {
+      query.resolution_status = params.resolutionStatus;
+    }
+  }
+  if (typeof params.riskMin === 'number' || typeof params.riskMax === 'number') {
+    query.risk_score = {};
+    if (typeof params.riskMin === 'number') query.risk_score.$gte = params.riskMin;
+    if (typeof params.riskMax === 'number') query.risk_score.$lte = params.riskMax;
+  }
+
+  const limit = Math.max(1, Math.min(100, Number(params.limit ?? 50)));
+  const page = Math.max(1, Number(params.page ?? 1));
+  const skip = (page - 1) * limit;
+  const sortDirection = params.sortDir === 'asc' ? 1 : -1;
+  const sortBy = params.sortBy || '';
+
+  const search = String(params.q || '').trim();
+  const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hasSearch = safeSearch.length > 0;
+
+  const dynamicSort =
+    sortBy === 'title'
+      ? { chapterTitle: sortDirection, updatedAt: -1 }
+      : sortBy === 'mangaTitle'
+        ? { mangaTitle: sortDirection, updatedAt: -1 }
+        : sortBy === 'author'
+          ? { authorName: sortDirection, updatedAt: -1 }
+          : sortBy === 'risk_score'
+            ? { risk_score: sortDirection, updatedAt: -1 }
+            : sortBy === 'updatedAt'
+              ? { updatedAt: sortDirection }
+              : { resolution_sort_rank: 1, risk_score: -1, updatedAt: -1 };
+
+  const head: any[] = [
     { $match: query },
     {
       $addFields: {
@@ -508,8 +550,6 @@ async listQueue(params: {
         },
       },
     },
-    { $sort: { resolution_sort_rank: 1, risk_score: -1, updatedAt: -1 } },
-    { $limit: limit },
     {
       $lookup: {
         from: 'chapters',
@@ -537,7 +577,6 @@ async listQueue(params: {
       },
     },
     { $unwind: { path: '$ch', preserveNullAndEmptyArrays: true } },
-
     {
       $lookup: {
         from: 'mangas',
@@ -565,7 +604,6 @@ async listQueue(params: {
       },
     },
     { $unwind: { path: '$manga', preserveNullAndEmptyArrays: true } },
-
     {
       $lookup: {
         from: 'users',
@@ -593,7 +631,21 @@ async listQueue(params: {
       },
     },
     { $unwind: { path: '$author', preserveNullAndEmptyArrays: true } },
-
+    ...(hasSearch
+      ? [
+          {
+            $match: {
+              $or: [
+                { 'ch.title': { $regex: safeSearch, $options: 'i' } },
+                { 'manga.title': { $regex: safeSearch, $options: 'i' } },
+                { 'manga.name': { $regex: safeSearch, $options: 'i' } },
+                { 'author.username': { $regex: safeSearch, $options: 'i' } },
+                { 'author.email': { $regex: safeSearch, $options: 'i' } },
+              ],
+            },
+          },
+        ]
+      : []),
     {
       $project: {
         _id: 0,
@@ -611,7 +663,6 @@ async listQueue(params: {
         risk_score: { $ifNull: ['$risk_score', 0] },
         labels: { $ifNull: ['$labels', []] },
         updatedAt: '$updatedAt',
-
         chapterTitle: { $ifNull: ['$ch.title', '-'] },
         mangaTitle: {
           $ifNull: ['$manga.title', { $ifNull: ['$manga.name', '-'] }],
@@ -620,16 +671,33 @@ async listQueue(params: {
           $ifNull: ['$author.username', { $ifNull: ['$author.email', '-'] }],
         },
         authorEmail: { $ifNull: ['$author.email', ''] },
+        resolution_sort_rank: 1,
       },
     },
-    {
-      $project: {
-        resolution_sort_rank: 0,
-      },
-    },
+  ];
+
+  const [rows, totalAgg] = await Promise.all([
+    this.cmModel.aggregate([
+      ...head,
+      { $sort: dynamicSort },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { resolution_sort_rank: 0 } },
+    ]),
+    this.cmModel.aggregate([
+      ...head,
+      { $count: 'total' },
+    ]),
   ]);
 
-  return rows;
+  const total = Number(totalAgg[0]?.total || 0);
+  return {
+    items: rows,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
 
 

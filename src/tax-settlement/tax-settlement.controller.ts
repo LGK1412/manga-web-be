@@ -20,15 +20,32 @@ import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
-import { extname, join } from 'path';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
 import archiver from 'archiver';
-import { AnyFilesInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Controller('api/tax-settlement')
 export class TaxSettlementController {
-  constructor(private readonly taxSettlementService: TaxSettlementService) { }
+  constructor(
+    private readonly taxSettlementService: TaxSettlementService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) { }
+
+  private validateCloudinaryUrl(fileUrl: string) {
+    try {
+      const parsed = new URL(fileUrl);
+      const isCloudinaryHost =
+        parsed.hostname === 'res.cloudinary.com' ||
+        parsed.hostname.endsWith('.cloudinary.com');
+
+      if (!isCloudinaryHost) {
+        throw new BadRequestException('Only Cloudinary files are allowed');
+      }
+    } catch {
+      throw new BadRequestException('Invalid file url');
+    }
+  }
 
   private getQuarter(date: Date) {
     const m = new Date(date).getMonth() + 1;
@@ -67,9 +84,7 @@ export class TaxSettlementController {
       throw new NotFoundException('Không có file để tải');
     }
 
-    // ===== TRƯỜNG HỢP ANNUAL: ZIP NHIỀU FILE =====
     if (reportType === 'ANNUAL') {
-
       const zipName = `tax-settlement-annual-${year}.zip`;
 
       res.setHeader('Content-Type', 'application/zip');
@@ -78,46 +93,24 @@ export class TaxSettlementController {
         `attachment; filename="${zipName}"`
       );
 
-      const archive = archiver('zip', {
-        zlib: { level: 9 }
-      });
-
+      const archive = archiver('zip', { zlib: { level: 9 } });
       archive.pipe(res);
 
       for (const file of files) {
-        if (existsSync(file.filePath)) {
-          archive.file(file.filePath, {
-            name: file.fileName
-          });
-        }
+        archive.append(file.buffer, { name: file.fileName });
       }
 
-      await new Promise<void>((resolve, reject) => {
-
-        archive.on('error', reject);
-
-        res.on('close', resolve);
-        res.on('finish', resolve);
-
-        archive.finalize();
-
-      });
-
+      await archive.finalize();
       return;
     }
 
-    // ===== TRƯỜNG HỢP QUARTERLY: FILE ĐƠN =====
     const file = files[0];
-    if (!existsSync(file.filePath)) throw new NotFoundException('File không tồn tại');
-
-    // Case Quarterly (File đơn)
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename=${encodeURIComponent(file.fileName)}`,
     });
 
-    const fileStream = createReadStream(file.filePath);
-    fileStream.pipe(res);
+    res.send(file.buffer);
   }
 
   // 3. Download lại từ lịch sử
@@ -131,28 +124,11 @@ export class TaxSettlementController {
 
     const settlement = await this.taxSettlementService.findById(id);
 
-    if (!settlement.fileName || !settlement.fileName.length) {
+    if (!settlement.fileName || !settlement.fileName.length || !settlement.fileUrls?.length) {
       throw new NotFoundException('Không có file');
     }
 
-    const baseDir =
-      settlement.reportType === 'ANNUAL'
-        ? join(process.cwd(), 'public', 'tax-file', `${settlement.year}`, 'ANNUAL')
-        : join(
-          process.cwd(),
-          'public',
-          'tax-file',
-          `${settlement.year}`,
-          `Q${this.getQuarter(settlement.periodFrom)}`,
-        );
-
-    const files = settlement.fileName.map((name) => ({
-      fileName: name,
-      filePath: join(baseDir, name),
-    }));
-
     if (settlement.reportType === 'ANNUAL') {
-
       const zipName = `tax-settlement-annual-${settlement.year}.zip`;
 
       res.setHeader('Content-Type', 'application/zip');
@@ -162,41 +138,70 @@ export class TaxSettlementController {
       );
 
       const archive = archiver('zip', { zlib: { level: 9 } });
-
       archive.pipe(res);
 
-      archive.on('error', (err) => {
-        throw new BadRequestException(err.message);
-      });
-
-      for (const file of files) {
-        if (existsSync(file.filePath)) {
-          archive.file(file.filePath, { name: file.fileName });
-        }
+      for (let index = 0; index < settlement.fileUrls.length; index += 1) {
+        const fileUrl = settlement.fileUrls[index];
+        const fileName = settlement.fileName[index] || `file-${index + 1}`;
+        const stream = await this.taxSettlementService.fetchRemoteStream(fileUrl);
+        archive.append(stream, { name: fileName });
       }
 
-      archive.finalize();
-
+      await archive.finalize();
       return;
     }
 
-    const file = files[0];
-
-    if (!existsSync(file.filePath)) {
+    const fileUrl = settlement.fileUrls[0];
+    if (!fileUrl) {
       throw new NotFoundException('File không tồn tại');
     }
+
+    const stream = await this.taxSettlementService.fetchRemoteStream(fileUrl);
+    const fileName = settlement.fileName[0] || this.cloudinaryService.getFileNameFromUrl(fileUrl);
 
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`
+      `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     );
+    stream.pipe(res);
+    return;
+  }
 
-    createReadStream(file.filePath).pipe(res);
+  @Get('download-proof-file')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.FINANCIAL_MANAGER)
+  async downloadProofFile(
+    @Query('url') url: string,
+    @Query('fileName') fileName: string,
+    @Res() res: express.Response,
+  ) {
+    if (!url) {
+      throw new BadRequestException('url is required');
+    }
+
+    this.validateCloudinaryUrl(url);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new NotFoundException('Không thể tải file từ Cloudinary');
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const detectedName = fileName || this.cloudinaryService.getFileNameFromUrl(url);
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(detectedName)}`,
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+
+    return res.send(buffer);
   }
 
   @Patch('pay/:id')
