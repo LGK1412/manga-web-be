@@ -29,6 +29,34 @@
     }
 
     // 🟡 Get all with pagination, search, and filtering
+    async getDashboardSummary() {
+      const rows = await this.policiesModel.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const summary = {
+        total: 0,
+        active: 0,
+        draft: 0,
+        archived: 0,
+      };
+
+      for (const row of rows) {
+        const count = Number(row.count || 0);
+        summary.total += count;
+        if (row._id === 'Active') summary.active = count;
+        if (row._id === 'Draft') summary.draft = count;
+        if (row._id === 'Archived') summary.archived = count;
+      }
+
+      return summary;
+    }
+
     async findAllPaginated(query: {
       page: number;
       limit: number;

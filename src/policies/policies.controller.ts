@@ -54,6 +54,13 @@ export class PoliciesController {
   }
 
   // 🟢 Public: Get all active policies
+  @Get('summary')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  summary() {
+    return this.policiesService.getDashboardSummary();
+  }
+
   @Get('active')
   findActive() {
     return this.policiesService.findActive();

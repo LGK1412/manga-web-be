@@ -152,6 +152,20 @@ export class MangaController {
     return { data, total, page: p, limit: l };
   }
 
+  @Get('options')
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
+  async getMangaOptions(
+    @Query('q') q = '',
+    @Query('limit') limit = '20',
+  ) {
+    const l = Math.min(50, Math.max(1, parseInt(limit as string, 10) || 20));
+    return this.mangaService.getOptions({
+      limit: l,
+      q,
+    });
+  }
+
   @Get('/')
   async getAllMangaBasic() {
     return this.mangaService.getAllBasic();

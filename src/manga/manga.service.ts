@@ -593,6 +593,30 @@ export class MangaService {
     return mangas;
   }
 
+  async getOptions({ limit = 20, q = '' }: { limit?: number; q?: string }) {
+    const search = String(q || '').trim();
+    const filter: Record<string, any> = {
+      isDeleted: false,
+      isPublish: true,
+      $or: [
+        { enforcementStatus: { $exists: false } },
+        { enforcementStatus: MangaEnforcementStatus.NORMAL },
+      ],
+    };
+
+    if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.title = { $regex: safeSearch, $options: 'i' };
+    }
+
+    return this.mangaModel
+      .find(filter)
+      .select('_id title')
+      .sort({ title: 1 })
+      .limit(Math.min(Math.max(Number(limit) || 20, 1), 50))
+      .lean();
+  }
+
   async getAuthorByMangaIdForCommentChapter(id: string | Types.ObjectId) {
     return this.mangaModel.findById(id).populate('authorId').exec();
   }
