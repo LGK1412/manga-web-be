@@ -5,6 +5,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   UsePipes,
   ValidationPipe,
   UseGuards,
@@ -24,8 +25,34 @@ export class GenreController {
   constructor(private readonly genreService: GenreService) {}
 
   @Get()
-  async getAllGenres() {
-    return await this.genreService.getAllGenres();
+  async getAllGenres(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
+  ) {
+    const hasListQuery =
+      page !== undefined ||
+      limit !== undefined ||
+      search !== undefined ||
+      status !== undefined ||
+      sortBy !== undefined ||
+      sortDir !== undefined;
+
+    if (!hasListQuery) {
+      return await this.genreService.getAllGenres();
+    }
+
+    return await this.genreService.getAllGenresPaginated({
+      page: Number(page || 1),
+      limit: Number(limit || 10),
+      search,
+      status,
+      sortBy,
+      sortDir,
+    });
   }
 
   @Get(':id')
