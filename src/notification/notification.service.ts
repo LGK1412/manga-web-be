@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import * as firebase from "firebase-admin";
 import { InjectModel } from "@nestjs/mongoose";
-import { Model } from "mongoose";
+import { Model, Types } from "mongoose";
 import { Notification } from "src/schemas/notification.schema";
 import { User } from "src/schemas/User.schema";
 
@@ -105,6 +105,116 @@ export class NotificationService {
     return this.notificationModel.find({ receiver_id }).sort({ createdAt: -1 });
   }
 
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  private toObjectId(value: string) {
+    return Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : value;
+  }
+
+  private buildNotificationFilter({
+    ownerField,
+    ownerId,
+    q,
+    saved,
+    status,
+  }: {
+    ownerField: "receiver_id" | "sender_id";
+    ownerId: string;
+    q?: string;
+    saved?: string;
+    status?: string;
+  }) {
+    const filter: Record<string, any> = {
+      [ownerField]: this.toObjectId(ownerId),
+    };
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    const normalizedSaved = String(saved || "").trim().toLowerCase();
+    const search = String(q || "").trim();
+
+    if (normalizedStatus === "read") filter.is_read = true;
+    if (normalizedStatus === "unread") filter.is_read = false;
+    if (normalizedSaved === "saved" || normalizedSaved === "true") {
+      filter.is_save = true;
+    }
+    if (normalizedSaved === "unsaved" || normalizedSaved === "false") {
+      filter.is_save = false;
+    }
+    if (search) {
+      const safeSearch = this.escapeRegex(search);
+      filter.$or = [
+        { title: { $regex: safeSearch, $options: "i" } },
+        { body: { $regex: safeSearch, $options: "i" } },
+      ];
+    }
+
+    return filter;
+  }
+
+  async listNotiForUser(
+    receiver_id: string,
+    payload: any,
+    query: {
+      page?: number;
+      limit?: number;
+      q?: string;
+      saved?: string;
+      status?: string;
+    },
+  ) {
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
+
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(Math.max(Number(query.limit ?? 10), 1), 100);
+    const skip = (page - 1) * limit;
+    const filter = this.buildNotificationFilter({
+      ownerField: "receiver_id",
+      ownerId: receiver_id,
+      q: query.q,
+      saved: query.saved,
+      status: query.status,
+    });
+
+    const [items, total] = await Promise.all([
+      this.notificationModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.notificationModel.countDocuments(filter),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async getUserNotificationStats(receiver_id: string, payload: any) {
+    const uid = this.getUserId(payload);
+    await this.checkUser(uid);
+
+    const ownerId = this.toObjectId(receiver_id);
+    const [total, read, saved] = await Promise.all([
+      this.notificationModel.countDocuments({ receiver_id: ownerId }),
+      this.notificationModel.countDocuments({ receiver_id: ownerId, is_read: true }),
+      this.notificationModel.countDocuments({ receiver_id: ownerId, is_save: true }),
+    ]);
+
+    return {
+      total,
+      read,
+      unread: total - read,
+      saved,
+    };
+  }
+
   async markAsRead(id: string, payload: any) {
     const uid = this.getUserId(payload);
     await this.checkUser(uid);
@@ -162,6 +272,67 @@ export class NotificationService {
   // ===================== ADMIN APIs =====================
   async getNotiForSender(sender_id: string) {
     return this.notificationModel.find({ sender_id }).sort({ createdAt: -1 });
+  }
+
+  async listNotiForSender(
+    sender_id: string,
+    query: {
+      page?: number;
+      limit?: number;
+      q?: string;
+      saved?: string;
+      sort?: string;
+      status?: string;
+    },
+  ) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(Math.max(Number(query.limit ?? 10), 1), 100);
+    const skip = (page - 1) * limit;
+    const filter = this.buildNotificationFilter({
+      ownerField: "sender_id",
+      ownerId: sender_id,
+      q: query.q,
+      saved: query.saved,
+      status: query.status,
+    });
+    const sortLabel = String(query.sort || "Newest");
+    const sort: Record<string, 1 | -1> =
+      sortLabel === "Oldest"
+        ? { createdAt: 1 }
+        : sortLabel === "Title A-Z"
+          ? { title: 1, createdAt: -1 }
+          : sortLabel === "Title Z-A"
+            ? { title: -1, createdAt: -1 }
+            : { createdAt: -1 };
+
+    const [items, total] = await Promise.all([
+      this.notificationModel.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      this.notificationModel.countDocuments(filter),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async getSenderNotificationStats(sender_id: string) {
+    const ownerId = this.toObjectId(sender_id);
+    const [total, read, saved] = await Promise.all([
+      this.notificationModel.countDocuments({ sender_id: ownerId }),
+      this.notificationModel.countDocuments({ sender_id: ownerId, is_read: true }),
+      this.notificationModel.countDocuments({ sender_id: ownerId, is_save: true }),
+    ]);
+
+    return {
+      total,
+      read,
+      unread: total - read,
+      saved,
+    };
   }
 
   async markAsReadByAdmin(noti_id: string, receiver_id: string) {

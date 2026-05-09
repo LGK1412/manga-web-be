@@ -85,50 +85,14 @@ export class AdminNotificationController {
       throw new BadRequestException("Missing sender_id in token payload");
     }
 
-    let rows = await this.svc.getSentByAdmin(senderId);
-
-    if (status === "Read") rows = rows.filter((r) => r.is_read);
-    if (status === "Unread") rows = rows.filter((r) => !r.is_read);
-    if (saved === "Saved") rows = rows.filter((r) => r.is_save);
-    if (saved === "Unsaved") rows = rows.filter((r) => !r.is_save);
-
-    if (q) {
-      const s = q.toLowerCase();
-      rows = rows.filter(
-        (r) =>
-          `${r.title ?? ""}`.toLowerCase().includes(s) ||
-          `${r.body ?? ""}`.toLowerCase().includes(s)
-      );
-    }
-
-    if (sort === "Oldest") {
-      rows.sort(
-        (a: any, b: any) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
-    } else if (sort === "Title A-Z") {
-      rows.sort((a: any, b: any) => String(a.title || "").localeCompare(String(b.title || "")));
-    } else if (sort === "Title Z-A") {
-      rows.sort((a: any, b: any) => String(b.title || "").localeCompare(String(a.title || "")));
-    } else {
-      rows.sort(
-        (a: any, b: any) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    }
-
-    const pageNumber = Math.max(1, Number(page || 1));
-    const limitNumber = Math.min(Math.max(Number(limit || 10), 1), 100);
-    const start = (pageNumber - 1) * limitNumber;
-    const pagedRows = rows.slice(start, start + limitNumber);
-
-    return {
-      items: pagedRows,
-      total: rows.length,
-      page: pageNumber,
-      limit: limitNumber,
-      totalPages: Math.max(1, Math.ceil(rows.length / limitNumber)),
-    };
+    return this.svc.listSentByAdmin(senderId, {
+      page: Number(page || 1),
+      limit: Number(limit || 10),
+      q,
+      saved,
+      sort,
+      status,
+    });
   }
 
   @Get("stats")

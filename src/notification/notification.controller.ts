@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Query,
   Req,
   UseGuards,
   BadRequestException,
@@ -28,14 +29,51 @@ export class NotificationController {
   /**
    * ✅ Endpoint mới (khuyên dùng): lấy tất cả noti của user hiện tại
    */
-  @Get("/me")
+  @Get("/me/stats")
   @UseGuards(AccessTokenGuard)
-  async getMyNotifications(@Req() req: Request) {
+  async getMyNotificationStats(@Req() req: Request) {
     const payload = (req as any).user as JwtPayload;
 
     const uid = this.getUserId(payload);
     if (!uid) {
       throw new BadRequestException("Missing userId in token payload");
+    }
+
+    return this.notificationService.getUserNotificationStats(uid, payload);
+  }
+
+  @Get("/me")
+  @UseGuards(AccessTokenGuard)
+  async getMyNotifications(
+    @Req() req: Request,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+    @Query("q") q?: string,
+    @Query("status") status?: string,
+    @Query("saved") saved?: string,
+  ) {
+    const payload = (req as any).user as JwtPayload;
+
+    const uid = this.getUserId(payload);
+    if (!uid) {
+      throw new BadRequestException("Missing userId in token payload");
+    }
+
+    const hasListQuery =
+      page !== undefined ||
+      limit !== undefined ||
+      q !== undefined ||
+      status !== undefined ||
+      saved !== undefined;
+
+    if (hasListQuery) {
+      return this.notificationService.listNotiForUser(uid, payload, {
+        page: Number(page || 1),
+        limit: Number(limit || 10),
+        q,
+        status,
+        saved,
+      });
     }
 
     return this.notificationService.getAllNotiForUser(uid, payload);
@@ -46,7 +84,15 @@ export class NotificationController {
    */
   @Get("/get-all-noti-for-user/:id")
   @UseGuards(AccessTokenGuard)
-  async getAllNotiForUser(@Param("id") id: string, @Req() req: Request) {
+  async getAllNotiForUser(
+    @Param("id") id: string,
+    @Req() req: Request,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+    @Query("q") q?: string,
+    @Query("status") status?: string,
+    @Query("saved") saved?: string,
+  ) {
     const payload = (req as any).user as JwtPayload;
 
     const uid = this.getUserId(payload);
@@ -56,6 +102,23 @@ export class NotificationController {
 
     if (String(id) !== String(uid)) {
       throw new BadRequestException("User ID mismatch");
+    }
+
+    const hasListQuery =
+      page !== undefined ||
+      limit !== undefined ||
+      q !== undefined ||
+      status !== undefined ||
+      saved !== undefined;
+
+    if (hasListQuery) {
+      return this.notificationService.listNotiForUser(String(id), payload, {
+        page: Number(page || 1),
+        limit: Number(limit || 10),
+        q,
+        status,
+        saved,
+      });
     }
 
     return this.notificationService.getAllNotiForUser(String(id), payload);

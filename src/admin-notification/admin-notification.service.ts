@@ -50,12 +50,22 @@ export class AdminNotificationService {
     return Array.isArray(rows) ? rows : [];
   }
 
+  async listSentByAdmin(
+    sender_id: string,
+    query: {
+      page?: number;
+      limit?: number;
+      q?: string;
+      saved?: string;
+      sort?: string;
+      status?: string;
+    },
+  ) {
+    return this.noti.listNotiForSender(sender_id, query);
+  }
+
   async getSentStats(sender_id: string) {
-    const rows = await this.getSentByAdmin(sender_id);
-    const total = rows.length;
-    const read = rows.filter((r: any) => r.is_read).length;
-    const unread = total - read;
-    return { total, read, unread };
+    return this.noti.getSenderNotificationStats(sender_id);
   }
 
   // ================= ADMIN ACTIONS =================
