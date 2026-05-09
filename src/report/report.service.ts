@@ -152,6 +152,10 @@ export class ReportService {
     private readonly userService: UserService,
   ) {}
 
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
   private normalizeRole(role?: string) {
     return String(role || '').trim().toLowerCase()
   }
@@ -510,6 +514,7 @@ export class ReportService {
     query?: {
       q?: string
       status?: string
+      targetGroup?: 'content' | 'community'
       page?: number
       limit?: number
       sortDir?: 'asc' | 'desc'
@@ -526,44 +531,256 @@ export class ReportService {
       return { items: [], total: 0, page: 1, limit: 1, totalPages: 1 }
     }
 
+    const targetGroupTypes =
+      query?.targetGroup === 'content'
+        ? ['Manga', 'Chapter']
+        : query?.targetGroup === 'community'
+          ? ['Comment', 'Reply']
+          : null
+    const allowedTargetTypes =
+      Array.isArray(allow) && targetGroupTypes
+        ? targetGroupTypes.filter((type) => allow.includes(type))
+        : Array.isArray(allow)
+          ? allow
+          : targetGroupTypes
+
+    if (Array.isArray(allowedTargetTypes) && allowedTargetTypes.length === 0) {
+      return { items: [], total: 0, page: 1, limit: 1, totalPages: 1 }
+    }
+
     const match: any = {}
-    if (Array.isArray(allow) && allow.length > 0) {
-      match.target_type = { $in: allow }
+    if (Array.isArray(allowedTargetTypes) && allowedTargetTypes.length > 0) {
+      match.target_type = { $in: allowedTargetTypes }
     }
 
     const status = String(query?.status || '').trim()
-    if (status) {
+    if (status && status !== 'needs-review' && status !== 'done') {
       match.status = status
     }
 
     const q = String(query?.q || '').trim()
-    if (q) {
-      match.$or = [
-        { reason: { $regex: q, $options: 'i' } },
-        { description: { $regex: q, $options: 'i' } },
-        { reportCode: { $regex: q, $options: 'i' } },
-      ]
-    }
+    const safeQ = q ? this.escapeRegex(q) : ''
 
     const page = Math.max(1, Number(query?.page ?? 1))
     const limit = Math.min(Math.max(Number(query?.limit ?? 50), 1), 100)
     const skip = (page - 1) * limit
     const sortDir = query?.sortDir === 'asc' ? 1 : -1
 
-    const total = await this.reportModel.countDocuments(match)
+    const doneStatuses = ['resolved', 'rejected']
+    const groupingPipeline: any[] = [
+      { $match: match },
+      {
+        $lookup: {
+          from: this.mangaModel.collection.name,
+          localField: 'target_id',
+          foreignField: '_id',
+          as: 'targetManga',
+        },
+      },
+      {
+        $lookup: {
+          from: this.chapterModel.collection.name,
+          localField: 'target_id',
+          foreignField: '_id',
+          as: 'targetChapter',
+        },
+      },
+      {
+        $lookup: {
+          from: this.commentModel.collection.name,
+          localField: 'target_id',
+          foreignField: '_id',
+          as: 'targetComment',
+        },
+      },
+      {
+        $lookup: {
+          from: this.replyModel.collection.name,
+          localField: 'target_id',
+          foreignField: '_id',
+          as: 'targetReply',
+        },
+      },
+      {
+        $addFields: {
+          targetManga: { $arrayElemAt: ['$targetManga', 0] },
+          targetChapter: { $arrayElemAt: ['$targetChapter', 0] },
+          targetComment: { $arrayElemAt: ['$targetComment', 0] },
+          targetReply: { $arrayElemAt: ['$targetReply', 0] },
+          reportCodeText: {
+            $concat: [
+              'RPT-',
+              {
+                $toUpper: {
+                  $substrCP: [{ $toString: '$_id' }, 18, 6],
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: this.mangaModel.collection.name,
+          localField: 'targetChapter.manga_id',
+          foreignField: '_id',
+          as: 'chapterManga',
+        },
+      },
+      {
+        $addFields: {
+          chapterManga: { $arrayElemAt: ['$chapterManga', 0] },
+        },
+      },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          localField: 'targetManga.authorId',
+          foreignField: '_id',
+          as: 'mangaAuthor',
+        },
+      },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          localField: 'chapterManga.authorId',
+          foreignField: '_id',
+          as: 'chapterAuthor',
+        },
+      },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          localField: 'targetComment.user_id',
+          foreignField: '_id',
+          as: 'commentAuthor',
+        },
+      },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          localField: 'targetReply.user_id',
+          foreignField: '_id',
+          as: 'replyAuthor',
+        },
+      },
+      {
+        $addFields: {
+          mangaAuthor: { $arrayElemAt: ['$mangaAuthor', 0] },
+          chapterAuthor: { $arrayElemAt: ['$chapterAuthor', 0] },
+          commentAuthor: { $arrayElemAt: ['$commentAuthor', 0] },
+          replyAuthor: { $arrayElemAt: ['$replyAuthor', 0] },
+        },
+      },
+      {
+        $addFields: {
+          ownerUser: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$target_type', 'Manga'] }, then: '$mangaAuthor' },
+                { case: { $eq: ['$target_type', 'Chapter'] }, then: '$chapterAuthor' },
+                { case: { $eq: ['$target_type', 'Comment'] }, then: '$commentAuthor' },
+                { case: { $eq: ['$target_type', 'Reply'] }, then: '$replyAuthor' },
+              ],
+              default: null,
+            },
+          },
+          searchMangaTitle: {
+            $ifNull: ['$targetManga.title', { $ifNull: ['$chapterManga.title', ''] }],
+          },
+          searchTargetTitle: {
+            $ifNull: ['$targetManga.title', { $ifNull: ['$targetChapter.title', ''] }],
+          },
+          searchTargetContent: {
+            $ifNull: ['$targetComment.content', { $ifNull: ['$targetReply.content', ''] }],
+          },
+        },
+      },
+      ...(safeQ
+        ? [
+            {
+              $match: {
+                $or: [
+                  { reason: { $regex: safeQ, $options: 'i' } },
+                  { description: { $regex: safeQ, $options: 'i' } },
+                  { reportCodeText: { $regex: safeQ, $options: 'i' } },
+                  { 'ownerUser.username': { $regex: safeQ, $options: 'i' } },
+                  { 'ownerUser.email': { $regex: safeQ, $options: 'i' } },
+                  { searchMangaTitle: { $regex: safeQ, $options: 'i' } },
+                  { searchTargetTitle: { $regex: safeQ, $options: 'i' } },
+                  { searchTargetContent: { $regex: safeQ, $options: 'i' } },
+                ],
+              },
+            },
+          ]
+        : []),
+      {
+        $addFields: {
+          reportAgainstKey: {
+            $switch: {
+              branches: [
+                {
+                  case: { $ne: [{ $ifNull: ['$ownerUser._id', null] }, null] },
+                  then: { $concat: ['user:', { $toString: '$ownerUser._id' }] },
+                },
+                {
+                  case: { $gt: [{ $strLenCP: { $ifNull: ['$ownerUser.email', ''] } }, 0] },
+                  then: { $concat: ['email:', { $toLower: '$ownerUser.email' }] },
+                },
+                {
+                  case: { $gt: [{ $strLenCP: { $ifNull: ['$ownerUser.username', ''] } }, 0] },
+                  then: { $concat: ['name:', { $toLower: '$ownerUser.username' }] },
+                },
+              ],
+              default: { $concat: ['report:', { $toString: '$_id' }] },
+            },
+          },
+          activityAt: { $ifNull: ['$updatedAt', '$createdAt'] },
+          isOpenReport: { $not: [{ $in: ['$status', doneStatuses] }] },
+        },
+      },
+      {
+        $group: {
+          _id: '$reportAgainstKey',
+          reportIds: { $push: '$_id' },
+          latestActivityAt: { $max: '$activityAt' },
+          openCount: { $sum: { $cond: ['$isOpenReport', 1, 0] } },
+        },
+      },
+      ...(status === 'needs-review'
+        ? [{ $match: { openCount: { $gt: 0 } } }]
+        : status === 'done'
+          ? [{ $match: { openCount: 0 } }]
+          : []),
+      { $sort: { latestActivityAt: sortDir, _id: 1 } },
+    ]
 
-    const reports = await this.reportModel
-      .find(match)
-      .populate({ path: 'reporter_id', select: 'username email role avatar' })
-      .populate({
-        path: 'target_id',
-        select: 'title authorId content manga_id user_id comment_id order',
-        options: { strictPopulate: false },
-      })
-      .sort({ createdAt: sortDir })
-      .skip(skip)
-      .limit(limit)
-      .exec()
+    const [groupResult] = await this.reportModel.aggregate([
+      ...groupingPipeline,
+      {
+        $facet: {
+          rows: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'count' }],
+        },
+      },
+    ])
+
+    const rows = Array.isArray(groupResult?.rows) ? groupResult.rows : []
+    const total = Number(groupResult?.total?.[0]?.count || 0)
+    const reportIds = rows.flatMap((row: any) => row.reportIds || [])
+
+    const reports = reportIds.length
+      ? await this.reportModel
+          .find({ _id: { $in: reportIds } })
+          .populate({ path: 'reporter_id', select: 'username email role avatar' })
+          .populate({
+            path: 'target_id',
+            select: 'title authorId content manga_id user_id comment_id order',
+            options: { strictPopulate: false },
+          })
+          .sort({ updatedAt: sortDir, createdAt: sortDir })
+          .exec()
+      : []
 
     const items = await Promise.all(
       reports.map((report) =>

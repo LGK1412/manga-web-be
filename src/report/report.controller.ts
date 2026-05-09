@@ -42,6 +42,7 @@ export class ReportController {
     @Req() req: Request,
     @Query('q') q?: string,
     @Query('status') status?: string,
+    @Query('targetGroup') targetGroup?: 'content' | 'community',
     @Query('page') page = '1',
     @Query('limit') limit = '50',
     @Query('sortDir') sortDir: 'asc' | 'desc' = 'desc',
@@ -50,6 +51,7 @@ export class ReportController {
     return this.reportsService.findAllForRole(payload?.role, {
       q,
       status,
+      targetGroup,
       page: Number(page),
       limit: Number(limit),
       sortDir,
