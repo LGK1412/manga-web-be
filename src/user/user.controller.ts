@@ -61,8 +61,9 @@ export class UserController {
   @Get('/all')
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.CONTENT_MODERATOR, Role.COMMUNITY_MANAGER)
-  async getAllUsers(@Req() req: Request) {
-    return this.userService.getAllUsers();
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async getAllUsers(@Query() query: UserManagementListQueryDto) {
+    return this.userService.getAllUsers(query);
   }
 
   /**

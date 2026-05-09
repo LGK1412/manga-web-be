@@ -839,90 +839,9 @@ export class UserService {
     return { success: true, message: "Role updated successfully" };
   }
 
-  // ✅ admin: lấy tất cả users (không cần token nữa)
-  async getAllUsers() {
-    const [users, storyCounts, chapterCounts] = await Promise.all([
-      this.userModel
-        .find()
-        .select(
-          "+password +google_id username email role status avatar verified createdAt updatedAt lastLoginAt",
-        )
-        .lean(),
-      this.mangaModel.aggregate([
-        {
-          $match: {
-            isDeleted: { $ne: true },
-          },
-        },
-        {
-          $group: {
-            _id: "$authorId",
-            storyCount: { $sum: 1 },
-          },
-        },
-      ]),
-      this.chapterModel.aggregate([
-        {
-          $lookup: {
-            from: this.mangaModel.collection.name,
-            localField: "manga_id",
-            foreignField: "_id",
-            as: "manga",
-          },
-        },
-        { $unwind: "$manga" },
-        {
-          $match: {
-            "manga.isDeleted": { $ne: true },
-          },
-        },
-        {
-          $group: {
-            _id: "$manga.authorId",
-            chapterCount: { $sum: 1 },
-          },
-        },
-      ]),
-    ]);
-
-    const storyCountMap = new Map(
-      storyCounts.map((item: any) => [
-        String(item?._id),
-        Number(item?.storyCount ?? 0),
-      ]),
-    );
-
-    const chapterCountMap = new Map(
-      chapterCounts.map((item: any) => [
-        String(item?._id),
-        Number(item?.chapterCount ?? 0),
-      ]),
-    );
-
-    return users.map((user: any) => {
-      const provider = user?.google_id
-        ? "google"
-        : user?.password
-          ? "local"
-          : "unknown";
-
-      const { password, google_id, ...safeUser } = user;
-      const userId = String(user?._id);
-      const lastLoginAt = user?.lastLoginAt ?? null;
-      const updatedAt = user?.updatedAt ?? null;
-      const lastActivityAt = lastLoginAt ?? updatedAt;
-
-      return {
-        ...safeUser,
-        provider,
-        isEmailVerified: Boolean(user?.verified),
-        lastLoginAt,
-        lastActivityAt,
-        reportCount: null,
-        storyCount: storyCountMap.get(userId) ?? 0,
-        chapterCount: chapterCountMap.get(userId) ?? 0,
-      };
-    });
+  // Legacy route kept for old callers, but it now uses the paginated management query.
+  async getAllUsers(query: UserManagementListQueryDto = {}) {
+    return this.listUsersForManagement(query);
   }
 
   /**
